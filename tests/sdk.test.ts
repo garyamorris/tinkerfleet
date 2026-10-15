@@ -1,3 +1,4 @@
+import {customTeam} from './personas.fixture.js';
 import assert from 'node:assert/strict';
 import test, { before, after } from 'node:test';
 import { Usage } from '@openai/agents';
@@ -292,4 +293,42 @@ test('a harness cannot substitute a different action while preparing approval', 
   assert.equal(done.message, 'The prepared action does not match the SDK request.');
   assert.equal(h.executed.length, 0);
   model.assertComplete();
+});
+
+
+test('custom profile focus reaches only its fixed role without changing permissions',async()=>{
+ const team=customTeam();
+ const fleet=createFleetAgents({model:'offline',team});
+ for(const profile of team){
+  const agent=fleet[profile.role];assert.equal(agent.name,profile.role[0].toUpperCase()+profile.role.slice(1));
+  assert.match(String(agent.instructions),new RegExp(profile.purpose.replace('.','\\.')));
+  assert.match(String(agent.instructions),/Never request secrets/);
+  for(const other of team.filter(p=>p.role!==profile.role))assert.ok(!String(agent.instructions).includes(other.purpose));
+ }
+ const h=harness();const model=new ScriptedModel([
+  [functionCall('ask_scout',{input:'Inspect.'},{callId:'custom-scout'})],[assistantMessage('Scouted.')],
+  [functionCall('ask_maker',{input:'Implement.'},{callId:'custom-maker'})],[functionCall('run_command',command,{callId:'custom-command'})],
+  [assistantMessage('Made.')],[functionCall('ask_checker',{input:'Check.'},{callId:'custom-checker'})],
+  [assistantMessage('Checked.')],[assistantMessage('Done.')],
+ ]);
+ const adapter=createSdkAdapter({model,harness:h.value});
+ const pending=adapter.start({runId:'custom-roles',prompt:'Fix fixture.',team});team[2].purpose='MUTATED AFTER START';
+ const paused=await pending;assert.equal(paused.status,'awaiting_approval');
+ const calls=model.calls;assert.match(calls[0].request.systemInstructions!,/Focus on coordinator clarity/);
+ assert.match(calls[1].request.systemInstructions!,/Focus on scout clarity/);
+ assert.match(calls[3].request.systemInstructions!,/Focus on maker clarity/);
+ assert.doesNotMatch(calls[3].request.systemInstructions!,/MUTATED AFTER START/);
+ assert.deepEqual(calls[1].request.tools.map(t=>t.name),['list_files','read_file']);
+ assert.deepEqual(calls[3].request.tools.map(t=>t.name),['list_files','read_file','run_command','edit_file']);
+ assert.deepEqual(calls[0].request.tools.map(t=>t.name),['ask_scout','ask_maker','ask_checker']);
+ assert.equal(h.executed.length,0);
+ const a=paused.pendingApprovals[0];const done=await adapter.resume({runId:'custom-roles',approvalId:a.approvalId,digest:a.digest,approved:true});
+ assert.equal(done.status,'completed');assert.equal(h.executed.length,1);
+ assert.match(model.calls[6].request.systemInstructions!,/Focus on checker clarity/);model.assertComplete();
+});
+
+test('invalid SDK profiles fail before a model request',async()=>{
+ const h=harness(),model=new ScriptedModel([]),adapter=createSdkAdapter({model,harness:h.value});
+ await assert.rejects(adapter.start({runId:'bad-profile',prompt:'Fix fixture.',team:customTeam().slice(0,2)}));
+ assert.equal(model.calls.length,0);assert.equal(h.executed.length,0);
 });

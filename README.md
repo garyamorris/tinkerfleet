@@ -17,7 +17,8 @@ See [the build handover](HANDOVER.txt) for verified checks and remaining integra
 
 ![Tinkerfleet desktop welcome screen](docs/screenshots/desktop-welcome.jpg)
 
-Actual Chrome captures of the no-key demo: [edit approval](docs/screenshots/desktop-approval.jpg),
+Actual Chrome captures of the no-key demo: [persona editor](docs/screenshots/persona-editor.jpg),
+[team library](docs/screenshots/team-library.jpg), [edit approval](docs/screenshots/desktop-approval.jpg),
 [completed run](docs/screenshots/desktop-complete.jpg),
 [six-lesson guide](docs/screenshots/lessons.jpg),
 [mobile welcome](docs/screenshots/mobile-welcome.jpg), and
@@ -40,9 +41,9 @@ and does **not run Docker commands**. An approval in the demo advances the scrip
 example; its test output is explicitly simulated, not evidence of execution.
 
 Try the tiny-project example, inspect an edit proposal, deny it once, then start
-again and approve it. Follow the Scout, Maker, and Checker activity in the work
-panel. Change an avatar's name, color, or shape. Those choices are cosmetic and
-never change tool permissions.
+again and approve it. Open **Details** to follow the Scout, Maker, and Checker
+activity. Open **Team** to create reusable bot profiles and choose the four
+profiles for your next run.
 
 The included [practice project](examples/tiny-project) contains a deliberate
 addition bug. Its own tests fail until you fix it; this is separate from the
@@ -86,10 +87,35 @@ the same approval concept across a lesson, its tests, and the browser interface.
 - **Checker** proposes a command; executing it requires human approval and the
   isolated runner.
 
+The interface calls the specialist roles Researcher, Builder, and Reviewer.
+Scout, Maker, and Checker are their default profile names and SDK role identities.
+Builder and Reviewer both have approval-gated edit and command tools; their
+instructions give them different focuses.
+
 In live mode, Scout, Maker, and Checker are actual SDK agents exposed through
 `agent.asTool(...)`. The coordinator remains the user-facing agent. A picture,
 an agent name, or an instruction string is not a security boundary. The server
 owns tool availability, validation, approval state, and execution.
+
+## Make the team your own
+
+A **persona** is a reusable bot profile: name, purpose, color, and avatar shape.
+A **role** is its fixed job and tool boundary. Each run has exactly four slots:
+Coordinator, Researcher (`scout`), Builder (`maker`), and Reviewer (`checker`).
+You can create several profiles and choose
+which one fills each slot; this does not add agents or grant new tools.
+
+For example, give a Scout profile the purpose “Explain unfamiliar TypeScript
+clearly and identify the smallest relevant files.” In live mode, that purpose is
+included in the assigned agent's SDK instructions. It cannot grant write access,
+bypass approvals, or change container policy. Colors and shapes remain cosmetic.
+In demo mode, profiles personalize the team while the tiny-project story stays
+scripted; a custom purpose does not connect a model.
+
+Profiles are stored in this browser. Starting a run sends the selected four to
+the local server, which validates and freezes a copy. Editing the library later
+changes future runs, not the identity or purpose of a run already started.
+See the [interface guide](docs/interface.md) for creating and using profiles.
 
 ## Optional live mode
 
@@ -125,7 +151,7 @@ closed. There is no host-shell fallback.
 - [Setup and privacy](docs/setup.md): demo, deliberate live opt-in, and local Docker
 - [Approvals](docs/approvals.md): pause, review, approve or deny, then resume
 - [Workspace and sandbox](docs/workspace.md): what is copied and what is isolated
-- [Interface tour](docs/interface.md): roster, conversation, inspector, and avatars
+- [Interface tour](docs/interface.md): conversation, reusable profiles, and run details
 - [Extending Tinkerfleet](docs/extending.md): add a narrow capability safely
 - [Troubleshooting](docs/troubleshooting.md)
 - [Security policy and threat model](SECURITY.md)

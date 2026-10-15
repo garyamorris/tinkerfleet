@@ -132,10 +132,17 @@ Read [Workspace and sandbox](workspace.md) for isolation and limits, and
 | --- | --- |
 | No-key demo | Scripted prompts/events are handled locally; no model or trace export |
 | No-key lessons | Local synthetic fixtures and assertions; no remote inference |
-| Live model | Prompts, supplied/read file content, agent messages, and tool outputs can be sent to OpenAI |
+| Live model | Prompts, selected profile names and purposes, supplied/read file content, agent messages, and tool outputs can be sent to OpenAI |
 | Live command | A validated manifest or filtered directory snapshot goes into a local disposable container; no API key or host environment is forwarded |
-| Browser | Receives visible run information and action previews, never the model key |
-| Restart | In-memory runs, snapshots, and pending decisions are discarded |
+| Browser | Stores the reusable profile library locally; receives visible run information and action previews, never the model key |
+| Restart | In-memory runs, snapshots, and pending decisions are discarded; browser-stored profiles remain |
+
+Profiles are browser-local preferences, not an encrypted secret store or a cloud
+account. They do not sync between browsers, and clearing site data removes them.
+Keep credentials and private data out of names and purposes. The server rejects
+some credential-like input; those checks cannot detect every sensitive value.
+Selected profile text becomes part of live model instructions when live mode is
+explicitly enabled.
 
 Filename exclusions cannot guarantee that a workspace contains no secrets. A
 harmless-looking source file can include sensitive content. Review the directory

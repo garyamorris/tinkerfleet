@@ -27,6 +27,14 @@ Changing a proposal after review must invalidate the decision. Add tests for
 denial, modification, expiry, replay, cancellation, and restart. Do not let an
 error path accidentally call an unapproved action.
 
+## Customize a persona first
+
+Use a reusable profile when the goal is a different name, avatar, or focus within
+an existing role. Its purpose is passed to that role's live SDK instructions; it
+does not create a tool or a fifth role. Each run freezes the selected four
+profiles. See `src/server/personas.ts` for validation and `createFleetAgents` in
+`src/server/sdk.ts` for instruction composition.
+
 ## Add a specialist
 
 Give the role a concrete job, a limited tool set, and a concise output contract.
@@ -35,7 +43,7 @@ model calls within the same run's limits and cancellation path. Add a visible
 role only when it helps the learner understand the work; extra avatars alone
 do not improve a system.
 
-The UI's customizable display name is separate from the server's stable role ID.
+The UI's profile ID and display name are separate from the server's stable role ID.
 Never deserialize a browser-supplied tool list into an agent configuration.
 
 ## Change the runner

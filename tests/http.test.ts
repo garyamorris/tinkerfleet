@@ -1,3 +1,4 @@
+import {customTeam} from './personas.fixture.js';
 import test from 'node:test';
 import {request} from 'node:http';
 import assert from 'node:assert/strict';
@@ -52,5 +53,23 @@ test('cross-site document navigation can load the public shell without opening A
    assert.equal((await get('/',{...navigation,Origin:'https://evil.example'})).status,403);
    assert.equal((await get('/',{...navigation,Host:'evil.example'})).status,403);
   }
+ }finally{await app.close();}
+});
+
+
+test('HTTP validates profiles and retains historical team assignments',async()=>{
+ const port=45321,base=`http://127.0.0.1:${port}`;const app=createApp({port,mode:'demo',demoDelayMs:60_000});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};
+ const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const start=(team:unknown)=>fetch(base+'/api/runs',{method:'POST',headers,body:JSON.stringify({prompt:'Custom fixture',team})});
+ for(const team of [[],null,customTeam().slice(0,3),customTeam().map(p=>({...p,role:'maker'})),customTeam().map(p=>({...p,purpose:'sk-'+ 'a'.repeat(40)}))])assert.equal((await start(team)).status,400);
+ assert.equal(app.state().runs.length,0);
+ const team=customTeam(),response=await start(team);assert.equal(response.status,201);const first=await response.json() as {id:string;team:unknown};assert.deepEqual(first.team,team);
+ await fetch(base+`/api/runs/${first.id}/stop`,{method:'POST',headers,body:'{}'});
+ team[0].name='New Captain';assert.equal((await start(team)).status,201);
+ const state=await (await fetch(base+'/api/state',{headers})).json() as {runs:{team:{name:string}[]}[]};
+ assert.equal(state.runs[0].team[0].name,'Bot 1');assert.equal(state.runs[1].team[0].name,'New Captain');
  }finally{await app.close();}
 });

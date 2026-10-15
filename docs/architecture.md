@@ -18,13 +18,23 @@ intelligence: every run follows the tiny-project teaching scenario.
 
 ## 1. The browser is a view
 
-The React UI renders a roster, conversation, approvals, activity, and artifacts.
+The React UI centers the conversation and approvals, with Team, Runs, and
+Details controls for profiles, history, activity, and artifacts.
 It asks the server to start, inspect, stop, or decide a run. It does not hold an
 OpenAI key, execute tool implementations, choose an executable outside server
 policy, or decide whether an SDK tool requires approval.
 
-Names, colors, and avatar shapes help you recognize an agent. They are display
-preferences. Renaming Maker to “Administrator” cannot add privileges.
+Each browser profile contains a name, purpose, role assignment, color, and avatar
+shape. The profile library stays in browser storage. Starting a run submits four
+profiles, one per fixed role, to the server. It validates, clones, and freezes the
+team so later library edits cannot change the running task.
+
+In live mode, a profile's name and purpose are added to its assigned agent's SDK
+instructions. The server still selects that role's tools and applies its safety
+instructions. Purpose is configurable guidance, not a capability grant. Renaming
+Maker to “Administrator” or asking Scout to write files cannot add privileges.
+Colors and avatar shapes affect presentation only. Demo mode records the team
+but retains the deterministic teaching scenario.
 
 The native Node HTTP server listens on loopback. Host/origin validation, a
 session cookie, a same-origin request token, and response headers make it harder

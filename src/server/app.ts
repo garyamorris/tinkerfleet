@@ -1,3 +1,4 @@
+import {validateTeam} from './personas.js';
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {existsSync,constants} from 'node:fs';
@@ -28,9 +29,9 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
   let docker={available:false,reason:existsSync('/usr/bin/docker')||existsSync('/usr/local/bin/docker')?'Not probed in demo mode':'Docker not installed'};
   const agentId=(name?:string):AgentId=>{const s=name?.toLowerCase();return s==='scout'||s==='maker'||s==='checker'?s:'coordinator';};
   function onEvent(e:SdkEvent){
-    const run=liveRuns.get(e.runId);if(!run)return;const agent=agentId(e.agent);
+    const run=liveRuns.get(e.runId);if(!run)return;const agent=agentId(e.agent);const displayName=run.team?.find(persona=>persona.role===agent)?.name??e.agent??'Coordinator';
     if(e.type==='usage')return;
-    const labels:Record<string,string>={run_started:'Run started',agent_started:`${e.agent??'Coordinator'} started`,agent_finished:`${e.agent??'Coordinator'} returned`,tool_started:e.tool??'Tool started',tool_finished:`${e.tool??'Tool'} finished`,approval_requested:'Your approval is needed',approval_resolved:e.approved?'Action approved':'Action declined',run_completed:'Run complete',run_failed:'Run could not finish',run_cancelled:'Run stopped'};
+    const labels:Record<string,string>={run_started:'Run started',agent_started:`${displayName} started`,agent_finished:`${displayName} returned`,tool_started:e.tool??'Tool started',tool_finished:`${e.tool??'Tool'} finished`,approval_requested:'Your approval is needed',approval_resolved:e.approved?'Action approved':'Action declined',run_completed:'Run complete',run_failed:'Run could not finish',run_cancelled:'Run stopped'};
     run.events.push({id:randomUUID(),at:Date.parse(e.at),agent,kind:e.type.startsWith('approval')?'approval':e.type.startsWith('tool')?'tool':e.type.startsWith('agent')?'delegation':e.type==='run_failed'?'error':'result',title:labels[e.type]??e.type,detail:e.message??e.tool});
     if(e.type==='agent_started')run.activeAgent=agent;
     if(e.type==='approval_requested'&&e.approval){const p=e.approval;run.status='awaiting_approval';run.approvals.push({id:p.approvalId,digest:p.digest,agent,title:p.action.kind==='edit'?`Update ${p.action.path}`:`Run ${p.action.executable}`,description:'Review this exact action. It applies only to the disposable run snapshot.',action:p.action,status:'pending',before:beforeCache.get(p.approvalId)});}
@@ -55,20 +56,21 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
     if(url.pathname==='/api/state'&&method==='GET'){json(res,200,state());return;}
     if(url.pathname==='/api/runs'&&method==='POST'){
       const body=await readJson(req);if(typeof body.prompt!=='string'||!body.prompt.trim()||body.prompt.length>8000)throw new HttpError(400,'Enter a task of 1–8,000 characters.');
+      let team;try{team=validateTeam(body.team);}catch(e){throw new HttpError(400,(e as Error).message);}
       if(starting||state().runs.some(r=>r.status==='running'||r.status==='awaiting_approval'))throw new HttpError(409,'Finish or stop the current run before starting another.');
       starting=true;try {
       const all=state().runs;if(all.length>=20){const first=all[0];demo.runs.delete(first.id);liveRuns.delete(first.id);await sdk.dispose(first.id);runner.disposeRun(first.id);}
       const prompt=redactSdkText(body.prompt.trim());
-      if(mode==='demo'){const run=demo.start(prompt);currentRunId=run.id;json(res,201,run);return;}
+      if(mode==='demo'){const run=demo.start(prompt,team);currentRunId=run.id;json(res,201,run);return;}
       const id=randomUUID();
-      const run:Run={id,prompt,mode,status:'running',startedAt:Date.now(),activeAgent:'coordinator',messages:[{id:randomUUID(),author:'user',text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};liveRuns.set(id,run);currentRunId=id;json(res,201,run);
+      const run:Run={...(team?{team}:{}),id,prompt,mode,status:'running',startedAt:Date.now(),activeAgent:'coordinator',messages:[{id:randomUUID(),author:'user',text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};liveRuns.set(id,run);currentRunId=id;json(res,201,run);
       void (async()=>{
         const availability=await runner.checkAvailability();docker={available:availability.available,reason:availability.reason??'Ready'};
         if(run.status==='cancelled')return;
         if(!docker.available||!model||!process.env.OPENAI_API_KEY){onEvent({runId:id,type:'run_failed',at:new Date().toISOString(),message:'Live mode needs local Docker with the prepared image, an explicit model, and a server-side API key. Nothing has been sent to a model.'});return;}
         await runner.snapshot(id);
         if((run.status as string)==='cancelled')return;
-        sync(await sdk.start({runId:id,prompt}));
+        sync(await sdk.start({runId:id,prompt,team}));
       })().catch(()=>{if(run.status!=='cancelled')onEvent({runId:id,type:'run_failed',at:new Date().toISOString(),message:'The run failed safely. Review local configuration before starting another run.'});});return;
       } finally {starting=false;}
     }

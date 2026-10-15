@@ -1,60 +1,62 @@
 Tinkerfleet build handover — 15 October 2026
 
 Scope
-Educational TypeScript multi-agent workspace: a no-key scripted demo, an
-OpenAI Agents SDK coordinator with Scout/Maker/Checker specialists, human
-approvals, a Docker runner implementation, six no-key lessons, and documentation.
-This handover covers Tinkerfleet only.
+Educational TypeScript multi-agent workspace with a no-key scripted demo,
+reusable bot personas, a conversation-centered interface, OpenAI Agents SDK
+integration, exact-action approvals, a Docker runner, and six no-key lessons.
+Profiles customize identity and purpose within four fixed roles. Each run keeps
+an immutable copy of its selected team; profile edits affect future tasks.
 
 Verified locally
-- Clean dependency installation with npm ci.
-- npm run check on macOS with Node.js 24.14: TypeScript checks and production
-  build passed; 47 tests total, 45 passed, 0 failed, and 2 Linux-only tests skipped.
-- All six no-key lessons passed.
-- SDK tests use a scripted model. Demo test output is simulated.
-- The real runner availability probe was blocked by unavailable Docker; no
-  host-shell fallback occurred.
+- macOS, Node.js 24.14: TypeScript checks and production build passed.
+- 55 tests total: 53 passed, 0 failed, 2 Linux-only tests skipped. This includes
+  eight additional persona-related tests compared with the prior 47-test suite.
+- All six no-key lessons previously passed and remain unchanged.
+- SDK tests use a scripted model. Demo results are simulated.
+- Docker availability probe failed closed; no host-shell fallback occurred.
 
 Browser verification
-- Genuine Chrome interaction checks at 1440 x 1000 desktop and 390 x 844 mobile.
-- Declining an approval performed no action. A fresh run displayed exact edit
-  and command approvals and completed with clearly simulated output.
-- Mobile Team, Workspace, Inspector, Changes, and Output views checked.
-- Lesson dialog has an accessible name, takes focus, closes with Escape, and
-  returns focus to its opener. Inspector tabs respond to arrow keys and End.
-- No browser console errors observed during these checks.
-- The production server also opened the interface successfully.
-- Stopping a pending run invalidated its approval. Avatar display-name changes
-  persisted after reload; the default name was restored after verification.
-- Actual captures: desktop welcome, edit approval, completed demo, lesson dialog,
-  mobile welcome, and mobile edit approval. See README.md for links.
-  Screenshots show the no-key demo only.
+Genuine Chrome checks used 1440 x 1000 desktop and 390 x 844 mobile viewports:
+- Created Quill with a multiline purpose; saving assigned it to Researcher.
+  Reload preserved it. The earlier blue Orbit appearance migrated successfully.
+- Renamed Quill to Quill Tutor during an active run; that run retained Quill.
+  Switching Researcher back to Scout retained Quill Tutor in the profile library.
+- Completed both demo approvals and checked the separate decline branch.
+- Dialog Escape restored focus; Details tabs supported keyboard navigation.
+  Approval controls retained focus across the 700 ms polling cycle.
+- No horizontal mobile overflow or browser console errors were observed.
+- Refreshed screenshots cover desktop welcome, edit approval, completed demo,
+  lessons, mobile welcome/approval, persona editor, and team library.
+  See README.md for links. These are no-key demo captures, not live execution.
 
-Verification still required
-- Artifact download completion: browser automation stalled, so completion was
-  not verified.
-- Linux-only direct-directory capture tests on Linux.
-- Actual Docker execution, including macOS Docker Desktop confinement/cleanup.
-- Live OpenAI model integration. No live API calls or credentials were used.
+Remaining verification
+- Artifact download completion is unverified. A bounded 10-second click attempt
+  produced no completed-download event or observed sum*.js download. This does
+  not establish that the feature works or is broken.
+- Linux-only direct-directory capture tests require Linux.
+- Actual Docker execution and macOS Docker Desktop confinement/cleanup remain
+  unverified. No live OpenAI API calls, credentials, or API spending were used.
+- No CI is configured; there are no workflows, runs, or check runs. The checks
+  above were local, not CI results.
 
 Run locally
 Install Node.js 24+ and npm, then run npm ci and npm run dev from this directory.
 Open http://localhost:4317. Demo mode needs neither an API key nor Docker.
-Dependency installation normally requires package-registry network access.
+Dependency installation normally needs package-registry network access.
 For the built interface, run npm run build followed by npm start.
 
 Teaching and operating limits
-The demo is deterministic and does not answer arbitrary coding tasks. Its
-approvals advance a scripted scenario; they do not execute commands. The bundled
-practice project is deliberately broken, and its tests are separate from the
-repository suite. Approved live edits affect the run snapshot, not the source
-files. Runs and approvals disappear when the local server restarts.
-Read README.md, docs/setup.md, and SECURITY.md before opting into live mode.
+The demo always follows the tiny-project story; custom purposes do not create
+model intelligence. In live mode, purpose text reaches the assigned SDK agent's
+instructions but never grants tools or bypasses approvals. The profile library
+is stored in this browser, not synced or encrypted as a secret store. Run history
+and approvals disappear on server restart; browser profiles remain.
+The practice project is deliberately broken. Its tests are separate from this
+repository's suite. Approved live edits affect the run snapshot, not source files.
+Read README.md, docs/setup.md, and SECURITY.md before enabling live mode.
 
-Publication status
+Publication
 Public source repository: https://github.com/garyamorris/tinkerfleet
-The public main branch was verified after publication. No hosted app deployment
-is included; run the application locally using the instructions above.
-Keep private environment files, dependencies, generated output, and local test
-artifacts out of a source distribution. The supplied .env.example documents
-placeholders only. Do not treat offline test results as live integration evidence.
+No hosted app deployment is included. Keep private environment files,
+dependencies, generated output, and local test artifacts out of source releases.
+The supplied .env.example documents placeholders only.
