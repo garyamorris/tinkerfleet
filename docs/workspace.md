@@ -6,6 +6,12 @@ There are three different places to keep straight:
 2. **Run snapshot:** a validated, bounded in-memory copy captured for one run.
 3. **Command workspace:** a disposable copy of that snapshot inside a container.
 
+Every submitted run captures a fresh file snapshot. Two chats with the same bot
+do not share a working filesystem, and continuing a conversation does not carry
+an earlier run's in-memory file edits forward. Saved messages and artifacts are
+history, not a restored command workspace. Chat separation is a context boundary;
+the actual execution boundary is the validated snapshot and constrained runner.
+
 The server defaults to `examples/tiny-project.snapshot.json`. An operator can set
 `TINKERFLEET_SNAPSHOT` to another manifest, or `TINKERFLEET_WORKSPACE` for Linux-only
 direct-directory capture. Choose one. The browser cannot select arbitrary paths.

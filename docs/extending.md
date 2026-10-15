@@ -31,8 +31,8 @@ error path accidentally call an unapproved action.
 
 Use a reusable profile when the goal is a different name, avatar, or focus within
 an existing role. Its purpose is passed to that role's live SDK instructions; it
-does not create a tool or a fifth role. Each run freezes the selected four
-profiles. See `src/server/personas.ts` for validation and `createFleetAgents` in
+does not create a tool or another role. A conversation captures its selected
+participants, and each run freezes its team. See `src/server/personas.ts` for validation and `createFleetAgents` in
 `src/server/sdk.ts` for instruction composition.
 
 ## Add a specialist

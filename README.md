@@ -4,8 +4,8 @@
 
 Tinkerfleet is a runnable, deliberately small companion to Gary Morris's
 [Tinkerloop](https://github.com/garyamorris/tinkerloop). Tinkerloop makes a coding
-agent's model/tool loop visible. Tinkerfleet adds a coordinator, three specialists,
-a browser workspace, human approvals, and an isolated command runner.
+agent's model/tool loop visible. Tinkerfleet adds reusable bot personas, direct
+and group conversations, human approvals, and an isolated command runner.
 
 Start with the no-key demo. Then read six runnable lessons. Finally, inspect the
 real [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/) integration.
@@ -15,16 +15,14 @@ See [the build handover](HANDOVER.txt) for verified checks and remaining integra
 
 ## A look inside
 
-![Tinkerfleet desktop welcome screen](docs/screenshots/desktop-welcome.jpg)
+![Named conversations in Tinkerfleet](docs/screenshots/desktop-conversations.jpg)
 
-Actual Chrome captures of the no-key demo: [persona editor](docs/screenshots/persona-editor.jpg),
-[team library](docs/screenshots/team-library.jpg), [edit approval](docs/screenshots/desktop-approval.jpg),
-[completed run](docs/screenshots/desktop-complete.jpg),
-[six-lesson guide](docs/screenshots/lessons.jpg),
-[mobile welcome](docs/screenshots/mobile-welcome.jpg), and
+Actual no-key demo captures: [group conversation](docs/screenshots/group-conversation.jpg),
+[new conversation](docs/screenshots/new-conversation.jpg),
+[mobile conversations](docs/screenshots/mobile-conversations.jpg), and
 [mobile approval](docs/screenshots/mobile-approval.jpg).
-Desktop checks used a 1440 × 1000 viewport; mobile checks used 390 × 844.
-The completed run shows simulated results, not a live model or Docker execution.
+The mobile checks used a 390 × 844 viewport. Demo completion and output are
+simulated; these screenshots do not show live model or Docker execution.
 
 ## Try it without a key
 
@@ -40,10 +38,11 @@ scripted teaching simulation. It makes **no model calls**, spends **no API token
 and does **not run Docker commands**. An approval in the demo advances the scripted
 example; its test output is explicitly simulated, not evidence of execution.
 
-Try the tiny-project example, inspect an edit proposal, deny it once, then start
-again and approve it. Open **Details** to follow the Scout, Maker, and Checker
-activity. Open **Team** to create reusable bot profiles and choose the four
-profiles for your next run.
+Create a direct conversation with one bot, or a group with the roles you need.
+Try the tiny-project walkthrough, inspect an edit proposal, deny it once, then
+start again and approve it. Open **Details** to inspect activity, output, and
+changes for the selected conversation. The demo follows a scripted scenario
+adapted to its participants; it does not answer arbitrary tasks.
 
 The included [practice project](examples/tiny-project) contains a deliberate
 addition bug. Its own tests fail until you fix it; this is separate from the
@@ -92,30 +91,40 @@ Scout, Maker, and Checker are their default profile names and SDK role identitie
 Builder and Reviewer both have approval-gated edit and command tools; their
 instructions give them different focuses.
 
-In live mode, Scout, Maker, and Checker are actual SDK agents exposed through
-`agent.asTool(...)`. The coordinator remains the user-facing agent. A picture,
-an agent name, or an instruction string is not a security boundary. The server
-owns tool availability, validation, approval state, and execution.
+In live mode, a direct chat invokes the selected SDK agent. A group that includes
+a Coordinator lets it delegate only to the selected specialists via
+`agent.asTool(...)`. A group without a Coordinator invokes its selected agents
+sequentially with a shared budget. The coordinator is optional; no unselected bot
+is silently added. Tools, validation, approvals, and execution remain server-owned.
 
-## Make the team your own
+## Bots, conversations, and runs
 
-A **persona** is a reusable bot profile: name, purpose, color, and avatar shape.
-A **role** is its fixed job and tool boundary. Each run has exactly four slots:
-Coordinator, Researcher (`scout`), Builder (`maker`), and Reviewer (`checker`).
-You can create several profiles and choose
-which one fills each slot; this does not add agents or grant new tools.
+| Concept | What it means |
+| --- | --- |
+| **Bot persona** | A reusable profile: name, purpose, role, color, and avatar shape |
+| **Conversation** | A named direct or group chat with participants, history, and a draft |
+| **Run** | One submitted task within a conversation, with its own approvals, results, and file snapshot |
 
-For example, give a Scout profile the purpose “Explain unfamiliar TypeScript
-clearly and identify the smallest relevant files.” In live mode, that purpose is
-included in the assigned agent's SDK instructions. It cannot grant write access,
-bypass approvals, or change container policy. Colors and shapes remain cosmetic.
-In demo mode, profiles personalize the team while the tiny-project story stays
-scripted; a custom purpose does not connect a model.
+Create multiple independent conversations with the same bot when you want
+separate topics. Groups contain two to four selected bots, one per
+role: Coordinator, Researcher (`scout`), Builder (`maker`), Reviewer (`checker`).
+A persona's purpose guides its live SDK instructions within its fixed role; it
+cannot add tools or bypass approvals. Appearance remains cosmetic. Demo mode
+stays scripted regardless of a profile's purpose.
 
-Profiles are stored in this browser. Starting a run sends the selected four to
-the local server, which validates and freezes a copy. Editing the library later
-changes future runs, not the identity or purpose of a run already started.
-See the [interface guide](docs/interface.md) for creating and using profiles.
+The sidebar lists chats by name with a preview and status. Reload returns to the
+active chat. Local conversation history survives server restart, but unfinished
+work is cancelled and its pending approvals are denied. Each new run receives a
+fresh workspace snapshot, even when continuing the same chat. Conversation
+history supplies context, not a shared filesystem or durable execution authority.
+
+Creating a conversation captures its participant profiles. Library edits apply
+to new conversations, leaving existing chats and runs unchanged. Profile
+preferences live in browser storage. The server stores conversation
+views in the private, Git-ignored `.tinkerfleet/conversations.json` file. These
+views can contain prompts, messages, drafts, and artifact text; treat them as
+private data. Read the [interface guide](docs/interface.md) and
+[privacy details](docs/setup.md) before using real content.
 
 ## Optional live mode
 
@@ -179,7 +188,8 @@ own explicit validation.
 ## Deliberately small
 
 This is an educational local application, not a production multi-tenant service.
-Runs and approval state are ephemeral and disappear when the server restarts.
+Conversation history persists locally. Working snapshots, SDK execution state,
+and approval authority do not survive a server restart.
 It has no unattended background workers, remote desktop control, production
 identity provider, or automatic application of changes to your source tree.
 Container isolation shares a kernel and is not a guarantee against hostile code.

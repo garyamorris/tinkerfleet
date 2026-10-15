@@ -132,10 +132,11 @@ Read [Workspace and sandbox](workspace.md) for isolation and limits, and
 | --- | --- |
 | No-key demo | Scripted prompts/events are handled locally; no model or trace export |
 | No-key lessons | Local synthetic fixtures and assertions; no remote inference |
-| Live model | Prompts, selected profile names and purposes, supplied/read file content, agent messages, and tool outputs can be sent to OpenAI |
+| Live model | Prompts, selected profile names and purposes, bounded same-chat history, supplied/read file content, agent messages, and tool outputs can be sent to OpenAI |
 | Live command | A validated manifest or filtered directory snapshot goes into a local disposable container; no API key or host environment is forwarded |
 | Browser | Stores the reusable profile library locally; receives visible run information and action previews, never the model key |
-| Restart | In-memory runs, snapshots, and pending decisions are discarded; browser-stored profiles remain |
+| Local state | `.tinkerfleet/conversations.json` retains chat metadata, participants, drafts, messages, and visible results; keep it private |
+| Restart | History remains; unfinished runs are cancelled and pending approvals denied. SDK state and working file snapshots are not restored |
 
 Profiles are browser-local preferences, not an encrypted secret store or a cloud
 account. They do not sync between browsers, and clearing site data removes them.
@@ -143,6 +144,12 @@ Keep credentials and private data out of names and purposes. The server rejects
 some credential-like input; those checks cannot detect every sensitive value.
 Selected profile text becomes part of live model instructions when live mode is
 explicitly enabled.
+
+The server saves conversation views under `.tinkerfleet/`, which is ignored by
+Git. Those views may include sensitive prompts, drafts, messages, and artifact
+text even after sanitization. They are not encrypted. Do not attach the state
+file to an issue or include it in a source archive. Separate chats organize model
+context; they do not provide separate local accounts or tenant isolation.
 
 Filename exclusions cannot guarantee that a workspace contains no secrets. A
 harmless-looking source file can include sensitive content. Review the directory

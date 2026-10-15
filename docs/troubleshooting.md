@@ -53,7 +53,8 @@ image, not weakening the command's network policy during a run.
 
 A decision applies to one exact pending action in one run. It cannot be replayed
 or moved to a new proposal. Expiry, stopping, or a server restart invalidates the
-old decision. Reload after a restart and start a fresh run. Do not edit an action's
+old decision. Restart preserves chat history but cancels unfinished work and
+denies pending approvals. Reload and submit a fresh task in the chat. Do not edit an action's
 JSON or retry a consumed approval to force it through.
 
 ## My source file did not change
@@ -90,3 +91,18 @@ See [the handover](../HANDOVER.txt) for recorded browser evidence and remaining
 verification. Follow the manual browser checklist in
 [Contributing](../CONTRIBUTING.md). A missing browser or an absent browser test
 suite is not a passed UI check.
+
+## A continued chat does not retain file edits
+
+Conversation history and working files have different lifetimes. Each submitted
+run captures a fresh workspace snapshot. Earlier changes remain visible as
+artifacts but are not imported as the next run's filesystem. Review and apply
+changes to your input source yourself when you want future runs to include them.
+
+## Local history cannot be loaded or saved
+
+The default state file is `.tinkerfleet/conversations.json`. Check that the local
+process can access its private state directory and that the store is within its
+limits. A corrupt store stops startup rather than silently replacing history.
+Preserve a private backup before attempting repair; do not publish its contents.
+The store is limited to 100 conversations, 200 runs, and 8 MiB of serialized data.

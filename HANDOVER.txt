@@ -2,32 +2,38 @@ Tinkerfleet build handover — 15 October 2026
 
 Scope
 Educational TypeScript multi-agent workspace with a no-key scripted demo,
-reusable bot personas, a conversation-centered interface, OpenAI Agents SDK
-integration, exact-action approvals, a Docker runner, and six no-key lessons.
-Profiles customize identity and purpose within four fixed roles. Each run keeps
-an immutable copy of its selected team; profile edits affect future tasks.
+reusable bot personas, named direct/group chats, OpenAI Agents SDK integration,
+exact-action approvals, a Docker runner, and six no-key lessons. A conversation
+captures its participants, and each run keeps its team and fresh file snapshot.
+Profile edits affect new conversations. Coordinator is optional in groups.
 
 Verified locally
-- macOS, Node.js 24.14: TypeScript checks and production build passed.
-- 55 tests total: 53 passed, 0 failed, 2 Linux-only tests skipped. This includes
-  eight additional persona-related tests compared with the prior 47-test suite.
+- npm run check passed: 76 tests total, 74 passed, 0 failed, and 2 Linux-only
+  tests skipped. TypeScript checks and the production build passed.
 - All six no-key lessons previously passed and remain unchanged.
-- SDK tests use a scripted model. Demo results are simulated.
-- Docker availability probe failed closed; no host-shell fallback occurred.
+- SDK tests use scripted models; browser demo results remain simulated.
 
-Browser verification
-Genuine Chrome checks used 1440 x 1000 desktop and 390 x 844 mobile viewports:
-- Created Quill with a multiline purpose; saving assigned it to Researcher.
-  Reload preserved it. The earlier blue Orbit appearance migrated successfully.
-- Renamed Quill to Quill Tutor during an active run; that run retained Quill.
-  Switching Researcher back to Scout retained Quill Tutor in the profile library.
-- Completed both demo approvals and checked the separate decline branch.
-- Dialog Escape restored focus; Details tabs supported keyboard navigation.
-  Approval controls retained focus across the 700 ms polling cycle.
-- No horizontal mobile overflow or browser console errors were observed.
-- Refreshed screenshots cover desktop welcome, edit approval, completed demo,
-  lessons, mobile welcome/approval, persona editor, and team library.
-  See README.md for links. These are no-key demo captures, not live execution.
+Confirmed browser checks
+- All four prior runs migrated into four separate conversations. A previously
+  pending run was stopped and its approval invalidated.
+- Direct Quill/Scout and Maker conversations operated as distinct simultaneous
+  chats, with their own busy states and approvals.
+- Conversation renaming worked. Different drafts stayed with their chats when
+  switching and after browser reload.
+- At 390 x 844, the document width and viewport width were both 390 pixels:
+  no horizontal overflow. The chat drawer showed independent statuses/drafts.
+- Approving a direct Maker chat's edit completed that run while a separate
+  Maker + Checker group's command remained pending. The group's command was
+  then approved separately. The group had no Coordinator or Scout participant.
+- Genuine captures document desktop conversations, the selected group, new-chat
+  controls, the mobile chat drawer, and a mobile approval. See README.md.
+- After a server restart, all seven chats retained their titles, correct message
+  authors, and both distinct drafts. The active direct chat stayed selected; the
+  imported interrupted run remained stopped.
+- A second message in a direct chat added another chronological run to that
+  same conversation.
+- Group Changes showed only that group's sum.js demo artifact. Switching to the
+  direct Quill chat showed no changes, confirming artifacts stayed chat-scoped.
 
 Remaining verification
 - Artifact download completion is unverified. A bounded 10-second click attempt
@@ -49,8 +55,10 @@ Teaching and operating limits
 The demo always follows the tiny-project story; custom purposes do not create
 model intelligence. In live mode, purpose text reaches the assigned SDK agent's
 instructions but never grants tools or bypasses approvals. The profile library
-is stored in this browser, not synced or encrypted as a secret store. Run history
-and approvals disappear on server restart; browser profiles remain.
+is stored in this browser, not synced or encrypted as a secret store. Private
+conversation history and drafts persist in .tinkerfleet/conversations.json.
+Restart cancels unfinished work and denies pending approvals; raw SDK state,
+grants, and working file snapshots are not restored.
 The practice project is deliberately broken. Its tests are separate from this
 repository's suite. Approved live edits affect the run snapshot, not source files.
 Read README.md, docs/setup.md, and SECURITY.md before enabling live mode.

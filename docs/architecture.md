@@ -4,7 +4,7 @@ Tinkerfleet has two clearly separated routes through the same browser interface:
 
 ```text
 Demo: browser → local HTTP server → scripted fixture → labeled simulated events
-Live: browser → local HTTP server → Agents SDK coordinator → specialist agents
+Live: browser → local HTTP server → selected direct agent or group orchestration
                                                    ↓
                                   validated read or proposed action
                                                    ↓
@@ -18,16 +18,18 @@ intelligence: every run follows the tiny-project teaching scenario.
 
 ## 1. The browser is a view
 
-The React UI centers the conversation and approvals, with Team, Runs, and
-Details controls for profiles, history, activity, and artifacts.
+The React UI has a named-chat sidebar and a conversation canvas. Bot profiles,
+participants, approvals, and Details belong to the selected chat and run.
 It asks the server to start, inspect, stop, or decide a run. It does not hold an
 OpenAI key, execute tool implementations, choose an executable outside server
 policy, or decide whether an SDK tool requires approval.
 
 Each browser profile contains a name, purpose, role assignment, color, and avatar
-shape. The profile library stays in browser storage. Starting a run submits four
-profiles, one per fixed role, to the server. It validates, clones, and freezes the
-team so later library edits cannot change the running task.
+shape. The profile library stays in browser storage. Creating a conversation
+captures its selected profiles: one bot for a direct chat, or a subset of up to
+four roles for a group. The server validates and freezes participants. Each run
+also captures its team, so later library edits do not change existing chats or
+runs. Multiple conversations may independently use the same reusable bot.
 
 In live mode, a profile's name and purpose are added to its assigned agent's SDK
 instructions. The server still selects that role's tools and applies its safety
@@ -42,21 +44,24 @@ for an unrelated website to drive the local API. These controls do not establish
 an identity boundary against another user or malicious process on the same host.
 Do not expose this server through a tunnel, port forward, or public reverse proxy.
 
-## 2. The coordinator keeps the task
+## 2. Participants select the orchestration
 
-A live run begins with a coordinator agent. It can ask Scout, Maker, or Checker
-for help, then incorporate their results into its own reply. The specialists are
-SDK agents exposed with `agent.asTool(...)`.
+A direct chat invokes its one selected SDK agent. In a group with a Coordinator,
+the Coordinator can call only the selected specialists through
+`agent.asTool(...)`. In a group without a Coordinator, the selected agents run
+sequentially under a shared budget. No unselected specialist or hidden
+Coordinator is inserted.
 
-This is a manager-style arrangement: a delegated agent returns a result to its
-caller. A handoff would instead transfer the active conversation to another agent.
-Tinkerfleet uses agents-as-tools so the coordinator remains responsible for the
-whole task. See the [SDK agents guide](https://openai.github.io/openai-agents-js/guides/agents/).
+Agents-as-tools return to their caller; this is different from an autonomous
+handoff or a proactive message between bots. See the
+[SDK agents guide](https://openai.github.io/openai-agents-js/guides/agents/).
+The current app does not implement mentions, reply threads, routines, or
+background bot collaboration.
 
-Agent instructions describe a role. Their actual capability comes from the tools
-the server supplies. A specialist without a write tool cannot gain one by putting
-“please write this file” in its answer. Do not mistake a sensible prompt for a
-permission check.
+A role's capability comes from the server's tools. A Researcher without a write
+tool cannot gain one by requesting it in a purpose or message. The model receives
+bounded history from this conversation only, not other chats with the same bot.
+That context separation does not create a separate account or machine.
 
 ## 3. Tools cross a trust boundary
 
@@ -118,12 +123,24 @@ isolation, application authentication, secret management, or a spending cap.
 
 ## Lifetime and limits
 
-Runs, working snapshots, interruption state, and approvals are process-local.
-Restarting the server discards them; an old approval link is not durable authority.
-The live adapter bounds model turns, tool work, output, and elapsed time. Such
-limits constrain a run but do not promise a monetary budget: model pricing,
-input size, nested calls, and provider accounting still matter.
+`src/server/conversations.ts` stores visible conversation state in
+`.tinkerfleet/conversations.json`. This includes chat metadata, participants,
+drafts, and public run views. It excludes raw SDK state, execution grants, and
+working filesystem snapshots. The file is private local data, not publishable
+merely because its contents can be shown in the UI.
 
-SDK tracing is disabled. Live model requests still transmit prompts, relevant
-file content, and tool results. Read [Setup and privacy](setup.md) before enabling
-live mode.
+On restart, completed history remains visible. Unfinished runs become cancelled
+and outstanding decisions become denied; they cannot resume. Browser reload can
+return to work still active in the same server process. Legacy `{runs}` state is
+migrated to one independent conversation per run.
+
+Live context uses at most the last 32 messages and 16,000 characters from finished
+runs in the same chat. The local store allows 100 conversations, 200 runs, and
+8 MiB of serialized data. It is bounded local history, not an unlimited memory
+or audit system. Writes are atomic; a corrupt store fails startup without being
+overwritten. New store files use mode 0600 and new state directories mode 0700.
+
+Model turns, tool work, output, and elapsed time are also bounded. These limits
+do not guarantee a monetary budget. SDK tracing is disabled; live inference
+still transmits profile instructions, prompts, same-chat context, relevant file
+content, and tool results. Read [Setup and privacy](setup.md).

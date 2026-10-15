@@ -1,85 +1,101 @@
-# Interface tour
+# Conversations, bots, and runs
 
-The conversation is the main canvas. **Team** opens reusable profiles and role
-assignments, **Runs** opens the current server session's history, and **Details**
-shows activity, output, and changes when you need them.
+A **bot persona** is a reusable identity and purpose within a fixed role. A
+**conversation** is a named chat with selected participants, its own history, and
+a draft. A **run** is one submitted task in that chat, with its own approvals,
+activity, output, artifacts, and working file snapshot.
 
-## Personas and roles
+## Choose a direct or group chat
 
-A persona is a reusable profile with a name, purpose, color, and avatar shape.
-A role supplies a fixed job and tool set. Every team has exactly one Coordinator,
-Researcher, Builder, and Reviewer; creating a profile adds a choice to your library, not
-an extra agent slot.
+Choose **New chat** in the **Conversations** sidebar. In **New conversation**,
+choose **One bot** for a direct chat or **Group chat** for two to four bots.
+Select participants, optionally enter a **Conversation name**, then choose
+**Start conversation**. Choosing a different bot with the same role replaces
+that role's selection. There are no duplicate roles.
 
-A purpose describes the focus you want within that role. For example, a Scout
-in the Researcher role could “Explain unfamiliar TypeScript and find the smallest
-relevant files.” In
-live mode, the assigned agent receives that purpose in its SDK instructions.
-Researcher (`scout`) still has read-only tools. Builder (`maker`) and Reviewer
-(`checker`) can both propose edits and commands, with approval required for each. A purpose cannot change these permissions. Colors and shapes are
-presentation settings.
+Return to a chat through its sidebar name, preview, and status. Use **Rename
+conversation** in its header and **Save name** to change the title. Coordinator is
+optional. You can create several independent chats with the same bot; each keeps
+its own context and draft.
 
-In demo mode, custom profiles personalize the team while the tiny-project flow
-remains scripted. Changing a purpose does not create model intelligence or make
-the demo answer arbitrary tasks.
+In live mode, a direct chat invokes that bot's SDK agent. A group with a
+Coordinator delegates only to its selected specialists. A group without one
+runs the selected agents sequentially under a shared budget. Separate chat
+windows are not separate machines, accounts, or security sandboxes.
 
-## Create and use a profile
+Demo mode stays scripted and adapts the tiny-project walkthrough to selected
+participants. It does not turn a custom purpose into live intelligence. There
+are no mentions, reply threads, autonomous background routines, or proactive
+handoffs in this version.
 
-Open **Team** and choose **Create persona**. Fill in **Name** and **Purpose**,
-choose a **Role**, and pick a color and avatar shape under **Appearance**.
-**Save persona** adds the profile to your library and immediately assigns it to
-that role for future tasks.
+## Create reusable profiles
 
-Use a role's dropdown in Team to reuse another saved profile for the same role.
-Use **Edit** beside the assigned profile to change it. All four slots remain
-filled; saving a persona into a different role preserves a valid assignment for
-the role it leaves.
+Open the bot library, choose **Create persona**, and give the profile a name,
+purpose, role, color, and avatar shape. **Save persona** stores it for selection
+in new conversations. Names allow up to
+40 characters; purposes allow up to 600 and may span multiple lines. For example,
+a Researcher profile could “Explain unfamiliar TypeScript and find the smallest
+relevant files.” The purpose reaches that bot's live SDK instructions.
 
-Names allow up to 40 characters; purposes allow up to 600 and may span multiple
-lines. Use a concrete focus rather than asking for broader access. Never put
-credentials or private information in a profile.
+Roles define capability. Researcher (`scout`) is read-only. Builder (`maker`) and
+Reviewer (`checker`) can propose edits and commands, each subject to approval.
+Coordinator coordinates its selected group. Purpose text cannot add tools or
+bypass approval; colors and shapes affect appearance only.
 
-The library is stored locally in this browser. It survives a server restart but
-does not sync across browsers; clearing site data removes it. Existing cosmetic
-preferences are migrated into profiles. Profile storage is not an encrypted
-secret store. Selected names and purposes can be sent to OpenAI in live mode.
+The reusable library is stored in this browser. It does not sync between
+browsers; clearing site data removes local preferences. Existing cosmetic
+preferences migrate into profiles. Keep credentials and private information out
+of profile text: it is not encrypted secret storage, and selected names/purposes
+may be sent to OpenAI in live mode.
 
-When a task starts, the local server validates and freezes a copy of the four
-selected profiles. Editing or reassigning profiles afterward affects future
-runs. A past or running task keeps its original names, purposes, and appearances.
-This team snapshot is separate from the workspace snapshot containing files.
+Creating a chat captures its participant profiles. Editing a library profile
+later does not rewrite existing conversation participants or earlier runs.
+Create a new chat to use the revised profile. Each run also keeps its own team
+snapshot. Participant identity and a workspace's file snapshot are separate.
 
-## Conversation and approvals
+## Continue a conversation
 
-Your task and the agents' visible replies appear in the conversation. Delegation
-shows work moving between roles. This is a readable activity summary, not private
-model reasoning or a guarantee that every model token is shown.
+Select a chat in the sidebar to see its messages, draft, and status. Drafts are
+saved locally in the browser and synchronized to the server. Submitting
+another task adds a new run to that conversation. Only bounded history from this
+chat supplies live context; another chat with the same bot is not included.
 
-Read the exact edit or complete command before deciding an approval. A fingerprint
-identifies the proposal. Denying does not execute that action; stopping invalidates
-pending approvals. Profile customization never stands in for an approval.
+Each new run starts with a fresh isolated file snapshot. It does not inherit an
+earlier run's in-memory edits, even within the same chat. Previous artifacts are
+visible records, not a shared filesystem.
 
-## Details and run history
+Reload returns to the active chat while the server continues its work. The
+server saves visible chat history locally in `.tinkerfleet/conversations.json`.
+After a server restart, history remains, but unfinished runs are cancelled and
+pending approvals denied. Submit a fresh task to continue; the old execution
+cannot resume. Legacy saved runs become independent conversations.
 
-Open **Details** to inspect Activity, Output, or Changes. A green success label is
-meaningful only alongside its evidence and whether the run is simulated. The
-demo's command output is explicitly labeled **SIMULATED DEMO OUTPUT**; it is not
-a Docker transcript. Live errors should stay visible rather than becoming
-fabricated success.
+## Review actions and results
 
-**Runs** lets you return to tasks in the current server session. Runs can be
-working, waiting for approval, completed, denied, cancelled, or failed. Starting
-another task does not make an old decision valid. Restarting the server discards
-run history, file snapshots, and pending decisions; reload the browser afterward.
-Your browser's reusable profile library remains separate from that run history.
+Read an edit or complete command before approving. The decision belongs to one
+exact action in one run and chat; switching chats never transfers permission.
+Denial does not execute that action. Stopping invalidates pending approvals.
 
-## Keyboard and small screens
+Use a run's **Task details** to inspect its activity, output, and changes.
+The demo's output is labeled **SIMULATED DEMO OUTPUT**. A completed walkthrough
+is not evidence that Docker or a model ran. Live errors must remain visible.
 
-Use Tab and Shift+Tab to move focus and Enter or Space to activate buttons.
-Use Left and Right arrows within the Details tabs, or Home and End to reach the
-first and last tabs. Identify roles by their labels rather than avatar color
-alone. Open Team or
-Details when needed, keeping the conversation readable on narrow screens.
-Always read the action before approving it.
+Use Tab and Shift+Tab to navigate controls and Enter or Space to activate buttons.
+Read role labels rather than relying on color. Open the full action preview
+before deciding, including on a narrow screen.
 
-See the [handover](../HANDOVER.txt) for recorded verification and limitations.
+See the [handover](../HANDOVER.txt) for verified checks and remaining limitations.
+
+## Recorded conversation checks
+
+Browser checks confirmed independent direct chats, renaming, and separate drafts
+across switching and reload. On a 390 × 844 viewport, the chat drawer showed
+independent statuses and no horizontal page overflow. Approving a direct Maker
+chat completed its edit while a separate Maker + Checker group's command stayed
+pending; approving that group required its own decision. The group contained no
+Coordinator or Scout. After a server restart, all seven chats retained their titles, authors, and
+drafts, with the active direct chat still selected. A second direct message added
+a new chronological run in the same chat. Group artifacts stayed in the group's
+Changes view; the direct Quill chat's Changes remained empty. These were scripted
+demo checks, not live model execution.
+See [screenshots](../README.md#a-look-inside) and [verification](../HANDOVER.txt).

@@ -50,7 +50,10 @@ hardware. Demo and offline learning do not require Docker.
 - The app does not fall back to running a command on the host if Docker or the
   required local image is unavailable. Image fetching is not part of a run.
 - Command output is data. It is never interpreted as a patch to the source tree.
-- SDK tracing is disabled. Run state is ephemeral rather than a durable audit log.
+- SDK tracing is disabled. Durable conversation views exclude raw SDK state and
+  approval grants; they are not a tamper-proof audit log.
+- Model history is bounded and scoped to the current conversation. Each run
+  receives a fresh workspace snapshot, regardless of which bot or chat starts it.
 
 Read [workspace details](docs/workspace.md) and [approval semantics](docs/approvals.md)
 for the exact implementation. A unit test of launcher flags verifies intent; only
@@ -80,7 +83,8 @@ The app is not a data-loss prevention system or a comprehensive secret scanner.
 ### Live mode transmits data
 
 Live model requests can include the task prompt, supplied or read file contents,
-file names, agent messages, and tool outputs. They leave the machine for OpenAI.
+file names, selected persona names and purposes, bounded same-chat history, agent
+messages, and tool outputs. They leave the machine for OpenAI.
 Disabling tracing removes that separate trace-export path; it does not make
 inference local or change the provider's retention terms. Review your account's
 data controls and applicable policies before sending private content.
@@ -100,11 +104,29 @@ ceiling. Nested specialist calls, input size, provider retries/accounting, and
 pricing can affect cost. Use provider-side budget controls and a small task when
 you intentionally test live mode.
 
-### Restart is loss, not persistence
+### Durable history does not preserve authority
 
-Restart clears run history, working snapshots, and pending decisions. There is no
-durable recovery, tamper-proof audit trail, multi-user isolation, or long-running
-background execution. A browser tab cannot restore old authority.
+The local `.tinkerfleet/conversations.json` file stores sanitized public
+conversation views: chat metadata, participants, drafts, and visible run records
+such as messages and artifacts. “Public” means suitable for this app's UI, not
+safe to publish. It can still contain private user content. It is not encrypted,
+a complete secret scrubber, a backup service, or a tamper-proof audit log. Keep
+the Git-ignored `.tinkerfleet/` directory private.
+
+Raw SDK state, approval grants, and working file snapshots are not persisted.
+Restart restores history while cancelling unfinished runs and denying their
+pending approvals. A new request starts a fresh run; a saved card or artifact
+cannot restore execution authority. Browser reload and server restart are
+different: reload can return to a still-running server task.
+
+### Chat separation is not tenant isolation
+
+Direct and group chats organize context. They are not separate accounts,
+containers, or operating-system users. Bots share the trusted local application
+process and operator. The server passes only bounded history from the current
+chat to a live run; command isolation comes from the runner, not from a separate
+chat window or an avatar. There is no multi-user isolation, unattended background
+work, cross-chat memory system, or proactive agent routine.
 
 ## Reporting a vulnerability
 

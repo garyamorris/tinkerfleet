@@ -6,7 +6,8 @@ export interface Approval {id:string;digest:string;agent:AgentId;title:string;de
 export interface FleetEvent {id:string;at:number;agent:AgentId;kind:'message'|'delegation'|'tool'|'approval'|'result'|'error';title:string;detail?:string}
 export interface Message {id:string;author:AgentId|'user';text:string;kind?:'text'|'delegation'|'result';at:number}
 export interface Artifact {path:string;before:string;after:string;simulated:boolean}
-export interface Run {team?:Persona[];id:string;prompt:string;status:RunStatus;mode:'demo'|'live';messages:Message[];events:FleetEvent[];approvals:Approval[];artifacts:Artifact[];output:string;activeAgent:AgentId|null;startedAt:number;endedAt?:number}
-export interface AppState {mode:'demo'|'live';model:string|null;workspace:string;docker:{available:boolean;reason:string};liveReady:boolean;runs:Run[];currentRunId:string|null;maxTurns:number}
+export interface Conversation {id:string;title:string;participants:Persona[];createdAt:number;updatedAt:number;draft:string;currentRunId:string|null}
+export interface Run {conversationId?:string;team?:Persona[];id:string;prompt:string;status:RunStatus;mode:'demo'|'live';messages:Message[];events:FleetEvent[];approvals:Approval[];artifacts:Artifact[];output:string;activeAgent:AgentId|null;startedAt:number;endedAt?:number}
+export interface AppState {conversations:Conversation[];persistenceError?:string;mode:'demo'|'live';model:string|null;workspace:string;docker:{available:boolean;reason:string};liveReady:boolean;runs:Run[];currentRunId:string|null;maxTurns:number}
 export const initialSource = 'export function sum(a, b) {\n  return a - b;\n}\n';
 export const fixedSource = 'export function sum(a, b) {\n  return a + b;\n}\n';

@@ -73,3 +73,67 @@ test('HTTP validates profiles and retains historical team assignments',async()=>
  assert.equal(state.runs[0].team[0].name,'Bot 1');assert.equal(state.runs[1].team[0].name,'New Captain');
  }finally{await app.close();}
 });
+
+test('independent chats isolate participants, drafts, concurrent runs and approval ownership across reloads',async()=>{
+ const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await mkdtemp(path.join(tmpdir(),'tinkerfleet-http-chats-'));const statePath=path.join(directory,'state.json');
+ const port=45322,base=`http://127.0.0.1:${port}`;let app=createApp({port,mode:'demo',demoDelayMs:1,statePath});
+ const listen=()=>new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ let headers:Record<string,string>={};
+ const session=async()=>{const response=await fetch(base+'/api/session');const {csrf}=await response.json() as {csrf:string};headers={Cookie:response.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const state=async()=>await(await fetch(base+'/api/state',{headers})).json() as import('../src/shared/types.js').AppState;
+ try{
+ await listen();await session();
+ const firstResponse=await post('/api/conversations',{title:'Maker room',participants:customTeam().slice(2,3)});assert.equal(firstResponse.status,201);const first=await firstResponse.json() as {id:string};
+ const secondResponse=await post('/api/conversations',{title:'Reviewer room',participants:customTeam().slice(3,4)});assert.equal(secondResponse.status,201);const second=await secondResponse.json() as {id:string};
+ const prefix=(id:string)=>`/api/conversations/${id}`;
+ assert.equal((await post(prefix(first.id),{title:'Renamed maker',draft:'First draft'})).status,200);assert.equal((await post(prefix(second.id),{draft:'Second draft'})).status,200);
+ assert.equal((await post(prefix(first.id),{participants:customTeam()})).status,400);
+ const starts=await Promise.all([post(prefix(first.id)+'/runs',{prompt:'Maker only'}),post(prefix(second.id)+'/runs',{prompt:'Checker only'})]);assert.deepEqual(starts.map(r=>r.status),[201,201]);
+ const a=await starts[0].json() as {id:string},b=await starts[1].json() as {id:string};
+ assert.equal((await post(prefix(first.id)+'/runs',{prompt:'Same chat busy'})).status,409);
+ let snapshot=await state();for(let i=0;i<100&&!snapshot.runs.every(r=>r.status==='awaiting_approval');i++){await delay(2);snapshot=await state();}
+ const own=snapshot.runs.find(r=>r.id===a.id)!,other=snapshot.runs.find(r=>r.id===b.id)!;
+ assert.deepEqual(own.team!.map(p=>p.role),['maker']);assert.deepEqual(other.team!.map(p=>p.role),['checker']);assert.equal(snapshot.conversations.find(c=>c.id===first.id)!.draft,'');
+ const approval=own.approvals[0];assert.ok(approval);
+ const decision={approvalId:approval.id,digest:approval.digest,approved:true};
+ assert.equal((await post(prefix(second.id)+`/runs/${a.id}/approval`,decision)).status,404);
+ assert.equal((await post(prefix(second.id)+`/runs/${a.id}/stop`,{})).status,404);
+ assert.equal((await post(`/api/runs/${a.id}/approval`,decision)).status,404);
+ assert.equal((await state()).runs.find(r=>r.id===a.id)!.approvals[0].status,'pending');
+ await post(prefix(first.id),{draft:'Saved next message'});await app.close();
+ app=createApp({port,mode:'demo',demoDelayMs:1,statePath});await listen();await session();snapshot=await state();
+ assert.equal(snapshot.conversations.find(c=>c.id===first.id)!.title,'Renamed maker');assert.equal(snapshot.conversations.find(c=>c.id===first.id)!.draft,'Saved next message');assert.equal(snapshot.runs.find(r=>r.id===a.id)!.status,'cancelled');
+ assert.equal((await post(prefix(first.id)+`/runs/${a.id}/approval`,decision)).status,409);
+ assert.equal((await post(prefix(first.id)+'/runs',{prompt:'Continue this room'})).status,201);
+ assert.equal((await state()).runs.filter(r=>r.conversationId===second.id).length,1);
+ }finally{if(app.server.listening)await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+
+test('direct live chat preflight failures use its selected participant, and polling does not reorder chats',async()=>{
+ const port=45323,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live'});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const response=await post('/api/conversations',{participants:customTeam().slice(1,2)});const chat=await response.json() as {id:string};
+ assert.equal((await post(`/api/conversations/${chat.id}/runs`,{prompt:'Inspect offline fixture'})).status,201);
+ let state:import('../src/shared/types.js').AppState;
+ for(let i=0;i<150;i++){state=await(await fetch(base+'/api/state',{headers})).json();if(state.runs[0].status==='failed')break;await delay(10);}
+ assert.equal(state!.runs[0].status,'failed');assert.deepEqual(state!.runs[0].messages.filter(m=>m.author!=='user').map(m=>m.author),['scout']);assert.ok(state!.runs[0].events.every(e=>e.agent==='scout'));
+ const updatedAt=state!.conversations[0].updatedAt;await delay(5);const next=await(await fetch(base+'/api/state',{headers})).json() as import('../src/shared/types.js').AppState;assert.equal(next.conversations[0].updatedAt,updatedAt);
+ }finally{await app.close();}
+});
+
+
+test('a history save failure during shutdown still closes the local listener',async()=>{
+ const {ConversationStore}=await import('../src/server/conversations.js');
+ const original=ConversationStore.prototype.save;const port=45324,app=createApp({port,mode:'demo'});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ ConversationStore.prototype.save=function(){throw new Error('Simulated storage failure');};
+ await assert.rejects(app.close(),/could not be saved/);assert.equal(app.server.listening,false);
+ }finally{ConversationStore.prototype.save=original;if(app.server.listening)await app.close();}
+});

@@ -5,10 +5,15 @@ const roles:AgentId[]=['coordinator','scout','maker','checker'];
 /** Profiles customize identity and focus, never a role's capabilities. */
 export function validateTeam(input:unknown):Persona[]|undefined {
  if(input===undefined)return undefined;
- const invalid=()=>new Error('Choose four valid bot profiles, one for each role, with unique IDs. Names allow 40 characters and purposes 600; credentials are not allowed.');
+ const team=validateParticipants(input);
+ if(team.length!==4)throw new Error('Choose four bot profiles, one for each role.');
+ return team;
+}
+export function validateParticipants(input:unknown):Persona[] {
+ const invalid=()=>new Error('Choose one to four valid bot profiles with unique roles and IDs. Names allow 40 characters and purposes 600; credentials are not allowed.');
  let value:unknown;
  try{value=JSON.parse(canonicalJson(input));}catch{throw invalid();}
- if(!Array.isArray(value)||value.length!==4)throw invalid();
+ if(!Array.isArray(value)||(value.length<1||value.length>4))throw invalid();
  const ids=new Set<string>(),assigned=new Set<string>();
  const team=value.map((entry:unknown)=>{
   if(!entry||typeof entry!=='object'||Array.isArray(entry))throw invalid();
