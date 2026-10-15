@@ -1,204 +1,179 @@
-# Architecture: the model proposes, the harness decides
+# How Tinkerfleet works
 
-Tinkerfleet has two clearly separated routes through the same browser interface:
+Tinkerfleet is a personal agent app: a browser interface, a local Node server,
+reusable bot profiles, and a model that can request tools. You can talk directly
+to your primary agent or an ordinary bot. The primary can also bring other bots
+into the work.
 
-```text
-Demo: browser → local HTTP server → scripted fixture → labeled simulated events
-Live: browser → local HTTP server → selected direct agent or group orchestration
-                                                   ↓
-                                  validated read or proposed action
-                                                   ↓
-                                  human approval → bounded execution
+An LLM generates a response from the input you send it. The **agent loop** is the
+application behavior around those responses: supplying instructions and context,
+calling the model, checking a requested tool, running it, returning its result,
+and asking the model what to do next. A bot's name and personality help shape its
+responses; the server and SDK make that loop work.
+
+## Follow one request
+
+Suppose you ask the primary, “What version of Codex is installed?” With local
+tools enabled, the flow is:
+
+```mermaid
+flowchart TD
+    A[User sends a message] --> B[Server creates a run in this conversation]
+    B --> C[Load bot profile, same-chat history, and own saved memories]
+    C --> D[SDK calls the model]
+    D --> E{Response contains a tool call?}
+    E -- No --> F[Save and display the reply]
+    E -- Yes --> G[Validate tool name and arguments]
+    G --> H{Edit or command?}
+    H -- Yes --> I[Pause for exact user approval]
+    I -- Approve --> J[Local tool executes]
+    I -- Deny --> K[Return rejection to the agent]
+    H -- Read --> J
+    J --> L[Return bounded tool result]
+    K --> D
+    L --> D
 ```
 
-The demo is an interaction example, not a fake provider placed behind the live
-SDK. It lets you learn the interface and approval vocabulary without a key,
-local command execution, model latency, or API spending. Prompts in demo do not produce general
-intelligence: the known tiny-project request follows a scripted delegation
-scenario, while a simple greeting stays in the primary chat.
+The model might request the `run_command` tool with these arguments:
 
-## 1. The browser is a view
+```json
+{"executable":"codex","args":["--version"],"cwd":null}
+```
 
-The React UI has a named-chat sidebar and a conversation canvas. Assistant
-Markdown is rendered without executable HTML or remote image loading; citation
-links and recorded activity remain separate evidence-bearing UI elements. Bot profiles,
-participants, approvals, and Details belong to the selected chat and run.
-It asks the server to start, inspect, stop, or decide a run. It does not hold an
-OpenAI key, execute tool implementations, choose an executable outside server
-policy, or decide whether an SDK tool requires approval.
+That JSON is a proposed function call. The model has not launched Codex. The
+local server validates the proposal and shows an approval card. After approval,
+the native runner launches the resolved executable with those exact arguments.
+Its result goes back to the model, which can explain the version it actually
+observed. `cwd: null` means the selected workspace; the SDK also normalizes an
+absolute working directory inside that workspace to the matching relative path.
 
-Each profile contains a name, purpose/personality, color, and avatar
-shape. The profile library is persisted on the local server; older browser
-profiles are migrated. Creating a conversation
-captures its selected profile. A direct Coordinator also captures a bounded
-available-bot roster. The user-facing API creates only single-bot conversations;
-a Coordinator tool creates groups with the Coordinator and selected agents.
-The server validates and freezes participants. Each run
-also captures its team, so later library edits do not change existing chats or
-runs. Multiple conversations may independently use the same reusable bot.
+Start reading at `startRun` in [app.ts](../src/server/app.ts), then
+`createSdkAdapter` in [sdk.ts](../src/server/sdk.ts). The executable work lives in
+[native-runner.ts](../src/server/native-runner.ts), not in the browser or the model.
 
-In live mode, profile text guides behavior. The primary and ordinary agents
-receive the same enabled workspace and web tools, with exact approval for local
-edits and commands. Names such as Scout, Maker, and Checker are example
-personalities. Legacy role fields are compatibility data, not tool gates.
+## A bot, a conversation, and a run are different things
 
-The native Node HTTP server listens on loopback. Host/origin validation, a
-session cookie, a same-origin request token, and response headers make it harder
-for an unrelated website to drive the local API. These controls do not establish
-an identity boundary against another user or malicious process on the same host.
-Do not expose this server through a tunnel, port forward, or public reverse proxy.
+| Object | What it represents | Example |
+| --- | --- | --- |
+| Bot profile | Reusable identity, name, personality, and appearance | Ada, a patient programming tutor |
+| Conversation | A particular chat with captured participants | Your Python questions for Ada |
+| Run | One submitted request and the work it triggers | Explaining a loop, possibly using several model calls |
 
-## 2. Primary coordination and individual agents
+A bot's persistent identity is its profile `id`, not its display name. Two bots
+named Ada can have different IDs and different memories. Existing conversations
+keep their captured profiles; editing the library affects new conversations.
+Saved memory follows the ID even when a profile's personality changes.
 
-The primary can perform local work directly, create named agents, send an
-individual agent a message, or start a group. Ordinary agents have the same
-enabled local and web tools. Only the direct primary receives the coordination
-tools; a personality does not grant additional authority.
+The primary and ordinary bots receive the same enabled local and web tools.
+There are no researcher/builder/reviewer permission classes. Older `scout`,
+`maker`, and `checker` role values remain compatible profile data. The primary's
+special ability is coordination. Internally its SDK agent and message author
+are named `coordinator`; its saved profile ID still determines its memory owner.
+See [shared types](../src/shared/types.ts) and [profile validation](../src/server/personas.ts).
 
-`create_agent` saves a name and purpose/personality in the local library. Up to
-three creations are allowed per run and the library holds 32 profiles. Created
-agents immediately get a direct conversation and are available for same-run coordination. Existing chat
-participants stay captured rather than being rewritten by library edits.
+## Two ways the primary coordinates
 
-`message_agent` sends a concise brief to an individual agent and receives its
-reply through the individual conversation. A primary run can make up to three
-deliveries. Only the explicit brief is shared, not private source history.
+In a direct primary conversation, `create_agent({name, purpose})` saves a reusable
+ordinary bot and opens its direct conversation. Creation does not run that bot.
+The primary can then choose either of these paths:
 
-`start_group_conversation` starts one group per primary run, with up to eight
-participants including the primary. Multiple ordinary agents can share similar
-purposes; there is no one-per-role restriction. The group starts its own run from
-an explicit brief. Source and child runs have separate budgets and stop controls;
-stopping the primary does not stop an already-created child. Child groups cannot
-create more groups. This is bounded collaboration, not unattended routines or
-a shared memory across every chat.
+| Path | What starts | How the primary receives the result |
+| --- | --- | --- |
+| `message_agent({agentId, message})` | A separate run in that bot's direct conversation | The server relays a labeled reply or status into the source chat; the primary can read it on its next turn |
+| `start_group_conversation({title, brief, botIds})` | A separate group conversation and run | Inside the group, its primary can call selected bots through SDK `asTool` tools and use their results before finishing its reply |
 
-The no-key demo remains scripted. It can demonstrate saving Ada's profile and
-opening conversations, but does not establish live personality or collaboration.
+Individual messaging is asynchronous. Its tool result confirms the recipient
+conversation and identity, not a finished answer. A recipient can be awaiting
+approval, complete, fail, or be stopped. Relaying that status does not
+automatically call the primary model again. A later user message starts the next
+primary turn. See `messageAgent` and `relayAgentReplies` in [app.ts](../src/server/app.ts).
 
-## 3. Tools cross a trust boundary
+Group delegation works within the group's run. `createFleetAgents` in
+[sdk.ts](../src/server/sdk.ts) exposes an `ask_*` tool for each selected ordinary
+bot, using SDK `agent.asTool(...)`. The primary supplies a self-contained request;
+the selected bot uses its own instructions and tools, then returns a result to
+the primary. These nested calls share the group's token, call-count, and runtime
+budgets. A nested edit or command can pause the group for approval.
 
-Live conversation-only mode is the default. It supplies conversation and group
-orchestration without workspace reads, edits, commands, snapshot capture, or a
-execution prerequisite. `TINKERFLEET_WORKSPACE_TOOLS=1` explicitly enables
-local workspace tools for an operator-selected folder. The model cannot turn that switch
-on through a purpose, prompt, or tool request.
+Both coordination paths share an explicit brief, rather than automatically
+copying the source chat's private history. The recipient's own chat history and
+memories can still apply. A new group starts fresh history. Its child run has
+separate budgets and a separate stop control from the originating direct run.
+Stopping the source does not stop an already-created child.
 
-A tool request is untrusted input. Tinkerfleet checks names, argument shapes,
-paths, command policy, approval identity, and bounded resources in code.
-A file's contents or a command's output can also contain hostile instructions;
-those are data, not permission from the person using the app.
+Current coordination bounds are three new bots and three distinct individual
+messages per primary run, and one group with up to eight participants including
+the primary. The library holds up to 32 profiles. Only a direct primary gets
+creation, messaging, and group-start tools. A group primary gets its selected
+`ask_*` tools; ordinary bots cannot recursively create more collaborations.
+The adapter also supports groups without a primary by running each selected bot
+sequentially, sharing earlier replies from that run.
 
-The agents receive selected-workspace path context. File tools use relative
-paths within that workspace. Native commands can accept an explicitly requested
-absolute path as an argument; the working directory does not constrain the
-process's OS access. Every such command still needs review and exact approval.
+## Context has three separate lifetimes
 
-Read tools inspect the selected local workspace. Mutation tools propose
-an exact edit or command. The edit path, new contents, executable, arguments,
-working directory, and run identity matter to approval. A changed proposal needs
-a new decision.
+| Context | Scope and lifetime | Implementation |
+| --- | --- | --- |
+| Conversation history | Recent messages from this chat, persisted across restarts | [conversations.ts](../src/server/conversations.ts) |
+| Saved memory | Explicit notes belonging to one profile ID, reused across its chats | [memory.ts](../src/server/memory.ts) and [memory guide](memory.md) |
+| SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk.ts](../src/server/sdk.ts) |
 
-## Hosted search is separate from local tools
+The server selects history from the current conversation. The SDK builds a
+recent-history context of at most 8,000 characters. Outgoing context management
+also shortens long tool output and removes older exchanges while preserving
+required tool-call/result pairs. It does not rewrite approval arguments. See
+[context-budget.ts](../src/server/context-budget.ts).
 
-Live web search uses the SDK's `webSearchTool`, which supplies a hosted Responses
-API tool definition to every selected agent, including the private Coordinator. Execution is provider-side, not a process in the selected
-workspace. It remains available when local workspace tools are disabled unless
-`TINKERFLEET_WEB_SEARCH=0`. Demo mode never invokes it. See the
-[SDK hosted-tools guide](https://openai.github.io/openai-agents-js/guides/tools/).
+Saved memory is loaded for each selected bot at run start and included only in
+that bot's instructions. It is labeled context, not authority to override the
+user or tool policy. There is no automatic transcript summary, global shared
+memory, or vector database.
 
-Public search and model-supported page reading do not operate the user's browser
-session. Returned sources are evidence to inspect, not trusted instructions or
-authority to run commands. The app preserves validated source links with messages
-for later review. Provider tool charges are distinct from local command execution
-and are not fully described by a model-call count.
+An approval pause retains the live SDK state so a decision can resume the exact
+interrupted loop. Browser reload can reconnect while the server is running.
+Server restart preserves saved messages and memories, but cancels unfinished
+runs and denies outstanding approvals; raw SDK state and execution grants are
+not persisted.
 
-## 4. SDK interruption is real control flow
+## Where tools run
 
-The live tools use SDK `needsApproval: true`. The SDK returns an interruption and
-its `RunState`; the server keeps that state in memory while the browser presents
-the action. After a valid decision, the server approves or rejects the interruption
-and resumes the saved state. It does not simply display a confirmation card and
-run the operation anyway. The [SDK approval guide](https://openai.github.io/openai-agents-js/guides/human-in-the-loop/)
-explains the underlying mechanism.
+Local tools are enabled with `TINKERFLEET_WORKSPACE_TOOLS=1`. With them off, bots
+can still converse, use memory, coordinate, and use enabled hosted search, but
+cannot read or change local files through workspace tools.
 
-Tinkerfleet adds its own exact-action, one-shot approval binding around execution.
-This protects the application boundary as well as the conversation loop. See
-[Approvals](approvals.md) for denial, replay, expiry, and restart behavior.
+`list_files` and `read_file` inspect the selected workspace. `edit_file` and
+`run_command` require exact, single-use approval. The SDK interruption supplies
+the pause; Tinkerfleet's [approval store](../src/server/approval.ts) binds the
+reviewed action to execution. See [approvals](approvals.md) for the full flow.
 
-## 5. Native execution changes real files
+Approved native commands run with the host user's permissions. The selected
+working directory is not a sandbox. An explicit command can use user-requested
+absolute paths, and completed effects are not undone by cancellation. The
+runner supplies bounded output, command timeouts, and a minimal environment.
+See [local workspace tools](workspace.md) for paths and command behavior.
 
-The local runner handles approved actions in the explicitly selected workspace.
-An approved edit writes a real file. An approved command is a local process,
-launched with structured arguments, a minimal environment, a time limit, and
-bounded output. No shell is inserted implicitly; an explicitly approved shell
-can still execute its supplied script. No API key is inherited from the server environment.
+Hosted `webSearchTool` runs through the Responses API, separately from local
+commands. Live mode enables it unless `TINKERFLEET_WEB_SEARCH=0`; supported models
+can also open public pages and find text in them. It does not control a signed-in
+browser. The UI displays observed search activity and validated source links.
+Web pages and tool output remain untrusted input to the agent.
 
-The working directory is not OS isolation. Project code can access other files,
-network services, and processes allowed by the user's permissions. Separate chats
-using that folder can observe each other's changes. Stopping or restarting the
-app cannot undo completed writes or other command effects. See
-[Local workspace tools](workspace.md) and [SECURITY.md](../SECURITY.md).
+## What the SDK supplies, and what this app supplies
 
-## API, SDK, and managed service
+The **Responses API** is the remote model interface used here. The **Agents SDK**
+is the local `@openai/agents` library that manages repeated calls, tools,
+agent-as-tool delegation, and approval interruptions. Tinkerfleet supplies the
+UI, persistence, profiles, memory ownership, execution policy, and approval
+binding. This app does not use a managed hosted agent service or its session
+storage. Installing the SDK does not deploy the app anywhere.
 
-These names describe different layers:
+The browser displays saved messages, activity, sources, and approval choices;
+the server keeps the API key and runs the implementations. Demo mode uses
+[scripted fixtures](../src/server/demo.ts) through that interface and makes no
+model calls. It is useful for learning the flow, while live mode exercises the
+actual SDK loop.
 
-- **OpenAI API:** the remote model service. A live model request sends input to
-  OpenAI and may be billed. Choosing a tool in a response does not automatically
-  execute a local function.
-- **OpenAI Agents SDK:** the `@openai/agents` library in this application's Node
-  process. It implements agent definitions, tool execution flow, agents-as-tools,
-  interruptions, and resumption. Tinkerfleet pins version 0.20.0 and supplies its
-  own tools and execution boundary.
-- **A managed Agents API/service:** a hosted orchestration product, with its own
-  sessions, deployment, execution, and security contract. Tinkerfleet does not
-  create or depend on a managed Agents API session. Installing the SDK does not
-  turn this localhost server into a hosted service.
-
-The distinction matters: neither the word “agent” nor an SDK import supplies
-isolation, application authentication, secret management, or a spending cap.
-
-## Lifetime and limits
-
-`src/server/conversations.ts` stores visible conversation state in
-`.tinkerfleet/conversations.json`. This includes chat metadata, participants,
-drafts, and public run views. It excludes raw SDK state, execution grants, and
-live process state. The file is private local data, not publishable
-merely because its contents can be shown in the UI.
-
-On restart, completed history remains visible. Unfinished runs become cancelled
-and outstanding decisions become denied; they cannot resume. Browser reload can
-return to work still active in the same server process. Legacy `{runs}` state is
-migrated to one independent conversation per run.
-
-Live history is bounded to 8,000 characters from the same chat. Outgoing context
-trimming preserves complete tool-call/result groups and exact tool arguments;
-long tool text is bounded to 4,000 characters with an explicit notice. The local store allows 100 conversations, 200 runs, and
-8 MiB of serialized data. It is bounded local history, not an unlimited memory
-or audit system. Writes are atomic; a corrupt store fails startup without being
-overwritten. New store files use mode 0600 and new state directories mode 0700.
-
-SDK turns and model-call counts have optional caps, disabled by default (`0`).
-Token, output, elapsed-time, and individual tool limits remain active. These limits
-do not guarantee a monetary budget. SDK tracing is disabled; live inference
-still transmits profile instructions, prompts, same-chat context, relevant file
-content, and tool results. Read [Setup and privacy](setup.md).
-
-## Per-bot memory
-
-The separate private `${statePath}.memories.json` store holds notes by bot ID.
-The default is `.tinkerfleet/conversations.json.memories.json`. Notes are injected
-on the same bot’s next turn across conversations, alongside bounded same-chat
-history. `remember`, `recall`, and `forget` expose this store to the bot; the
-library UI lets the user view, add, and delete notes. Limits are 20 entries per
-bot, 2,000 characters each and 8,000 total. Existing transcripts are retained,
-not automatically summarized or imported. Notes are provider input, not secrets
-or permission to bypass tool policies.
-
-## Returning an individual agent's reply
-
-A delegated run returns a bounded, labeled recipient reply or status to the
-source primary conversation. It is visible to the primary on its next turn.
-Delivery does not automatically wake the primary model, recursively trigger
-other agents, or prove that requested file actions completed. Follow the
-recipient's actual status and results.
+Turn and model-call counts default to unlimited (`0` in configuration, `null`
+for SDK `maxTurns`). Token, response-size, runtime, and tool limits still apply.
+A run can therefore stop without a count cutoff, and a new follow-up gets a fresh
+run budget. These are resource bounds, not a precise dollar cap. See
+[setup](setup.md) for configuration.

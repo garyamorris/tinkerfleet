@@ -1,172 +1,144 @@
-# Conversations, bots, and runs
+# Learn the app by using it
 
-A **bot persona** is a reusable identity and personality. A
-**conversation** is a named chat with selected participants, its own history, and
-a draft. A **run** is one submitted task in that chat, with its own approvals,
-activity, output, artifacts, and optional local actions.
+The interface makes an agent application's moving parts visible: a reusable
+bot, a conversation with that bot, and a run of work within that conversation.
+Use this tour alongside [Build an agent app](build-an-agent-app.md).
 
-## Start with the primary bot
+| Thing you see | What it represents |
+| --- | --- |
+| A bot in the library | A saved identity, personality, and appearance |
+| A conversation in the sidebar | Participants, messages, draft, and status |
+| A submitted message and its result | A run, including activity, approvals, and output |
+| A memory note | A fact saved for that bot across its conversations |
 
-Open **Orbit / Your coordinator** in the sidebar, or use **Talk to Orbit** on
-the empty home screen. This returns to the primary bot's latest direct chat or
-opens **Talk to a bot** with it preselected. Tell it what you want to accomplish.
-It can answer directly
-or bring agents into a shared group. You do not need to assemble the team
-before explaining the task, and there is no manual group-start chooser.
+## Start with the primary
 
-In live mode, the Coordinator chooses up to seven available agents and creates at most one group per run. The group includes the
-Coordinator and begins its own task from a bounded brief. Your private direct
-conversation history is not copied into it. Group participants cannot create
-further groups. The primary and group have separate run budgets and stop controls.
-Stopping the primary does not stop a group already started; open the group and
-stop it explicitly. A single user turn may consume two run budgets in live mode.
+Choose the primary agent in the sidebar and describe what you want to do. Orbit
+is the default primary. It can answer or do simple enabled tool work itself; it
+can also create agents, message one, or start a group when collaboration helps.
 
-When a group is created, its link card offers **Open conversation**. You stay in
-the source chat until you choose to open it. Group headers show **Started by**
-the Coordinator; **Original conversation** returns to the source chat.
+All ordinary agents have the same enabled local and web tools. Names such as
+Scout, Maker, and Checker describe example personalities, not permission tiers.
+The direct primary has extra coordination tools. Changing a personality does
+not enable a tool or remove an approval requirement.
 
-Use the sidebar to return to the primary chat or a created group. **Talk to a
-bot** opens a direct-only picker with an optional **Conversation name** and
-**Start conversation**. The bot library also provides **Talk to {name}** actions. Named conversations retain separate previews, status,
-drafts, and history. Multiple independent chats can use the same bot. Existing
-groups remain available after this workflow change.
+In the no-key demo, ask to fix the failing tests in tiny-project. The primary
+creates a group through a scripted path. A greeting stays in the primary chat.
+This is a useful way to inspect the interaction before trying real models.
 
-In the no-key demo, a request to fix the failing tests in tiny-project triggers
-a clearly scripted group creation. A simple greeting stays in the primary chat.
-That demonstrates the interaction without claiming live model judgment. There
-are no mentions, reply threads, or autonomous background routines. Saved per-bot
-notes are separate from conversation history.
+## Create a bot you want to talk to
 
-## Create reusable profiles
+In live mode, try: **“Create a patient Python tutor called Ada.”** The primary
+can turn that request into a saved name and purpose/personality. Its creation
+card offers **Open this bot’s chat**: the direct conversation already exists,
+so one click opens it.
 
-Ask the primary Coordinator: **“Create a patient Python tutor called Ada.”**
-Its `create_agent` tool accepts a name and purpose/personality. Purpose
-covers both work focus and personality—for example, patient explanations with
-small exercises. Creation immediately creates a direct chat. Its message offers **Open this bot’s
-chat**, and the profile also appears in the bot library. The Coordinator can use the new bot in a group
-immediately.
+You can also open **Bots**, choose **Create persona**, and write the profile
+yourself. Saving a new persona opens its direct chat. New profiles receive a
+random avatar; **Randomize avatar** changes the appearance. It does not change
+the bot's tools or intelligence.
 
-Ordinary agents share the same enabled local and web tools. Scout, Maker, and
-Checker are example personalities, not capability classes. In conversation-only
-mode, no agent has workspace tools. When enabled, local reads and approval-gated
-edits/commands are available to the primary and ordinary agents alike.
+Use **Talk to {name}** in the library to return to a bot's direct chat, or use
+**Talk to a bot** to start a separate conversation with an optional name. Separate
+chats are useful for separate topics. Library edits affect new conversations;
+existing participants keep their captured identities.
 
-Only a private direct Coordinator has the creation tool. It may create up to
-three profiles per run; the server library holds up to 32 profiles. Names
-allow 40 characters and purposes 600. Existing browser profiles migrate into the
-server-persisted library. Keep private data and credentials out of profile text;
-it may become live model instructions and is not encrypted secret storage.
+The demo recognizes the documented Ada creation example, but arbitrary
+personality requests need a live model. Saving a profile in the demo is real
+storage, not proof of the model adopting that personality.
 
-New chats use saved profiles. Existing conversation participants remain frozen,
-so editing a library profile does not rewrite old chats or runs. The primary's
-available roster adds new library profiles for future runs while keeping existing
-IDs and their captured identities. A bot created during a run is
-available for that run's group creation. A group can contain the primary plus up to seven ordinary agents.
+## Follow messages and groups
 
-The no-key demo recognizes the exact Ada example and persists the profile using
-a scripted path. This verifies saving a bot, not live model behavior or a tutor's
-personality in a conversation.
+Ask the primary to send an agent a concise task. The recipient works in an
+individual conversation. A bounded, labeled reply or status is returned to the
+source primary chat and becomes available on the primary's next turn. This does
+not automatically wake the primary for another model call.
 
-New profiles get a random avatar. **Randomize avatar** rerolls its appearance;
-existing profiles keep their appearance unless you change it. Saving a manually
-created persona opens its direct chat. **Talk to {name}** reuses an existing direct
-chat or creates one when needed.
+For a group, the primary chooses participants and shares a brief. Its link card
+opens the new conversation; you remain in the source chat until you choose that
+link. The group shows **Started by** and an **Original conversation** backlink.
+There is no manual group-start chooser.
 
-## Manage a bot’s memory
+A group can include the primary and up to seven ordinary agents. The shared
+brief does not automatically include the source chat's private history. The
+source and child conversations have separate runs, approvals, and stop controls.
+If you stop the primary, open and stop any child run you also want to end.
+Agents called inside a group share the group run’s model-call, token, and runtime
+budgets; each internal agent call does not create a new conversation run.
 
-Choose **Memory** beside a bot in the library. Its memory dialog lists saved
-notes with **Delete**, and provides **Add a memory** and **Save memory**. Each
-bot can hold 20 notes of up to 2,000 characters each, 8,000 characters total.
-Notes are saved on the local server and reused by the same bot across chats on
-its next turn. Editing its personality does not erase memory.
+## Give one bot a useful memory
 
-The bot also has `remember`, `recall`, and `forget` tools. Memory is sent to the
-provider when the bot replies; do not put credentials in it. Old transcripts
-remain saved but are not automatically summarized or imported into notes.
+Open **Memory** beside a bot in the library. Add a harmless preference such as
+“I prefer short explanations followed by one exercise,” then choose **Save
+memory**. You can inspect saved notes and use **Delete** to remove one.
 
-## Continue a conversation
+The same bot receives these notes on its next turn across chats. Another bot
+does not receive them merely because it is in your library. Each bot can hold
+20 notes, up to 2,000 characters each and 8,000 characters total. Personality
+edits do not erase notes, and old chat transcripts are not imported automatically.
 
-Select a chat in the sidebar to see its messages, draft, and status. Drafts are
-saved locally in the browser and synchronized to the server. Submitting
-another task adds a new run to that conversation. Only bounded history from this
-chat supplies transcript context; another chat with the same bot is not included.
-Saved notes for that bot are included separately across its conversations.
+Notes are stored locally and sent to the provider when that bot replies. Keep
+credentials out of them. See [Memory](memory.md) for the underlying store and
+model tools.
 
-Workspace-enabled runs operate on the real selected folder. Approved edits and
-command effects persist there. Other chats using that folder can observe those
-changes even though their conversation histories are separate. Artifacts are
-records, not a guarantee of the file's current contents.
+**Try it:** save a sample note, reload, and inspect it again. In live mode, start
+a separate conversation with that same bot and ask about the preference. In
+demo mode, inspect persistence without expecting a model-generated recall.
 
-Reload returns to the active chat while the server continues its work. The
-server saves visible chat history locally in `.tinkerfleet/conversations.json`.
-After a server restart, history remains, but unfinished runs are cancelled and
-pending approvals denied. Submit a fresh task to continue; the old execution
-cannot resume. Legacy saved runs become independent conversations.
+## Review a proposed action
 
-## Search and inspect sources
+With local tools enabled, a bot can read permitted project files and propose an
+edit or command. Read the full proposal: the destination and contents for an
+edit, or the executable, arguments, and working directory for a command.
 
-In live mode, ask for a public-web lookup or provide a public URL. Search-enabled
-answers can show clickable sources; open them to check the evidence. Page reading
-depends on model support. This does not access a logged-in browser or automate
-forms. The demo never searches the web, and a source link alone is not proof that
-a claim is correct.
+Approve only the action you want. That decision belongs to one exact action in
+one run. Denial does not execute it, and switching chats never transfers the
+approval. An approved native action changes real files or starts a real local
+process. Demo actions only advance the simulation.
 
-## Read formatted replies and activity
+Open **Task details** to inspect output and changes. An artifact records what a
+run produced; another action may have changed the real file since then. Learn
+how that boundary works in [Capabilities](capabilities.md) and
+[Approvals](approvals.md).
 
-Assistant replies render headings, emphasis, lists, quotations, inline/fenced
-code, tables, and task lists. Tables can scroll horizontally and receive keyboard
-focus. Raw HTML stays inert, links allow HTTP(S) only, and images appear as text
-labels without fetching remote images. Code is displayed, not executed.
+## Read answers and follow activity
 
-Inline source citations remain clickable where their text positions match;
-otherwise the source list remains available. An expandable **Details** activity
-summary under each run shows recorded file, command, coordination, and web-tool
-events. While a run works, it shows the latest recorded activity; afterward it
-shows an activity count. Expand it for recent events, agent names, and elapsed
-time. A started event is not a completed result, and no search progress is
-invented when the provider has not supplied it.
+Replies support Markdown headings, lists, quotations, code blocks, tables, and
+task lists. Displayed code does not execute. Tables can scroll; images appear as
+text labels without remote image downloads. Raw HTML is inert.
 
-## Review actions and results
+Source citations link to the evidence behind web answers. When a citation cannot
+be positioned reliably inside formatted text, it remains in the source list.
+Open the source and check the claim yourself.
 
-Read an edit or complete command before approving. The decision belongs to one
-exact action in one run and chat; switching chats never transfers permission.
-Denial does not execute that action. Stopping invalidates pending approvals.
+Expand the **Details** activity summary beneath a run to see recent recorded
+steps, agent names, and elapsed time. A file-read event or completed command is
+more useful evidence than a sentence promising to do the work. A started event
+alone is not proof of completion. The UI only reports activity supplied by the
+local tools or provider.
 
-Use a run's **Task details** to inspect its activity, output, and changes.
-The demo's output is labeled **SIMULATED DEMO OUTPUT**. A completed walkthrough
-is not evidence that a command or a model ran. Live errors must remain visible.
+## Leave and return
 
-Use Tab and Shift+Tab to navigate controls and Enter or Space to activate buttons.
-Read agent names rather than relying on color. Open the full action preview
-before deciding, including on a narrow screen.
+The sidebar keeps named chats with previews and status. You can rename a
+conversation, switch chats with different drafts, and return after reloading.
+A server restart preserves saved history but cancels unfinished runs and denies
+pending approvals. Submit a new message to continue; an old approval cannot
+resume execution.
 
-See the [handover](../HANDOVER.txt) for verified checks and remaining limitations.
+On a narrow screen, open the conversation drawer to switch chats. Use Tab to
+move through controls, Enter or Space to activate buttons, and Escape to close
+dialogs. Read labels as well as avatar colors.
 
-## Ask the primary to message an agent
+## Find these ideas in the code
 
-The primary can send a concise brief to one ordinary agent and receive its reply
-through that agent's individual conversation. Only the brief is shared; source
-history is not copied automatically. The primary may make up to three deliveries
-per run. This is an explicit message operation, not unattended background work
-or shared memory across all chats.
+| Interaction | Start reading here |
+| --- | --- |
+| Sidebar, creation cards, dialogs, and run display | [`src/client/main.tsx`](../src/client/main.tsx) |
+| Memory editor | [`src/client/memory-panel.tsx`](../src/client/memory-panel.tsx) |
+| Saved chats and drafts | [`src/server/conversations.ts`](../src/server/conversations.ts) |
+| Agent instructions and model tools | [`src/server/sdk.ts`](../src/server/sdk.ts) |
+| Exact action decisions | [`src/server/approval.ts`](../src/server/approval.ts) |
 
-## Returning an individual agent's reply
-
-A delegated run returns a bounded, labeled recipient reply or status to the
-source primary conversation. It is visible to the primary on its next turn.
-Delivery does not automatically wake the primary model, recursively trigger
-other agents, or prove that requested file actions completed. Follow the
-recipient's actual status and results.
-
-## Verified Markdown and tool activity
-
-A combined live check read the practice file, ran exactly approved
-`codex --version` successfully, and searched official Agents SDK documentation
-with returned sources. The browser rendered the answer's heading, bullets, and
-code block, plus recorded listing, read, command, and search start/finish events.
-The [live reply](screenshots/markdown-tools-live.jpg),
-[activity timeline](screenshots/tool-activity-live.jpg), and
-[390 px mobile view](screenshots/mobile-markdown-tools.jpg) are genuine captures.
-Desktop crops exclude the private chat list. This verifies those observed paths;
-it does not imply every model or website supports all browsing actions.
-See [the handover](../HANDOVER.txt).
+You do not need to read every file at once. Pick one visible interaction, follow
+its data through [the architecture](architecture.md), then change a small part
+and check it with the [testing guide](testing.md).

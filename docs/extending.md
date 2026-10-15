@@ -1,62 +1,65 @@
-# Extending Tinkerfleet
+# Extend the app one capability at a time
 
-Start with the smallest capability and keep authority in code. A useful new tool
-is more valuable than a bigger prompt that asks an existing tool to behave.
+Start with [Build an agent app](build-an-agent-app.md) to follow a message from the browser to an SDK agent and back. Then choose one small change whose result you can see. A different personality, a new saved preference, and a new tool are three different kinds of change.
 
-## Add a read-only tool
+## Exercise 1: change how a bot helps
 
-1. Define a narrow, validated input schema with explicit size limits.
-2. Read through the selected-workspace policy, not an arbitrary host path.
-3. Reject absolute paths, traversal, excluded files, and symlink tricks.
-4. Bound the returned text and clearly label errors.
-5. Respect the explicit local/web tool configuration.
-6. Test malformed input, excluded data, oversized results, and a normal request.
+Open **Bot library**, edit a persona, and give it a concrete purpose such as:
 
-A proposed `read_json_property` tool could return one key from a validated
-JSON file in the selected folder. It should not accept a URL, execute a JSON expression, or silently
-fall back to reading the host filesystem.
+> Teach Python patiently. Start with a small example, explain one idea at a time, and ask what I think the code will do before revealing the answer.
 
-## Add an action
+Start a new conversation to use the edited profile. Existing conversations retain their captured participant profiles. A profile changes the agent’s instructions; it does not add tools or grant operating-system permissions. Ordinary agents share the workspace’s enabled tools. The primary also has tools for creating agents, messaging them, and starting a group conversation.
 
-For a new action, validation is only the first step. Define a stable, canonical
-proposal that includes everything the user is approving. Use SDK
-`needsApproval: true`, preserve SDK interruption/resume, bind the application
-approval to the same run and exact action, and consume it once before execution.
+Compare two answers to the same short question. The demo is scripted, so it cannot demonstrate whether new personality instructions affect a model. Use the live app only when you intentionally want a provider request.
 
-Changing a proposal after review must invalidate the decision. Add tests for
-denial, modification, expiry, replay, cancellation, and restart. Do not let an
-error path accidentally call an unapproved action.
+## Exercise 2: remember a preference
 
-## Customize a persona first
+Open that bot’s **Memory** panel and save “Use short Python examples before explaining terminology.” The note belongs to this bot across its conversations; another bot has its own memory. Changing the profile does not clear the note.
 
-Use a profile for a different name, personality, or focus. Its purpose becomes
-live SDK instructions, but all ordinary agents receive the same enabled tools.
-Existing conversation participants remain captured when the profile is edited.
-The primary alone has creation, messaging, and group-start capabilities.
+In live mode, the SDK loads this bot’s saved notes and gives it `recall_memory`, `remember_memory`, and `forget_memory`. Their handlers bind the owner to the bot’s identity in server code. The model does not choose another bot’s ID. Follow [Memory](memory.md) to see the storage and prompt path, then remove the note through the panel or ask the bot to forget it. A claim that something was remembered should follow a successful tool result.
 
-## Add an agent
+## Exercise 3: add a small read-only tool
 
-Give it a clear personality and purpose rather than inventing a permission class.
-Groups support up to eight participants including the primary. Keep message
-briefs explicit and bounded; do not copy private source history into another
-conversation. Old role fields exist only for migration compatibility.
+A tool gives an agent a capability it cannot get by changing its personality. Try `text_file_stats`: it reads one permitted workspace file and returns character and nonempty-line counts.
 
-## Change the runner
+In [`src/server/sdk.ts`](../src/server/sdk.ts), find `const readTools = workspaceToolsEnabled ? [` inside the session setup. Add this entry beside `read_file`, before the array’s closing `] : []`. The surrounding module already imports `tool` and `z`, and provides `run`, `options`, `assertActive`, and `boundedText`.
 
-Native tools act on real files and processes. Preserve exact approvals, path
-validation, resolved-executable identity binding, minimal process environment,
-structured argument launch, and time/output
-limits. Test writes and commands in temporary fixtures. Never describe a working
-directory or executable allowlist as an OS sandbox. An installed tool can act
-with the user's permissions; update the threat model and
-approval preview accordingly.
+```ts
+tool({
+  name: 'text_file_stats',
+  description: 'Count characters and nonempty lines in a permitted workspace text file.',
+  parameters: z.object({ path: z.string().min(1).max(512) }).strict(),
+  execute: async ({ path }) => {
+    assertActive(run);
+    const text = await options.harness.readFile(run.view.runId, path);
+    assertActive(run);
+    return boundedText({
+      characters: text.length,
+      nonemptyLines: text.split(/\r\n|\r|\n/).filter(line => line.trim().length > 0).length,
+    });
+  },
+  errorFunction: () => 'File statistics were blocked or unavailable.',
+}),
+```
 
-## Update the teaching trail
+`characters` counts JavaScript UTF-16 code units, not bytes or user-perceived letters. Naming that limitation is part of making a tool understandable.
 
-Update the relevant no-key lesson, tests, and docs alongside behavior. Keep real
-execution distinct from fakes. Tests with a fake model can verify the SDK loop
-without charging an API account; they cannot establish a real provider's model
-quality, billing, availability, or data handling.
+The flow is schema → workspace read → small structured result → model response. Calling `harness.readFile` preserves the existing selected-folder, excluded-file, symlink, and size checks. Do not replace it with an unrestricted filesystem read. Placing the tool inside `readTools` keeps it disabled when workspace tools are off and makes it available to agents through the existing fleet setup.
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the complete check list and
-[SECURITY.md](../SECURITY.md) for the supported trust model.
+Verify with a temporary text fixture containing `one`, a blank line, and `two`: the tool should return two nonempty lines. Also check an empty file, a missing file, and a path outside the selected workspace. Use a fake model to request the new tool and check its returned result without making a provider call; [Testing](testing.md) explains that pattern. The scripted browser demo will not discover your new SDK tool automatically.
+
+For a polished UI exercise, add a readable activity label for `text_file_stats` in the server’s event mapping. Keep the raw tool name available in task details. The activity label should describe an observed call, not predict that the call succeeded.
+
+## Exercise 4: understand an action before adding one
+
+Reading a file does not modify it. An edit or command does, so it follows a different path. Trace `edit_file` or `run_command` through [`sdk.ts`](../src/server/sdk.ts), [`approval.ts`](../src/server/approval.ts), and [`native-runner.ts`](../src/server/native-runner.ts) before adding another mutating tool.
+
+The SDK pauses on `needsApproval: true`. The app presents the exact proposed action, binds the decision to that run and action, and consumes the approval once before execution. An approved command includes the executable, resolved executable identity, arguments, and working directory. Changing the proposed action requires a fresh decision.
+
+For a new action, extend the existing action schema, approval preview, canonical binding, and execution handler together. A `needsApproval` flag alone does not connect a new action to all those pieces. Test approval and denial, then a changed proposal and a replayed decision. Prefer exercising temporary files to touching a real project.
+
+Memory updates use their own bounded, bot-scoped storage tools; they do not go through the workspace edit/command approval card. If your new capability sends a message externally, deletes data, or changes another system, decide and document its concrete authorization flow rather than treating it as a read-only helper.
+
+## Keep the learning path connected
+
+After a small change, explain where its input enters, where validation happens, what result returns, and what the user sees. Add the most useful regression test and update the relevant lesson or document. [Contributing](../CONTRIBUTING.md) describes the review expectations; [Security](../SECURITY.md) explains the real local-execution boundaries.

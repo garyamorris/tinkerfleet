@@ -1,82 +1,75 @@
-# Approvals: one decision, one exact action
+# How an agent action becomes an approved operation
 
-Approval is an input to a paused computation, not a general permission to “do
-whatever is needed.” Read the proposed change or command before deciding.
+A model can propose an operation; it cannot manufacture your approval. Tinkerfleet turns a proposed file edit or command into a concrete card, pauses execution, and binds your decision to that exact action.
 
-## What happens in live mode
+This mechanism lets an agent move from conversation to useful work while leaving consequential local operations reviewable. The primary and ordinary agents use the same approval path. Delegating an action does not bypass it.
 
-1. An agent requests a mutation tool with structured arguments.
-2. The SDK's `needsApproval: true` interrupts execution and returns resumable state.
-3. The server associates the pending interruption with an approval record.
-4. The browser shows the action and its fingerprint.
-5. Your decision must match the run in its conversation, pending approval, and
-   unchanged action. A decision from another chat cannot authorize this action.
-6. The server resumes SDK state with the decision. An approved action consumes its
-   exact-action authorization before asynchronous execution begins.
-7. Execution returns a result, or a bounded error, to the agent.
+## Follow one edit
 
-The model never presses the Approve button. Text in a file, tool output, or a
-message cannot stand in for a verified decision from this app's user interface.
+Suppose you ask an agent to create a short note. It calls `edit_file` with structured arguments:
 
-## Binding and replay
+```json
+{"path":"notes/plan.txt","content":"Check the failing test first.\n"}
+```
 
-The server hashes a canonical JSON representation of the run and action, including
-the runner's action binding and, for commands, resolved executable identity. Object
-key order does not change this representation; a changed value does. The digest
-is a fingerprint used to bind state. It is not a password or a signature that
-makes a user trustworthy.
+That is a proposal. The actual path is relative to the selected workspace; there is no implicit write just because the model emitted JSON.
 
-`ApprovalStore` preserves an immutable copy of the action and tracks its state:
+```text
+tool proposal → SDK interruption → prepared action + digest → review card
+             → exact decision → SDK resume → consume once → execute → result
+```
+
+1. **Propose.** The model selects `edit_file` or `run_command` and supplies arguments matching the tool schema.
+2. **Interrupt.** The SDK tool declares `needsApproval: true`. The run returns an interruption instead of executing the mutation.
+3. **Prepare.** The server validates the request. The native runner binds it to the selected workspace, its current included-file digest, and policy version. A command also binds its resolved executable path and target identity. `ApprovalStore` keeps an immutable copy and computes the action fingerprint.
+4. **Review.** The UI displays the exact edit or command. An edit includes before/after text; a command includes its executable, argument list, working directory, and resolved tool identity.
+5. **Decide.** The authenticated API checks conversation ownership, run, pending approval ID, digest, and an explicit approve/deny value. The SDK is resumed with that decision.
+6. **Consume and execute.** The runner checks that the workspace and executable still match the prepared proposal. The grant is consumed synchronously before the real action starts, so two racing requests cannot both use it.
+7. **Return a result.** The tool reports completion, failure, cancellation, timeout, or output limit to the agent. A tool finishing is not itself proof that the requested task succeeded.
+
+Trace the layers in [SDK tools and interruption handling](../src/server/sdk.ts), [HTTP approval handling](../src/server/app.ts), [ApprovalStore](../src/server/approval.ts), and [native prepare/execute](../src/server/native-runner.ts).
+
+## A command is an executable plus arguments
+
+This `run_command` request runs an installed Node executable with one explicit test file:
+
+```json
+{"executable":"node","args":["--test","sum.test.js"],"cwd":"."}
+```
+
+The launcher does not silently run a shell around this request. A pipe character inside an argument is just an argument. A request that explicitly names `sh` with `-c` is different: the supplied script really will be interpreted by that shell after approval.
+
+Review what the program will execute, including project code and scripts it loads. Installed programs are not inherently safe. An approved command runs with your user permissions, can access paths beyond its starting folder, and may have network or other host effects. See [workspace tools](workspace.md).
+
+## Why the digest and state machine matter
+
+The digest fingerprints canonical JSON containing the run and bound action. Object-key order does not change it; a changed value does. It is an action-binding mechanism, not a password or a cryptographic signature proving who a person is. Authentication and conversation ownership are separate checks.
 
 ```text
 pending → approved → consumed
-       ↘ denied
+        ↘ denied
 pending / approved → expired
 ```
 
-The store's default lifetime is five minutes. Invalid, expired, denied, mismatched,
-already consumed, and unknown approvals fail closed. Consuming an action is a
-synchronous transition, so two racing requests cannot both start the same work.
-An execution failure does not restore the spent approval. A retry is a new action
-and needs a new decision.
+The default approval lifetime is five minutes. An expired, denied, changed, consumed, or unknown approval cannot execute. Replacing a command executable or changing an included workspace file after review also invalidates the prepared action. Request a fresh proposal rather than reusing an old card.
 
-The SDK also has its own interruption identity and approval state. Tinkerfleet's
-application check does not replace the SDK pause/resume flow; both layers serve
-a purpose. SDK execution state and approval authority disappear on restart;
-saved conversation views do not restore them.
+The grant stays spent if execution fails. A retry is another operation and needs another decision. The SDK interruption state and application approval record complement each other: the SDK pauses model execution, while the application binds the concrete local effect.
 
-## What to review
+## Deny, stop, and restart
 
-For an edit, inspect the relative path, before/after text, and whether the change
-matches your request. Approval writes the change to the real selected file.
-It is not a disposable preview, and restart does not roll it back.
+Denying does not perform the rejected action. Stopping invalidates outstanding grants and asks the runner to stop current work. It cannot undo completed edits or effects a command already caused.
 
-For a command, inspect the executable, every argument, working directory, and
-purpose. Inspect the resolved executable path as well as its requested name.
-Changing the executable after review invalidates the proposal. If it explicitly
-runs a shell or interpreter, review the complete supplied script.
-A harmless-looking name is not enough: `node` can execute arbitrary
-JavaScript, including code loaded by an explicit test file. The process runs with
-your user permissions, and its working directory does not sandbox it.
+Restart preserves saved chat views but cancels unfinished runs and invalidates their approvals. SDK execution state and executable approval authority are held in memory; a historical card on disk is not a resumable permission grant.
 
-A successful command checks the files it actually received at that moment. It
-does not prove the proposed change is correct, secure, or ready to ship.
+Read/list operations, hosted search, profile creation, coordination, and memory tools do not use this local-mutation approval card. Their scope is enforced by their own server tools. This is a deliberately chosen policy, not a claim that every action has the same risk.
 
-## Deny, stop, restart
+## Try the mechanism without a paid call
 
-Denying must never execute the rejected action. Depending on the current flow,
-the agent can explain the denial or the run ends. The demo intentionally stops
-on denial so the outcome is easy to see. Stopping a run invalidates outstanding
-approvals; a new run starts fresh. Restarting the server preserves public chat
-history but cancels unfinished runs and denies their pending approvals. A saved
-approval card is a historical record, not permission to resume execution.
+```sh
+npm run lesson:4
+npm run lesson:5
+```
 
-## Demo versus live
+[Lesson 4](../lessons/04-approvals.ts) proves that a grant can be consumed once and that replay, changed actions, and expiry fail. [Lesson 5](../lessons/05-local-tools.ts) connects that grant to a real edit and command in a temporary folder. In the demo UI, the same approve/deny interaction controls only a simulated fixture.
 
-Demo mode uses a deterministic fixture to teach the decision flow. Its edit and
-command results are labeled as simulated. No SDK model inference, real file
-edit, or local command execution occurs. The six no-key lessons include real approval-store assertions;
-that tests application state transitions, not a live model's behavior.
-
-Try [lesson 4](../lessons/04-approvals.ts): approve once, consume once, then prove
-that replay, a changed action, and expiry all fail.
+When adding a tool to your own agent app, decide which effects need review. Keep authorization outside model-generated text, bind the decision to immutable arguments, consume it once, and test the paths that must refuse execution. The relevant regressions are in [approval tests](../tests/approval.test.ts), [native-runner tests](../tests/native-runner.test.ts), and [HTTP integration tests](../tests/http.test.ts).

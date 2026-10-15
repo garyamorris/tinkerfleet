@@ -1,100 +1,78 @@
-# Local workspace tools
+# How local workspace tools work
 
-Live mode defaults to conversation-only. Enable tools with
-`TINKERFLEET_WORKSPACE_TOOLS=1` and select a folder using
-`TINKERFLEET_WORKSPACE=/absolute/path/to/project`. Docker is not used by the active
-application. Start with a small, trusted practice project.
+Live workspace mode connects the agent's tools to real local files and installed programs. It uses a native process runner; Docker is not part of the active execution path.
 
-## Ask the Coordinator directly
+Enable it with `TINKERFLEET_WORKSPACE_TOOLS=1` and select a small practice folder with `TINKERFLEET_WORKSPACE=/absolute/path/to/project`. The default selected folder is the included tiny-project example. Live chat without this opt-in does not construct or probe the workspace runner. Follow [setup](setup.md) for model credentials and startup.
 
-With workspace tools enabled, the primary Coordinator can read files, create or
-edit files, and run installed commands through the same exact-action approval
-flow as every ordinary agent. It may use a group when collaboration helps, but
-a simple local task does not require delegation. Agent names and personalities
-do not change which enabled tools they receive.
+## Two different scopes
 
-## Real files and real processes
+| Operation | What constrains it | What approval means |
+|---|---|---|
+| `list_files`, `read_file` | Selected workspace, permitted paths, bounded text capture | No mutation card; permitted content can enter model context |
+| `edit_file` | Selected workspace, permitted path/content, unchanged prepared snapshot | Write the reviewed content to a real file, creating safe missing parents if needed |
+| `run_command` | Validated executable/argv/cwd, resolved executable binding, timeout and output limits | Start a real host process with the reviewed arguments |
 
-The native runner reads the selected workspace and prepares exact file or command
-proposals. Approving an edit changes the real selected file or creates a new
-file and its missing parent directories inside the selected folder. Approving a command
-starts a local process with the selected working directory. Commands can also
-modify files through project code. Changes are not automatically rolled back.
+**A command's working directory is not an OS access boundary.** File tools have a workspace path policy; an approved program has the server user's OS permissions. A program can read other paths, use the network, load credentials from ordinary host files, or start subprocesses where those permissions allow it. The app does not claim container or VM isolation.
 
-**The selected folder is a scope for the app's tools, not an OS sandbox.** A
-command runs with your user's permissions and can access resources beyond its
-working directory. JavaScript can open absolute paths or the network and launch
-other programs. Executable identity checks do not prevent this.
+All ordinary agents receive the same enabled local tools. The primary can use them directly too. Names and personalities do not restrict an agent to a particular coding job.
 
-The launcher passes an executable and argument vector with `shell:false`. It
-does not implicitly interpret shell syntax. If a proposed command explicitly
-invokes `sh` or `bash -c`, its script is part of the exact action you must review.
-The process receives only `HOME`, `PATH`, `TMPDIR`, `LANG`, and configured
-`LC_ALL`/`LC_CTYPE`, not arbitrary server variables or inherited API keys.
-Each command has a 15-second timeout and bounded output. Disabling SDK turn or
-model-call count caps does not change that command timeout. These controls reduce accidental exposure; they do not isolate a hostile
-program or prevent it from accessing readable files on the host.
+## Listing and reading files
 
-## File paths and command paths
+The runner captures permitted UTF-8 text files and a digest of their current state. This “snapshot” is a bounded view of the real folder, not a disposable copied checkout.
 
-The file tools accept relative paths rooted in the selected workspace. For
-example, `notes/plan.txt` names a file beneath that folder. This path policy does
-not make the process a sandbox.
+The current policy excludes hidden paths, dependency/build directories such as `node_modules` and `dist`, credential-like filenames and content, binary files, and symlinks or multiply linked files. Supported text extensions are listed in [runner-policy.ts](../src/server/runner-policy.ts). File-tool paths are relative, use a restricted segment syntax, and reject traversal. Limits include 256 files, 256 KiB per file, and 2 MiB of included text per capture.
 
-A command's `cwd` may be omitted, `.`, or a permitted existing relative
-subdirectory. When the model supplies the trusted selected workspace or one of
-its subdirectories as an absolute `cwd`, the SDK converts it to the corresponding
-relative path before preparing approval. Outside-workspace directories and
-traversal are rejected. Native path/symlink checks still apply. This normalization
-does not change the approved executable or argument list.
+These checks reduce accidental exposure through file tools. They are not a complete secret detector, and they do not restrict what an approved native program can access independently.
 
-Command arguments may contain an explicitly requested absolute path outside
-the workspace. A command acting on that path runs with the user's permissions;
-review its destination, executable, and arguments before approval. The app does
-not promise that all machine paths are denied. Its selected working directory
-remains the starting directory for the process, not an access boundary.
+**Trace it:** `snapshot`, `readFile`, file capture, and directory checks in [native-runner.ts](../src/server/native-runner.ts); path/content rules and limits in [runner-policy.ts](../src/server/runner-policy.ts).
 
-## Installed commands and tools
+## Creating or editing a file
 
-A command may name an installed executable on the server's `PATH`, such as
-`python3`, `node`, or `git`, or use an absolute executable path. The server
-resolves the absolute executable path before approval and binds that invocation
-path and its target identity to that proposal. It checks both again before execution; a
-replacement requires a new approval.
+Ask for a specific change, for example: “Create `notes/plan.txt` with a short test plan.” The model proposes an `edit_file` call and the app presents the concrete change. Only approval writes it.
 
-Arguments are a structured list, not a shell command line. Review the executable,
-every argument, working directory, and any script passed to an interpreter.
-Installed tools are not automatically safe, and tools are not installed for you.
-The selected folder is still not a sandbox.
+New files can create missing parent directories beneath the selected folder after validation. Existing safe files are replaced through an atomic rename. The runner rechecks directory identities and the included-file snapshot so a changed workspace cannot silently reuse an earlier proposal.
 
-New-file edits can create nested directories after approval. Paths remain
-validated; traversal and symlink paths are rejected. File replacement uses an
-atomic rename, but commands can have other real effects that cannot be rolled
-back. The runner serializes file and command actions within this server.
+This is an actual edit. There is no automatic undo, and restarting the app does not restore the previous file. A saved diff records what happened; it does not prove the file still has those contents.
 
-## Approval and shared state
+## Running an installed program
 
-Read the exact path and change, or every command argument, before approving.
-Approval belongs to one immutable action in one run and cannot be reused in
-another chat. Invalid, stale, denied, expired, or consumed decisions fail closed.
-See [Approvals](approvals.md).
+The model-facing command request requires `executable`, `args`, and `cwd`; `cwd` accepts a string or `null`. A program name is resolved using the server's permitted `PATH`; an absolute executable path is also supported. The resolved invocation path and target metadata identity are bound before approval and checked again before execution.
 
-Separate chats do not create separate folders. If two runs use the same selected
-folder, real changes from one can affect the other. A saved artifact is a record
-of a change, not a guarantee that the file still has those contents. Restarting
-the app does not undo edits or command effects.
+Examples of requests you can make in live workspace mode:
 
-## Teaching limits
+- “Check the installed Git version.” The agent can propose `git` with `['--version']`.
+- “Run the explicit test file.” It can propose `node` with `['--test', 'sum.test.js']`.
+- “Create this directory using an installed CLI.” The resulting command still requires exact approval.
 
-Demo output is simulated and changes no real files. Native-runner tests should
-use temporary fixtures. A passing test suite does not establish that a live
-model's requested command is safe. Read [SECURITY.md](../SECURITY.md) for the trust
-model and [setup](setup.md) for the explicit opt-in.
+The runner uses an argument vector and `shell: false`. It does not expand pipes, redirects, or environment variables implicitly. An explicitly requested installed shell or interpreter is allowed; review its complete script argument. An installed package manager can run an approved install command, but there is no separate installation service and the command timeout still applies.
 
-## Verified execution
+### Working directory versus argument paths
 
-An ordinary agent completed `git --version` and `codex --version` through the real
-SDK/native runner with two exact approvals and exit code 0. Temporary-fixture
-tests cover file changes and approval rejection. These checks establish the tested
-paths, not that every installed tool or proposed command will work safely. See
-[the handover](../HANDOVER.txt) for the full evidence and remaining limits.
+The model must include `cwd`: use `null` or `"."` for the selected workspace, or a permitted existing relative subdirectory. The SDK normalizes this input into the runner’s internal action, where `cwd` is optional; omitting it is not valid in the model-facing tool request. If the model provides the trusted selected folder or a subdirectory as an absolute `cwd`, the SDK normalizes it to a relative path before approval. An outside-workspace `cwd`, traversal, or symlink directory is rejected.
+
+An argument is different. An explicitly proposed absolute path in `args` may refer outside the workspace. Its effect depends on the installed program and your OS permissions. Review the destination as well as the program name; choosing a workspace does not make all other machine paths inaccessible.
+
+### Process lifetime and environment
+
+Each command has a **15-second timeout** and a **64 KiB combined output limit**. Output is bounded and redacted before returning to the model. Timeout, cancellation, and normal exit trigger process-group cleanup, including ordinary children left behind by the main process. This is not a persistent terminal or background-server launcher; programs that deliberately escape process-group control are not securely confined.
+
+The child receives `HOME`, a filtered `PATH`, `TMPDIR`, `LANG`, and permitted `LC_ALL`/`LC_CTYPE` values. It does not inherit arbitrary server variables, the server API key, or loader-hook environment variables. The OS or program may add its own environment values. `HOME` still points at the user's home directory: minimal environment inheritance is not filesystem isolation.
+
+Changing model-turn or model-call limits does not change the 15-second local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk.ts](../src/server/sdk.ts).
+
+## Several chats, one real folder
+
+Local actions are serialized within this server. Separate conversations still share the selected folder, so one approved edit can invalidate another run's prepared snapshot. The second action must be proposed again against the changed state. Conversation isolation prevents history or approval ownership from crossing chats; it does not give each chat an isolated filesystem.
+
+See [approvals](approvals.md) for the pause/resume path and [SECURITY.md](../SECURITY.md) for the complete trust model.
+
+## Try and inspect
+
+```sh
+npm run lesson:3
+npm run lesson:5
+```
+
+[Lesson 3](../lessons/03-tools.ts) explores structured tool validation. [Lesson 5](../lessons/05-local-tools.ts) uses a temporary folder to show a real approved edit, nested file creation, an installed Node command, and rejection of unapproved or replayed actions. It makes no model request and removes its teaching fixture afterward.
+
+Then read [native-runner tests](../tests/native-runner.test.ts) for executable replacement, stale approvals, cancellation, path checks, and command cleanup. [HTTP tests](../tests/http.test.ts) exercise the full app → SDK → approval → native-runner path with scripted model responses. This separation lets you test the application mechanism without paying for inference or trusting a model to produce a particular action.

@@ -1,266 +1,152 @@
 # Tinkerfleet
 
-**A small multi-agent workspace, explained from the ground up.**
+**Learn how to build a personal agent application by exploring one that works.**
 
-Tinkerfleet is a runnable, deliberately small companion to Gary Morris's
-[Tinkerloop](https://github.com/garyamorris/tinkerloop). Tinkerloop makes a coding
-agent's model/tool loop visible. Tinkerfleet adds reusable bot personas, direct
-and group conversations, human approvals, and an optional local command runner.
+Tinkerfleet is a small, open-source app where you talk to a primary agent, create
+other agents with their own personalities, and give them tools and memory. In
+live mode they can research the web, read a project, propose file changes, and
+run commands on your computer after approval.
 
-Start with the no-key demo. Then read six runnable lessons. Finally, inspect the
-real [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/) integration.
-Basic TypeScript is enough; previous agent-building experience is not required.
+If you have used an agent tool and wondered **“How would I build something like
+this?”**, this repository is for you. The app, lessons, and documentation explain
+the pieces behind the experience: a model loop, tool functions, conversations,
+coordination, persistent memory, and a browser interface.
 
-See [the build handover](HANDOVER.txt) for verified checks and remaining integration work.
+You do not need previous experience building agents. Familiarity with JavaScript
+or TypeScript, JSON, and a terminal will help. Start without an API key; connect a
+real model when you are ready.
 
-## A look inside
+## Start with something you can see
 
-![Bot memory panel in the no-key demo](docs/screenshots/bot-memory-desktop.png)
-
-[Mobile memory view](docs/screenshots/bot-memory-mobile.png) (390 px wide).
-These genuine captures show the no-key demo with sample facts. Conversation
-replies are scripted; the bot profile, direct chat, and saved memory use real
-local persistence. Creating a bot provides a one-click link to its chat.
-
-Earlier live evidence: [Markdown reply](docs/screenshots/markdown-tools-live.jpg) ·
-[File, command, and web activity](docs/screenshots/tool-activity-live.jpg).
-Those desktop images crop out the private chat list. See
-[the handover](HANDOVER.txt) for verified results and limits.
-
-## Try it without a key
-
-You need **Node.js 24+** and npm. From this repository:
+You need Node.js 24 or later and npm.
 
 ```sh
+git clone https://github.com/garyamorris/tinkerfleet.git
+cd tinkerfleet
 npm ci
 npm run dev
 ```
 
-Open **http://localhost:4317**. The default is **Demo** mode: a deterministic,
-scripted teaching simulation. It makes **no model calls**, spends **no API tokens**,
-and does **not execute commands**. An approval in the demo advances the scripted
-example; its test output is explicitly simulated, not evidence of execution.
+Open **http://localhost:4317**. The default demo is scripted and makes no model
+calls, web searches, project edits, or command executions. It does save your bot
+profiles, chats, and memory notes locally, so you can explore the actual interface.
 
-Tell the primary Coordinator what you want to accomplish. For the demo, ask it
-to fix the failing tests in tiny-project: the scripted Coordinator starts a group
-for that known fixture. A simple greeting stays in the primary conversation.
-Visit the created group to review the edit and command proposals. Deny one to
-see that branch, or approve each exact action to finish the simulated walkthrough.
-You can also visit individual bots directly. There is no manual group-start
-chooser; the Coordinator selects agents and creates the group.
+Try this short tour:
 
-The included [practice project](examples/tiny-project) contains a deliberate
-addition bug. Its own tests fail until you fix it; this is separate from the
-repository's test suite.
+1. Start a conversation with **Orbit**, the primary agent.
+2. Say **“Create a patient astronomy tutor called Nova.”**
+3. Choose **Open this bot’s chat** to speak with Nova directly.
+4. Open **Bot library → Memory** beside Nova and save a sample preference.
+5. Return to Orbit and ask **“Fix the failing tests in tiny-project.”** Open the
+   group it creates and inspect the simulated edit and command approvals.
 
-## What you learn
+The demo recognizes a few teaching examples; it does not understand arbitrary
+requests. Its purpose is to let you see the interaction before paying for a model.
+The [interface tour](docs/interface.md) explains each step. Use the
+[setup guide](docs/setup.md) when you want live replies.
 
-| Lesson | Building block | Run |
-| --- | --- | --- |
-| [1. The coordinator](lessons/README.md#1-the-coordinator) | Instructions and an explicit owner of the task | `npm run lesson:1` |
-| [2. Agents as tools](lessons/README.md#2-agents-as-tools) | Delegate work without surrendering coordination | `npm run lesson:2` |
-| [3. Tool contracts](lessons/README.md#3-tool-contracts) | Validate requests before touching data | `npm run lesson:3` |
-| [4. Human approvals](lessons/README.md#4-human-approvals) | Bind permission to one exact action | `npm run lesson:4` |
-| [5. Local tools](lessons/README.md#5-local-tools) | Inspect local execution and approval boundaries | `npm run lesson:5` |
-| [6. The selected workspace](lessons/README.md#6-the-selected-workspace) | Understand real files and selected-folder scope | `npm run lesson:6` |
+## What you are building
 
-Every lesson runs without an API key or Docker. Assertions make the expected
-behavior executable. They teach the real building blocks without pretending a
-scripted answer came from a model. The [lesson guide](lessons/README.md) includes
-exercises and a reading order.
+An agent app connects a model to functions that can do useful work. The model
+chooses a next step; your application decides which functions exist, runs them,
+and gives their results back to the model.
 
-## Read the implementation
+```mermaid
+flowchart LR
+    You[Your message] --> App[Application and agent loop]
+    App <--> Model[Language model]
+    App --> Tools[Tools and approvals]
+    Tools --> Results[Files, commands, web results]
+    Results --> App
+    Memory[Saved bot memory] --> App
+    App --> Reply[Reply and visible activity]
+```
 
-Follow one task from the interface to the boundary:
+Tinkerfleet makes that loop visible. You can inspect what was requested, what
+needed approval, what actually ran, and what result came back. The
+[architecture walkthrough](docs/architecture.md) follows a message through the code.
 
-1. [`src/client/main.tsx`](src/client/main.tsx) renders the conversation and decisions.
-2. [`src/server/http.ts`](src/server/http.ts) handles the local HTTP interface.
-3. [`src/server/demo.ts`](src/server/demo.ts) provides the scripted teaching path.
-4. [`src/server/sdk.ts`](src/server/sdk.ts) defines the live coordinator and individual agents.
-5. [`src/server/approval.ts`](src/server/approval.ts) binds decisions to exact actions.
-6. [`src/server/native-runner.ts`](src/server/native-runner.ts) prepares local file and command actions.
-
-Start with the demo and lessons before the larger SDK and runner modules. Compare
-the same approval concept across a lesson, its tests, and the browser interface.
-
-Replies use readable Markdown, including code blocks and tables. Expand a run's
-**Details** activity summary to follow recorded file, command, agent, and web-tool
-steps. Activity reports what the app observed; a started tool is not a completed
-result.
-
-## One primary, individual agents
-
-The primary Coordinator is your starting point. It can do simple local work,
-create agents with personalities, message an individual agent, or start a shared
-group when collaboration helps. Ordinary agents have the same enabled local and
-web tools; Scout, Maker, and Checker are example personalities, not permission
-classes. Every file edit or command still requires exact approval.
-
-Only the direct primary has agent-creation, messaging, and group-start tools.
-Groups can contain the primary plus up to seven agents. There is no one-agent-per-
-role rule. A concise brief is shared with a group or messaged agent, not the
-primary's full private chat history. Child agents cannot spawn more groups.
-
-## Search the public web
-
-In live mode, ask a bot to search current public information or read a public
-page, then follow the clickable sources in its answer. Hosted web search is on
-by default; set `TINKERFLEET_WEB_SEARCH=0` to disable it. It works independently
-of local workspace tools and can incur additional API tool charges.
-
-This is model-driven public-web research, not control of your logged-in browser,
-forms, or accounts. Page-opening capabilities depend on the chosen model.
-The no-key demo remains scripted and never searches the web. See
-[setup](docs/setup.md#public-web-search) for the boundary and provider references.
-
-## Ask for a bot
-
-Tell the primary Coordinator: **“Create a patient Python tutor called Ada.”**
-It can create a reusable agent with a name and purpose covering its job,
-personality, and communication style. The saved bot appears in the library and
-creation immediately creates its direct chat. Choose **Open this bot’s chat**
-on the creation message to visit it. You can talk to it directly, and the
-Coordinator can bring it into a group—even in the same run that created it.
-
-New bots are ordinary agents with a name and purpose/personality. The server
-stores up to 32 profiles and allows at most three creations per primary run.
-Existing conversations keep their captured profiles. Ask the primary to message
-an agent when you want an individual reply; it can send up to three such messages
-per run, each with a concise task brief.
-
-The no-key demo recognizes the exact Ada example and really saves a profile,
-but uses a clearly scripted response. It does not demonstrate live model
-selection or the tutor's personality in conversation.
-
-## Give a bot a memory
-
-Open **Memory** beside a bot in the library to view, add, or delete saved notes.
-The same bot reuses these notes across its chats on its next turn; it can also
-use `remember`, `recall`, and `forget` tools. Each bot can hold 20 notes, up to
-2,000 characters each and 8,000 characters total. Old chat history stays saved
-but is not automatically imported or summarized into memory.
-
-Notes are private local data and are sent to the model provider when that bot
-replies. Personality edits do not erase them. New profiles receive a random
-avatar; **Randomize avatar** lets you change it without changing capabilities.
-
-## Bots, conversations, and runs
-
-| Concept | What it means |
+| Capability | What it teaches |
 | --- | --- |
-| **Bot persona** | A reusable profile: name, purpose/personality, color, and avatar shape |
-| **Conversation** | A named direct or group chat with participants, history, and a draft |
-| **Run** | One submitted task within a conversation, with its own approvals, results, and local actions |
+| A primary agent and individual agents | Coordination is application logic; each bot is a separate identity with instructions |
+| Agent creation and direct chats | Turn a model’s structured request into a saved profile and a usable conversation |
+| Messages and primary-created groups | Delegate a defined task without copying an entire private conversation |
+| File and command tools | Connect model output to real functions and local processes |
+| Human approvals | Pause work, review the exact action, and resume it once |
+| Public web research and sources | Combine provider-hosted tools with your local tools |
+| Each bot’s own memory | Store useful facts and include them in later requests |
+| Markdown replies and tool activity | Turn agent execution into an understandable interface |
 
-Create multiple independent conversations with the same bot when you want
-separate topics. The primary creates groups of up to eight participants,
-including itself. Personality guides behavior, not tool permissions. Server
-configuration controls which local and web tools all agents receive; appearance
-is cosmetic. Demo mode stays scripted regardless of a profile's purpose.
+See [capabilities and current limits](docs/capabilities.md) for what each mode
+supports. Scout, Maker, and Checker are starter personalities; ordinary agents
+share the enabled tools. Changing a bot’s name or avatar does not change its permissions.
 
-The sidebar lists chats by name with a preview and status. Reload returns to the
-active chat. Local conversation history survives server restart, but unfinished
-work is cancelled and its pending approvals are denied. Workspace-enabled runs use the real selected folder. Chats keep separate
-conversation context but can observe each other's file changes when they use
-that folder. Saved history does not restore execution authority.
+## Choose your learning path
 
-The Coordinator shares a bounded task brief with a new group, not the private
-source chat's history. That group starts an independent run attributed to the
-Coordinator. The source and group are separate SDK runs with separate per-run
-budgets, so one user turn can consume two run budgets. Stopping the primary does
-not stop a group already created; stop that group explicitly. These limits are
-not an overall monetary cap. Delegation shares explicit briefs; per-bot saved
-notes are a separate memory mechanism.
+| You want to… | Start here |
+| --- | --- |
+| Understand how to build an app like this | [Build an agent app, step by step](docs/build-an-agent-app.md) |
+| Learn by running small programs | [Six executable lessons](lessons/README.md) |
+| Follow the complete application | [Architecture and data flow](docs/architecture.md) |
+| Understand tools and real computer access | [Workspace tools](docs/workspace.md) and [approvals](docs/approvals.md) |
+| Add lasting memory | [How bot memory works](docs/memory.md) |
+| Make your own version | [Extend Tinkerfleet](docs/extending.md) |
+| Check whether your changes work | [Testing an agent application](docs/testing.md) |
 
-Creating a conversation captures its participant profiles. Library edits apply
-to new conversations, leaving existing chats and runs unchanged. The bot
-library is persisted on the local server, with older browser profiles migrated.
-The server stores conversation
-views in the private, Git-ignored `.tinkerfleet/conversations.json` file. These
-views can contain prompts, messages, drafts, and artifact text; treat them as
-private data. Read the [interface guide](docs/interface.md) and
-[privacy details](docs/setup.md) before using real content.
+For a first pass, follow the build guide and run lessons 1–6 in order. Each
+lesson uses real application code, explains one idea, and includes an experiment.
+All six run without a model call. The later native-tool lessons use temporary
+files and short local commands to demonstrate actual execution.
 
-## Optional live mode
+## Find the code behind the idea
 
-Live mode uses real OpenAI model calls and can incur API charges. Its default
-is **conversation-only**: direct chats and Coordinator-created groups work
-without Docker. Workspace tools are disabled, so the app does not read a host
-project or expose file-read, edit, or command tools to the model. Read
-[setup and privacy](docs/setup.md) and the [threat model](SECURITY.md) first.
-You deliberately opt in with `TINKERFLEET_MODE=live`, provide your own
-server-side `OPENAI_API_KEY`, and set `TINKERFLEET_MODEL` to a tool-capable model
-available to your account. There is no hard-coded model recommendation.
+| Part | Start reading |
+| --- | --- |
+| Chat UI, profiles, and approval cards | [`src/client/main.tsx`](src/client/main.tsx) |
+| HTTP routes and conversation coordination | [`src/server/app.ts`](src/server/app.ts) |
+| Agents, tool definitions, model loop, and SDK events | [`src/server/sdk.ts`](src/server/sdk.ts) |
+| Scripted demo behavior | [`src/server/demo.ts`](src/server/demo.ts) |
+| Conversation history and restart behavior | [`src/server/conversations.ts`](src/server/conversations.ts) |
+| Saved facts for each bot | [`src/server/memory.ts`](src/server/memory.ts) |
+| Exact-action decisions | [`src/server/approval.ts`](src/server/approval.ts) |
+| Local files and processes | [`src/server/native-runner.ts`](src/server/native-runner.ts) |
 
-The app uses the official **`@openai/agents` 0.20.0** TypeScript SDK.
-This SDK is a library running in the local server. It is not a managed Agents API
-session, and it does not itself sandbox tool functions.
-[See the API / SDK / managed service distinction](docs/architecture.md#api-sdk-and-managed-service).
+The stack is TypeScript, React, Node.js, and the OpenAI Agents SDK. The SDK runs
+inside the local Node server; live model inference happens through the OpenAI
+API. Local tools use your computer directly. Docker is not part of this app.
 
-To enable local workspace tools, explicitly set:
+## See the result
 
-```dotenv
-TINKERFLEET_WORKSPACE_TOOLS=1
-TINKERFLEET_WORKSPACE=/absolute/path/to/your/practice-project
-```
+![A live Markdown reply with recorded tool activity](docs/screenshots/markdown-tools-live.jpg)
 
-**Approved edits change real files. Approved commands run locally with your user's
-permissions.** The working directory is not a security sandbox; project code can
-access broader resources allowed to your account. Commands resolve installed tools from the server's PATH or an explicit path.
-Every command needs exact approval, including its arguments and working directory.
-File-tool paths are relative to the selected workspace. Command arguments may
-name an explicitly requested absolute destination elsewhere on the host; that
-access uses your OS permissions and must be reviewed in the exact proposal.
-The launcher does not insert a shell; an explicitly approved shell command can
-still run a script. Commands receive a small environment whitelist without
-inherited server secrets and have time/output bounds. Approved file edits can
-also create new files and nested folders. Use a trusted practice folder and review each exact action. Docker is not
-part of the active application. See [setup](docs/setup.md) and [SECURITY.md](SECURITY.md).
+This capture is from a real model run that read a file, ran an approved version
+command, and used hosted web search. [View its activity](docs/screenshots/tool-activity-live.jpg).
 
-SDK turn and model-call counts are unlimited by default (`0`). Token and runtime
-budgets still apply, and a local command still has a 15-second timeout. See
-[run limits](docs/setup.md#keep-runs-small) before increasing exposure.
+![A bot’s own memory panel](docs/screenshots/bot-memory-desktop.png)
 
-## Find your way around
+The memory capture uses the no-key demo and sample facts. Its conversation is
+scripted; its saved notes are real local data. [Mobile view](docs/screenshots/bot-memory-mobile.png).
 
-- [Architecture walkthrough](docs/architecture.md): data flow and trust boundaries
-- [Setup and privacy](docs/setup.md): demo, real model chat, and optional local tools
-- [Approvals](docs/approvals.md): pause, review, approve or deny, then resume
-- [Local workspace tools](docs/workspace.md): real edits, local commands, and their limits
-- [Interface tour](docs/interface.md): conversation, reusable profiles, and run details
-- [Extending Tinkerfleet](docs/extending.md): add a narrow capability safely
-- [Troubleshooting](docs/troubleshooting.md)
-- [Security policy and threat model](SECURITY.md)
-- [Contributing](CONTRIBUTING.md)
+## Keep the important distinctions clear
 
-## Check your changes
+Live file edits and commands can change your computer. Commands run with your
+user’s permissions, and selecting a working folder does not create a sandbox.
+Live requests can send conversation context, saved memories, and tool results to
+the model provider. These are useful design decisions to understand when building
+your own agent app; [the execution and data boundaries](SECURITY.md) explain them.
 
-```sh
-npm run check
-npm run lesson:1
-npm run lesson:2
-npm run lesson:3
-npm run lesson:4
-npm run lesson:5
-npm run lesson:6
-```
+There is no fixed turn or model-call count limit by default. Token and runtime
+budgets remain, and each local command currently has a 15-second timeout. This
+small teaching implementation is therefore best suited to short experiments;
+long coding jobs need a different command lifecycle. The
+[capability guide](docs/capabilities.md) separates what works today from extension ideas.
 
-The core checks and lessons need no credentials and make no paid API calls.
-Browser verification is separate from `npm run check`; see the handover for its
-current status.
-Native execution tests use temporary fixtures. Passing tests do not prove a
-model-selected command is safe; live provider integration requires separate
-validation.
+## Continue learning
 
-## Deliberately small
+- [Setup](docs/setup.md) · [Troubleshooting](docs/troubleshooting.md)
+- [Contribute a teaching improvement](CONTRIBUTING.md)
+- [Tinkerloop](https://github.com/garyamorris/tinkerloop), a companion project focused on a coding agent’s model/tool loop
+- [MIT license](LICENSE)
 
-This is an educational local application, not a production multi-tenant service.
-Conversation history and real file changes persist. SDK execution state and
-approval authority do not survive a server restart.
-It has no unattended background workers, remote desktop control, production
-identity provider, or OS sandbox. With workspace tools enabled, approved changes
-are applied to the selected source folder.
-
-Original Tinkerfleet UI and avatars; no third-party product screenshots or assets
-are bundled. Inspired by Tinkerloop's learning-by-building approach, with a
-different implementation and scope. MIT licensed; see [LICENSE](LICENSE).
+Start with one agent and one useful tool. Add the next piece when you can explain
+what the current piece does.

@@ -1,133 +1,39 @@
-Tinkerfleet build handover — 15 October 2026
+Tinkerfleet — continue learning and building
 
-Scope
-Educational local agent app with a primary Coordinator and ordinary individual
-agents defined by name and personality. All agents share enabled local/web tools.
-The primary can create agents, message them, or start groups of up to eight
-participants. Legacy role fields are compatibility data, not capability gates.
-Approved local edits change real files; commands run with the user's permissions.
-The selected working directory is not a sandbox. Docker is not used.
+Start at README.md. It introduces the application, runs the no-key demo, and
+routes readers into a practical learning path.
 
-Current revision — automated and demo browser verification
-Per-bot memory is persisted separately in .tinkerfleet/conversations.json.memories.json
-and injected for the same bot on its next turn across chats. UI view/add/delete
-and remember/recall/forget tools share limits: 20 notes per bot, 2,000 characters
-each, 8,000 total. Old transcripts remain saved, without automatic import or
-summarization. Notes are sent to the provider when that bot replies.
-New bot creation immediately creates its direct chat. New profiles get random
-appearance, with a manual randomize control; existing appearance is preserved.
-SDK turn/model-call counts now default to 0 (unlimited counts), with optional
-finite caps 1–64. Token/runtime limits remain; native commands still time out
-after 15 seconds. This revision has no new paid verification call.
-- 219 of 219 tests passed; TypeScript and production build passed.
-- The focused offline SDK/memory-tool suite passed 90 tests; native execution
-  and existing boundary tests passed in the full suite.
-- In the no-key demo, the Coordinator created Nova. One click on the creation
-  card opened its direct chat without a chooser. The memory panel saved a note
-  in real persisted storage. Desktop and 390 × 844 mobile checks passed.
-  The conversation is scripted and the notes are sample facts; these checks do
-  not claim new live-model memory verification.
-- The live server restarted successfully and reported live readiness with
-  maxTurns=0 and maxModelCalls=0. Existing conversation/profile identities and
-  drafts were preserved. The new live memory store started empty; old transcripts
-  were not imported. No paid API call was made for this revision, and no
-  credentials were stored.
-- A final avatar-palette correction passed 11 focused tests, TypeScript, and
-  production build after the full 219-test check.
-- Genuine current demo captures: docs/screenshots/bot-memory-desktop.png and
-  docs/screenshots/bot-memory-mobile.png. These show sample facts and real local
-  memory storage, not a new live model reply.
+Read docs/build-an-agent-app.md to follow the construction of a personal agent
+application: the model loop, chat state, tools, approvals, local execution,
+personalities, coordination, memory, web research, and visible activity.
 
-Previous automated verification
-- 185 of 185 tests passed; TypeScript and production build passed. A focused
-  review check passed 21 tests. All six offline lessons previously passed.
-- Native integration covers temporary files, installed commands, executable
-  identity, approval/replay behavior, and trusted in-workspace cwd normalization.
-- Hosted streaming events, citation handling, and Markdown have offline tests
-  in addition to the combined real-provider check below.
+Run the six lessons described in lessons/README.md. They use the application's
+modules and make no model calls. The later lessons use disposable local fixtures.
 
-Actual live checks
-- Before the personality-only overhaul, Orbit created live-check.txt containing
-  “Tinkerfleet local tools work.” plus a newline, then cat returned that content
-  with exit code 0. Both exact action approvals were confirmed. Usage: 3 calls,
-  5,707 input tokens, 123 output tokens, 5,830 total.
-- After the overhaul, the primary created Ada with name and purpose only, sent
-  message_agent to Ada's individual conversation, and received its labeled reply
-  relay. Ada replied “Hello from Ada — it’s lovely to meet you!”
-  Primary usage: 3 calls, 6,037 input, 149 output, 6,186 total.
-  Child usage: 1 call, 917 input, 15 output, 932 total.
-- An ordinary agent used the actual SDK and NativeWorkspaceRunner to run
-  git --version and codex --version after two exact approvals. Both exited 0:
-  “git version 2.54.0 (Apple Git-157)” and “codex-cli 0.162.1”. Usage: 3 model
-  calls, 3,563 input tokens, 106 output tokens, 3,669 total.
+Use docs/architecture.md to trace the implementation, docs/capabilities.md to
+understand current behavior, and docs/extending.md to build the next feature.
+Documentation describes this repository's implementation, not the internals of
+other agent products.
 
-Diagnostic and corrected live check
-An earlier controlled primary attempt failed before approval because the model
-supplied the selected root as an absolute cwd. That attempt used one call and
-5,740 tokens and did not execute the command. The SDK now normalizes trusted
-in-workspace cwd values before approval while rejecting outside/traversal paths.
+Validation commands and the meaning of each kind of evidence are in
+docs/testing.md. Run checks on the revision you are changing rather than relying
+on an old build report. Current screenshots are linked from README.md with their
+demo/live provenance.
 
-The combined post-fix live run succeeded:
-- Read the actual sum.js file.
-- Executed exactly approved codex --version: codex-cli 0.162.1, exit code 0,
-  with cleanup confirmed.
-- Performed real hosted web search for official Agents SDK documentation and
-  returned source links.
-- Rendered a Markdown heading, bullet list, and code block in the browser DOM.
-- Recorded real listing, file-read, local-command, and web-search events with
-  their finish events.
-Usage: 4 model calls, 31,779 input tokens, 340 output tokens, 32,119 total. The
-30,000-token test threshold was observed after the completed final response;
-the answer was retained, the app status was completed, and no extra calls ran.
+Practical boundaries to retain while extending the app:
+- The primary coordinates; ordinary bots share enabled capabilities.
+- A profile, conversation, run, and memory entry have different lifetimes.
+- File edits and local commands require an exact, single-use approval.
+- Local commands use host permissions; the workspace is not a sandbox.
+- Turn/call count caps are disabled by default, while token/runtime budgets and
+  the 15-second command timeout remain. Long-running jobs are an extension area.
+- Demo responses are scripted. Do not describe them as live model evidence.
+- Persisted conversation views and memories are private local data in
+  .tinkerfleet/. Keep that directory, credentials, and personal content out of
+  shared source and screenshots.
 
-Cumulative controlled verification: 15 calls, 54,476 tokens, including the failed
-diagnostic attempt. This excludes user-initiated calls and additional web-tool
-charges; it is not an account total or billing receipt. Genuine screenshots of the combined live run are now available:
-docs/screenshots/markdown-tools-live.jpg, tool-activity-live.jpg, and
-mobile-markdown-tools.jpg. Desktop crops exclude the private chat list; mobile
-is 390 px wide. The activity timeline shows file/command/web steps with elapsed
-time. A final UI-only duplicate-label cleanup passed typecheck, five renderer
-tests, production build, and browser verification; no functional code changed
-after the 185-test check. All user history was preserved.
-
-Context and limits
-Current defaults: no SDK turn or model-call count cap (0), 2,048 output tokens
-per response, 64,000 reported tokens
-per run, and 120 seconds. Recent history is bounded to 8,000 characters; long tool
-outputs to 4,000 with a notice. Complete tool pairs and exact action arguments
-are preserved. A finished answer crossing the usage threshold is retained while
-further calls and exhausted-budget function work are blocked. Parent and child
-runs have separate budgets and stop controls; there is no overall monetary cap.
-
-Previous restart and browser verification
-The main app restarted successfully and reported live readiness with hosted web
-and native tools enabled. Runtime limits were 12 calls, 64,000 tokens, 2,048
-output tokens per response, and 120 seconds. Existing conversations, runs, and
-profiles were preserved; private counts and history are not included here.
-Genuine screenshots show the live primary message to Ada and Ada's reply:
-docs/screenshots/individual-agents-live.jpg is cropped to the main conversation
-region to exclude the private chat list; mobile-individual-agents.jpg is 390 px
-wide. That revision completed its checks; git diff --check passed at that point.
-
-Remaining limits
-The live search check establishes the tested official-documentation lookup, not
-access to every website, authenticated pages, or all model-dependent web actions.
-Artifact download completion remains unverified. No CI result is claimed.
-
-Run locally
-Use Node.js 24+, npm ci, then npm run dev. Open http://localhost:4317. Demo is
-scripted and needs no key. Live model use requires explicit configuration.
-Workspace tools are opt-in; installed commands and real edits require exact
-approval. See README.md, docs/setup.md, and SECURITY.md.
-
-Persistence and privacy
-The local server stores profiles and conversation views in the Git-ignored
-.tinkerfleet/conversations.json, with per-bot notes in its .memories.json companion.
-Keep both private. Restart preserves history but
-cancels unfinished runs and denies pending approvals. It does not undo file or
-command effects. Credentials do not belong in source, browser settings, or logs.
-
-Publication
+Setup: docs/setup.md
+Troubleshooting: docs/troubleshooting.md
+Contribution guide: CONTRIBUTING.md
+Execution and data boundaries: SECURITY.md
 Public source: https://github.com/garyamorris/tinkerfleet
-No hosted deployment is included. No private paths or credential values are
-included in this handover.

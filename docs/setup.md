@@ -1,33 +1,48 @@
-# Setup and privacy
+# Run your first agent app
 
-## Run the demo
+Start with the demo to see the whole interaction before connecting a model.
+Then enable live conversations and add local tools when you are ready. If you
+want the bigger picture first, read [Build an agent app](build-an-agent-app.md).
 
-Install Node.js 24+ and npm, then run from the repository root:
+## 1. Run the no-key demo
+
+Install **Node.js 24 or later** and npm. In the repository root, run:
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open http://localhost:4317. The no-key demo is scripted. It makes no model calls,
-runs no commands, and edits no real files. Docker is not required.
+Open **http://localhost:4317** and leave the terminal running. No Docker or API
+key is needed. `npm ci` installs the versions in the lockfile; `npm run dev`
+starts the Node server and serves the browser app through Vite.
 
-Start with Orbit, the primary Coordinator. Ask about the tiny-project fixture to
-see it create an agent group, then review the simulated approvals. A greeting
-stays in the primary chat. The six `npm run lesson:1` through `lesson:6` commands
-teach the building blocks without model calls.
+Talk to Orbit, the primary agent. Ask it to fix the failing tests in tiny-project,
+then open its group conversation and review the proposed actions. Try denying
+one action before approving another in a fresh run.
 
-## Enable real model conversations
+The demo follows a script. It does not call a model, search the web, execute a
+command, or change project files. Its profiles, conversations, and memory notes
+**do** use real local storage. This lets you learn the app's state transitions
+without confusing simulated work with model intelligence.
 
-Supply your own server-side API key and a tool-capable model available to your
-account. Live mode can incur API charges. Keep keys out of browser settings,
-profile text, screenshots, and source control.
+**Try it:** create a persona through **Bots**, save a sample preference in its
+**Memory** panel, and reload. Notice which state survives. Follow the
+[interface tour](interface.md) for the individual steps.
+
+## 2. Connect a real model
+
+Live mode replaces scripted answers with OpenAI model calls. Choose a
+tool-capable model available to your account and supply your own API key on the
+server. The browser never needs the key.
+
+Create a local configuration file:
 
 ```sh
 cp .env.example .env.local
 ```
 
-Set these values privately in `.env.local`:
+Edit its live settings privately:
 
 ```dotenv
 TINKERFLEET_MODE=live
@@ -36,116 +51,123 @@ OPENAI_API_KEY=your-own-key
 TINKERFLEET_WORKSPACE_TOOLS=0
 ```
 
-Then load it explicitly:
+The placeholders are not usable credentials. Keep the file out of version
+control; `.env.local` is covered by the repository's ignore rules. You can also
+supply these values through your existing server environment.
+
+Stop the demo server with Ctrl+C, then **load the file explicitly**:
 
 ```sh
 node --env-file=.env.local --import tsx src/server/index.ts
 ```
 
-Placeholders are not usable credentials. `.env.local` is ignored by Git; verify
-that before committing. You can instead use your existing secret-management
-workflow. The app never asks for a key in the browser.
+`npm run dev` does not load `.env.local` for you. Restart after configuration
+changes. Open the app's **Workspace & safety** panel to inspect the model and
+enabled tools without displaying the key.
 
-Conversation-only live mode is the default. Bots discuss supplied information
-and the Coordinator can create groups. Workspace read, edit, and command tools
-are absent; no host project is captured. Saved local chat history is still read
-and written. Docker is not part of the active app.
+Live conversations can create bots, delegate messages, use saved memory, and
+start groups. With workspace tools off, agents have no project file or command
+tools. Public web search is enabled by default; set `TINKERFLEET_WEB_SEARCH=0`
+if you want to begin with just conversation. Live requests use the provider and
+can incur charges.
 
-## Public web search
+## 3. Add local tools
 
-Live mode enables OpenAI's hosted web-search tool by default. Ask for current
-public information or supply a public page URL. Responses can include clickable
-source links; inspect the source before relying on a claim. Page opening and
-in-page reading depend on model support. The tool does not control a logged-in
-browser, fill forms, or inherit browser cookies. The
-[OpenAI web-search guide](https://developers.openai.com/api/docs/guides/tools-web-search)
-describes supported actions and citations.
-
-Set `TINKERFLEET_WEB_SEARCH=0` to disable it; `1` or an unset value enables it in
-live mode. Other nonempty values are rejected. Demo mode never makes web requests.
-Web search is independent of `TINKERFLEET_WORKSPACE_TOOLS` and needs no local
-command approval. Queries go to the hosted provider. Keep private material out
-of search requests; retrieved pages are untrusted data, not permission to act.
-
-Search can incur tool charges in addition to model usage. The app's model-call
-and token counters are not a complete tool-charge ledger or billing receipt.
-See the provider's [web-search usage notes](https://developers.openai.com/api/docs/guides/tools-web-search#usage-notes)
-for current terms. No paid web-search verification is implied by offline tests.
-
-## Enable local workspace tools
-
-For a trusted practice folder, add:
+To let agents work on a practice project, add:
 
 ```dotenv
 TINKERFLEET_WORKSPACE_TOOLS=1
 TINKERFLEET_WORKSPACE=/absolute/path/to/your/practice-project
 ```
 
-Restart the server after changing configuration. Choose a small, non-sensitive
-folder you are prepared to modify. Bots can propose installed local tools and
-create or edit files, including new files in nested folders. The bundled `examples/tiny-project` is a
-practice option and contains a deliberate bug.
+Restart using the same explicit env-file command. Choose a small folder you are
+prepared to modify. If no workspace path is supplied, the server selects
+`examples/tiny-project` relative to its working directory. Run the server from
+the repository root so that default is predictable.
 
-**Approved edits change real files in the selected folder. Approved commands run
-locally with your user's permissions.** A working directory is not a sandbox:
-project code can access other resources allowed to that user. The launcher does not insert a shell; an explicitly proposed shell command is
-still allowed after review. Commands receive a small environment whitelist
-without inherited API credentials, plus time/output limits. These measures do not provide OS isolation.
+Ask a bot to read a file first. Then ask for a small edit and inspect the exact
+proposal before approving. Reads return data to the model; edits and local
+commands pause for your decision. Approved edits change real files. Approved
+commands run with your user permissions: their working directory is **not a
+sandbox**. See [capabilities](capabilities.md) for how tools become available and
+[workspace behavior](workspace.md) for the execution boundary.
 
-Read [workspace behavior](workspace.md) and [SECURITY.md](../SECURITY.md) before
-enabling tools. Other chats using the same folder can see real changes. Chat
-history separation does not isolate the filesystem.
+Web research is independent of local tools. It uses a hosted public-web tool,
+not your logged-in browser or its cookies. Page-reading support depends on the
+model. Check the returned sources as you would any other research.
+
+## Configuration reference
+
+These values are read by [the server entry point](../src/server/index.ts),
+[app wiring](../src/server/app.ts), and [runtime config](../src/server/config.ts).
+You do not need to set every option.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `TINKERFLEET_MODE` | `demo` | Set exactly `live` to use the model path |
+| `TINKERFLEET_MODEL` | Unset | Model ID; required for live provider calls |
+| `OPENAI_API_KEY` | Unset | Server-side credential for live provider calls |
+| `TINKERFLEET_PORT` | `4317` | Local port, from 1024 to 65535 |
+| `TINKERFLEET_WORKSPACE_TOOLS` | Off | `1` enables local tools; `0` disables them |
+| `TINKERFLEET_WORKSPACE` | `examples/tiny-project` | Selected folder, resolved from server working directory |
+| `TINKERFLEET_WEB_SEARCH` | On in live mode | `0` disables; `1` enables; demo never searches |
+| `TINKERFLEET_REASONING_EFFORT` | Model default | Optional `none`, `minimal`, or `low`, if supported by the model |
 
 ## Keep runs small
 
-`TINKERFLEET_REASONING_EFFORT=low` requests low reasoning effort from a compatible
-model. Accepted values are `none`, `minimal`, and `low`; unset leaves the model's
-default. Optional settings adjust these per-run limits:
+A *run* is the work started by one submitted message. Count limits are optional;
+token, output, and active runtime limits remain even when counts are unlimited.
 
-| Setting | Default | Maximum |
+| Variable | Default | Allowed range |
 | --- | --- | --- |
-| `TINKERFLEET_MAX_TURNS` | 0 (no count cap) | 64 when finite |
-| `TINKERFLEET_MAX_MODEL_CALLS` | 0 (no count cap) | 64 when finite |
-| `TINKERFLEET_MAX_OUTPUT_TOKENS` | 2,048 per response | 16,384 |
-| `TINKERFLEET_MAX_TOTAL_TOKENS` | 64,000 reported tokens | 1,000,000 |
-| `TINKERFLEET_MAX_RUN_MS` | 120,000 ms | 600,000 ms |
+| `TINKERFLEET_MAX_TURNS` | `0` | `0` for no SDK turn cap, or 1–64 |
+| `TINKERFLEET_MAX_MODEL_CALLS` | `0` | `0` for no model-call cap, or 1–64 |
+| `TINKERFLEET_MAX_OUTPUT_TOKENS` | `2048` | 1–16,384 per response |
+| `TINKERFLEET_MAX_TOTAL_TOKENS` | `64000` | 1–1,000,000 reported tokens per run |
+| `TINKERFLEET_MAX_RUN_MS` | `120000` | 1–600,000 milliseconds of active runtime |
 
-The two count limits accept `0` for unlimited counts or `1`–`64` for a finite
-cap. Output, token, and runtime settings must be positive. Unlimited counts do
-not remove token/runtime limits or the native command’s 15-second timeout.
-Invalid settings fail startup. A response crossing a reported token threshold
-has already been billed: a completed answer is retained, but subsequent calls
-and exhausted-budget function work are blocked. Primary and child runs have
-separate budgets and stop controls. These limits are not an overall spending cap.
+Invalid limit settings fail startup. A completed response can cross the usage
+threshold; the app keeps the answer and blocks further work. These are execution
+limits, not a guaranteed spending cap. `message_agent` and
+`start_group_conversation` create separate conversation runs with their own
+budgets. Nested `ask_*` agent calls within a group share that group run’s
+model-call, token, and runtime budgets. Stopping the primary does not stop an
+already-created child conversation run.
 
-Context is trimmed separately from billed usage. Recent history is bounded to
-8,000 characters. Older complete turns or complete tool-call/result groups are
-removed before breaking their structure; long tool output is shortened to 4,000
-characters with a notice. Exact tool arguments are not truncated. The current
-user input and required instructions remain intact; oversized input may fail
-rather than being silently altered. Trimming does not remove saved chat history.
+A native command has a separate **15-second timeout**. Removing turn limits or
+raising the run budget does not extend that command timeout.
 
-## What persists and what leaves the machine
+## Saved state and model context
 
-Live requests can include prompts, persona instructions, bounded same-chat
-history, saved notes for the replying bot, group briefs, and—with workspace tools enabled—file content and tool
-output. SDK tracing is disabled, but inference still goes to OpenAI. Consult the
-[API data controls](https://platform.openai.com/docs/guides/your-data) for provider
-handling.
+The server saves profiles and chat views in `.tinkerfleet/conversations.json`.
+Per-bot notes live in `.tinkerfleet/conversations.json.memories.json`. Both are
+private local data in a Git-ignored directory. They can contain your messages,
+drafts, notes, and results; do not include that directory in a shared source copy.
 
-Profiles are saved in the local server library, with migration from older browser
-preferences. Private conversation views, drafts, and results
-persist in `.tinkerfleet/conversations.json`; this directory is ignored by Git.
-Per-bot memory is stored separately at `.tinkerfleet/conversations.json.memories.json`
-(the configured state path plus `.memories.json`). It is injected on that bot’s
-next turn across chats. View, add, or delete notes using the library’s **Memory**
-control; `remember`, `recall`, and `forget` provide the model-side tools. Each bot
-has at most 20 notes, 2,000 characters per note and 8,000 total. There is no
-automatic transcript summary or import of old history.
-Neither store is encrypted or a complete secret scrubber. Keep both out of source archives.
-Restart keeps history but cancels unfinished work and denies pending approvals;
-raw SDK state and approval grants cannot resume. Real file changes are not undone.
+Live model input includes the bot's instructions, saved notes, bounded same-chat
+history, and relevant tool results. The app does not automatically import old
+transcripts into memory. Read [Memory](memory.md) to understand the distinction
+between stored history and the context a model actually receives.
 
-The server binds to `127.0.0.1`. Keep it local; do not expose it through a tunnel.
-`TINKERFLEET_PORT` selects a port from 1024 to 65535. For the built UI, run
-`npm run build` followed by `npm start`. This remains a single-user teaching app.
+Restart keeps saved history but stops unfinished runs and denies their pending
+approvals. It cannot undo a completed edit or command. Keep the server local; it
+binds to `127.0.0.1` and is intended for one person learning on their own machine.
+
+## Run the built interface
+
+For a production frontend build:
+
+```sh
+npm run build
+npm start
+```
+
+To use the same local env file with that build, replace `npm start` with:
+
+```sh
+node --env-file=.env.local --import tsx src/server/index.ts --production
+```
+
+Next, follow [Build an agent app](build-an-agent-app.md), run the
+[six lessons](../lessons/README.md), or read [Testing](testing.md) before changing
+an implementation detail.

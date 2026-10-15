@@ -1,89 +1,55 @@
-# Security policy and trust model
+# Security and local execution
 
-Tinkerfleet is a single-user localhost teaching app. Use trusted projects and
-review every consequential action. It is not a sandbox for hostile code or a
-service for untrusted tenants.
+Tinkerfleet is a single-user localhost learning app. It uses native files and processes on the machine running the server. It does not provide an operating-system sandbox or isolation between untrusted users.
 
-## Three modes to distinguish
+## What each mode does
 
-- **Demo:** deterministic simulation; no model calls, real edits, or commands.
-- **Live conversation:** real remote inference; workspace tools disabled by
-  default. Bots can discuss supplied text and create Coordinator-led groups.
-- **Live workspace tools:** explicit `TINKERFLEET_WORKSPACE_TOOLS=1` enables reads
-  and approval-gated edits/commands in a selected local project.
+| Mode | Model calls | Workspace effects |
+| --- | --- | --- |
+| Demo | None; scripted responses | Edits and command output are simulated |
+| Live chat | Requests to the configured provider | Workspace tools are off by default |
+| Live with workspace tools | Requests to the configured provider | Reads are enabled; edits and commands require exact approval |
 
-The active app uses native local execution. Docker is not required or used.
-Approved edits modify real files. Approved commands run with the user's OS
-permissions. Their working directory does not restrict access to other files,
-network endpoints, or processes that the user's account can reach.
+`TINKERFLEET_WORKSPACE_TOOLS=1` enables local workspace tools. Docker is not part of the active execution path. Demo profile and memory controls still save local app data; “simulated” refers to model work and workspace actions, not every UI change.
 
-## What the app enforces
+## Files, commands, and approvals
 
-The server owns tool enablement, input validation, selected workspace configuration,
-and exact-action approvals. A persona's purpose cannot grant capabilities. A direct Coordinator can create
-up to three named agent profiles per run;
-profiles are validated and saved in the bounded local library. Creation does not
-grant command authority or alter participants of existing conversations.
-Approvals are expiring and single-use, bound to the run and action. Denial,
-cancellation, stale state, and invalid decisions cannot authorize execution.
-SDK mutation tools also pause for approval before execution.
+The selected-folder policy constrains the dedicated file listing, read, and edit tools. It validates paths, excludes sensitive or unsupported files, checks symlinks, and bounds content. An approved edit changes a real file.
 
-Commands resolve from the server's PATH or an explicit absolute executable path.
-Approval binds the resolved file identity, which is rechecked before execution.
-The launcher uses `shell:false`; an explicitly approved shell executable can
-still interpret its supplied script. The environment is limited to HOME, PATH,
-TMPDIR, LANG, and configured LC_ALL/LC_CTYPE, excluding inherited server API keys.
-Time and output are bounded. This does not make project
-code safe. A process can read accessible credentials from disk, call the network,
-or spawn subprocesses with the authority available to the user. Choose a trusted
-practice folder and inspect the exact command, not just its description.
+Commands have a broader boundary: they run with the server user’s operating-system permissions. Their starting directory does not restrict which other files, networks, or processes they can access. There is no fixed executable allowlist. The app can resolve an installed command through its server PATH or an explicit absolute executable path.
 
-The server binds to loopback and validates Host/Origin and local mutation tokens.
-These checks resist unrelated websites; they are not authentication against a
-malicious process or user on the same machine. Do not expose the app publicly.
+The command launcher uses separate executable and argument fields with `shell: false`; it does not implicitly interpret shell syntax. If the user explicitly approves a shell executable and script arguments, that shell can interpret the script. Review the actual executable and arguments, including any script or project code they invoke.
 
-## Conversations are context boundaries
+The app binds approval to the run and exact action, including a command’s resolved executable identity, and rechecks that identity before launch. Decisions expire and are single-use. Denial, cancellation, or an invalid decision does not authorize the action. SDK edits and commands also pause for approval. Time and output limits and a reduced child-process environment limit exposure, but do not remove a process’s ability to read accessible files or launch subprocesses. Server API keys are not deliberately inherited in that child environment; accessible credentials on disk remain accessible to commands run as the user.
 
-Only bounded history from the current chat supplies model context. A direct
-Coordinator may create one group per run with selected agents and a bounded
-brief; private source history is not copied wholesale. The group has a separate
-budget and stop control. Stop it explicitly if it has already been created.
+Stopping a run does not undo completed edits or command effects. See [Workspace](docs/workspace.md) and [Approvals](docs/approvals.md) for the execution path.
 
-Chats do not isolate the filesystem or provide separate OS accounts. Two chats
-using the same workspace can observe each other's real changes.
+## Bots, conversations, and memory
 
-## Public-web research
+A profile’s personality does not grant new tools. Ordinary agents share the configured capabilities. The primary has additional coordination tools for creating agents, messaging them, and starting groups. A message or group brief supplies context to another conversation; it is not authorization for that agent to bypass a workspace approval.
 
-Hosted web search is enabled by default in live mode and disabled with
-`TINKERFLEET_WEB_SEARCH=0`. It is separate from native workspace tools and does
-not use the user's logged-in browser or cookies. Queries are sent to the provider
-and may incur additional tool charges. Keep private material out of queries.
-Treat retrieved pages as untrusted input; they cannot authorize local commands,
-change tool configuration, or bypass approvals. Inspect cited sources rather than treating a
-search result as verified truth. Demo mode does not browse.
+Conversation history is scoped to its chat. Per-bot memory deliberately crosses conversations for the same bot. Memory handlers bind the owner on the server; ordinary agents cannot select another bot’s memory ID as their owner. Notes are bounded, viewable, and deletable in **Bot library → Memory**. They are model context, not privileged instructions. See [Memory](docs/memory.md) for the exact lifecycle and limits.
 
-## Secrets, inference, and persistence
+These are application context boundaries, not OS isolation. Chats using one folder can see each other’s real file changes. A child conversation may continue independently after it starts; use its own stop control when needed.
 
-Keep API keys server-side and out of `VITE_` variables, prompts, profiles, test
-fixtures, and source control. Live inference sends supplied conversation content,
-profile instructions, history, and group briefs to OpenAI. With workspace tools,
-file contents and command output may also be sent. Disabling SDK tracing does
-not make inference local. Pattern filters are not a complete secret detector.
+## Provider context and public-web tools
 
-The private, Git-ignored `.tinkerfleet/conversations.json` stores sanitized UI
-views, including drafts, messages, and artifacts. It is not encrypted or safe to
-publish. It excludes raw SDK state and approval grants. Restart retains history
-but cancels unfinished work and denies pending approvals. It does not undo files
-already changed or effects of commands already run.
+Live requests can include prompts, persona purposes, bounded conversation history, coordination briefs, and the replying bot’s saved memories. Workspace reads and command results may become model context when those tools are enabled. Saved memory is stored locally but is sent to the provider when used; local storage does not mean local inference. SDK tracing is disabled, but that does not prevent the inference request itself.
 
-Per-run model limits are not a guaranteed monetary cap. The primary and a child
-group may each consume a separate budget; provider accounting and requests that
-cross a token threshold still matter.
+Hosted web search is enabled by default in live mode and can be disabled with `TINKERFLEET_WEB_SEARCH=0`. It uses provider-hosted web tools, not the user’s logged-in browser or cookies. Queries go to the provider and tool use may have additional charges. Retrieved content is untrusted input and cannot grant tool permissions or approve commands. Demo mode does not browse.
 
-## Reporting a vulnerability
+Keep credentials out of prompts, profiles, memory, and search queries. Redaction and pattern checks help with recognizable secrets; they are not a complete privacy filter. Keep API keys in server configuration, never browser bundles or `VITE_` variables.
 
-Do not post credentials, private source, or real prompts in public issues. Use
-the repository's private GitHub security advisory channel if enabled; otherwise
-ask a maintainer for a private reporting route. Include a minimal synthetic
-reproduction, affected commit, platform, expected boundary, and observed result.
-This educational project does not promise production support or a response SLA.
+## Local storage and server access
+
+The Git-ignored `.tinkerfleet/conversations.json` contains saved conversations, profiles, and other public app views such as drafts and artifacts. Bot notes are stored separately in `.tinkerfleet/conversations.json.memories.json`. “Public view” means safe for this app’s browser contract, not safe to publish. Neither file is encrypted. Do not share them as debugging fixtures. Raw SDK state and approval grants are not restored from that file.
+
+Restart preserves saved history but cancels unfinished runs and denies pending approvals. It cannot reverse previous filesystem or command effects.
+
+The server binds to loopback and checks Host, Origin, and mutation tokens. These protect against unrelated web pages; they are not multi-user authentication or protection from a malicious local process. Do not expose this server as a public service.
+
+Turn and model-call count limits can be disabled with zero. Token, runtime, and output budgets still apply. These are execution budgets, not guaranteed monetary caps: separate runs and child conversations can incur separate usage, and provider accounting remains authoritative.
+
+## Report a problem privately
+
+Use the repository’s private GitHub security advisory channel if enabled. Otherwise ask a maintainer for a private reporting route before sharing sensitive details. Include a synthetic reproduction, affected commit, platform, expected boundary, and observed behavior. Do not publish real credentials, private source, or personal conversation data. This learning project does not promise production support or a response SLA.

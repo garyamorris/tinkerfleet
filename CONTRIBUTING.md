@@ -1,53 +1,42 @@
 # Contributing
 
-Tinkerfleet should remain small enough to learn from. Prefer a narrow, readable
-change to a new abstraction or dependency. Explain the teaching value of a change.
+Tinkerfleet is an agent app you can learn from by reading and changing it. A useful contribution makes a behavior easier to understand, demonstrates one capability clearly, or fixes a concrete problem. Prefer a small, readable change over a framework added for possible future needs.
 
-## Local development
+## Get the app running
 
-Use Node.js 24+, then `npm ci` and `npm run dev`. The server and Vite development
-middleware share http://localhost:4317. Demo mode is the default. Do not put real
-credentials in tests, screenshots, fixtures, issues, or pull requests.
+Use Node.js 24 or later:
 
-Before proposing a change, run:
+```sh
+npm ci
+npm run dev
+```
+
+Open http://localhost:4317. The default demo needs no key and makes no provider calls. Follow [Build an agent app](docs/build-an-agent-app.md) for the code path, then [Extending](docs/extending.md) for small exercises. [Memory](docs/memory.md) covers per-bot notes.
+
+## Make the change easy to follow
+
+Describe the problem and the resulting behavior. A reviewer should be able to trace one example from its input to the server handler, tool or storage operation, and visible result. Explain an unfamiliar abstraction where it is introduced; avoid adding layers that obscure a short flow.
+
+Keep examples synthetic and useful to a learner. Leave credentials, personal prompts, private file contents, and machine-specific paths out of fixtures, screenshots, issues, and pull requests. Preserve the distinction between a scripted demonstration, a fake-model integration test, and actual provider or command execution.
+
+Profiles express personality and purpose. They do not grant tools. Tool enablement and validation remain server-owned. Memory is owned by each bot, and file edits and commands continue through their exact approval flow. If a change alters one of these behaviors, update the explanation and the tests that demonstrate it.
+
+## Verify what changed
+
+Run a focused test while developing. Before submitting executable changes, run the project’s combined check:
 
 ```sh
 npm run check
-for n in 1 2 3 4 5 6; do npm run "lesson:$n"; done
 ```
 
-The loop syntax above is for a POSIX shell; on other shells run the six commands
-individually. Check browser behavior separately: complete and deny a demo run,
-review both edit and command approvals, stop a pending run, customize an avatar,
-and inspect keyboard focus and a narrow viewport. Record the browser and viewport
-used; do not describe simulated command output as an actual test execution.
-Report skipped checks accurately. Offline tests must remain offline. Do not turn
-on paid inference as part of a test suite. Runner tests use temporary local folders.
+It typechecks, runs the offline test suite, and builds the app. See [Testing](docs/testing.md) for choosing useful cases and for the distinction between fake and real execution. Tests must not silently start paid inference. Native-runner tests should use temporary folders.
 
-## Keep the boundaries obvious
+Run the relevant `npm run lesson:1` through `npm run lesson:6` command when changing what a lesson teaches. For UI changes, inspect the affected flow in a browser, including keyboard focus and a narrow viewport. An approval change deserves both an approved and a declined action; a memory change deserves checking that another bot’s notes remain separate. Report what you actually checked and any limitations. Documentation-only changes need accurate examples and links, not an unrelated full test campaign.
 
-- Tool names, schema validation, permissions, and approval decisions are server-owned.
-- An avatar's name, color, or shape cannot grant a tool or change instructions.
-- Approved edits change real files in the selected folder. Commands run as the user.
-- Keep shell execution disabled, the command allowlist narrow, and the local-permission warning clear.
-- Never send a key to the browser or put one in a `VITE_` environment variable.
-- Keep no-key demo output clearly labeled as simulated.
-- Preserve exact, expiring, single-use approval binding and fail-closed behavior.
-- Update the relevant lesson and negative tests when changing a boundary.
+## Send a reviewable contribution
 
-For a bug, include Node version, operating system, mode, expected behavior, actual
-behavior, and a minimal synthetic example. Redact prompts, file contents, paths,
-tokens, and any other private data. A security issue belongs in a private report;
-see [SECURITY.md](SECURITY.md).
+Include the concrete before/after behavior, why it helps the app or its learning path, and the checks you ran. A short description is enough for a small fix. Keep new dependencies justified by the problem they solve.
 
-## Review checklist
+For a bug report, include the operating system, Node version, app mode, and a small synthetic reproduction. Describe expected and actual behavior. Send security-sensitive details privately using the route in [SECURITY.md](SECURITY.md).
 
-1. Can a beginner follow the data flow without reading an unrelated framework?
-2. Are live requests, simulated output, and actual execution distinguishable?
-3. Do malformed input, denial, replay, restart, and an unavailable or changed workspace fail safely?
-4. Does the change preserve keyboard access, readable focus, and responsive layout?
-5. Are examples original, public-safe, and free of credentials or private content?
-6. Have docs and tests been updated for the exact behavior, not just the happy path?
-
-Changes are submitted under the repository's MIT license. No contribution requires
-a model call or access to a private account.
+Contributions use the repository’s MIT license. You do not need a provider account or a paid model call to contribute.

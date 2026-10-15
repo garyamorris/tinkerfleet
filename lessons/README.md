@@ -1,133 +1,175 @@
-# Six runnable lessons
+# Learn to build agent tools
 
-These lessons are small executable explanations, not slideware or partial files
-that require credentials. Run them from the repository root after `npm ci`.
-They use `node:assert/strict` and the actual application modules where practical.
-Each process prints what it established and fails if an expected boundary changes.
+These six short programs walk from configuring an agent to approving a real local
+action. Run them from the repository root with Node.js 24+ after `npm ci`.
+They make no model requests and need no API key. Each uses assertions: a successful
+run prints its explanation and exits normally; a failed assertion stops the lesson.
 
-All six need **no API key or model call**. Agent construction is separate from
-inference. Native file/command lessons use temporary fixtures; they do not grant
-permission to experiment on private projects. Docker is not required.
+Read a source file, predict its result, run it, then try the suggested change.
+Lessons 5 and 6 create and remove their own temporary folders. They do not edit
+the example project or your selected app workspace.
 
-A suggested order is 1 → 2 → 3 → 4 → 5 → 6. Read the short source file, run it,
-change one thing, and predict the assertion that should fail.
-
-## 1. The coordinator
+## 1. Give an agent a job
 
 ```sh
 npm run lesson:1
 ```
 
-Source: [01-coordinator.ts](01-coordinator.ts)
+**Learn:** an SDK `Agent` holds instructions and an explicit set of tools.
+Constructing one does not call a model.
 
-Construct the real fleet factory and inspect the coordinator's name,
-instructions, tools, and absence of handoffs. Configuration is not execution:
-creating an SDK `Agent` does not make an API request.
+**What happens:** the lesson constructs Orbit through the real fleet factory,
+checks that its instructions retain responsibility for the task, and verifies
+that this single-agent configuration has no handoffs or tools.
 
-The primary owns the user's task and has coordination tools. It can also use
-the same enabled local tools as ordinary agents. Personality instructions guide
-behavior; the server supplies tools and enforces approvals.
+**Expect:** `Primary agent: one task owner, explicit tools, zero model calls.`
 
-**Exercise:** would changing an agent's personality grant a tool that the server
-did not supply?
+**Try:** change Orbit's name and purpose. The tool count should remain zero.
+What would you need to supply to give it a file-reading capability?
 
-## 2. Agents as tools
+**Source:** [01-coordinator.ts](01-coordinator.ts), then
+[`createFleetAgents` in sdk.ts](../src/server/sdk.ts).
+
+## 2. Give individuals tools and a way to collaborate
 
 ```sh
 npm run lesson:2
 ```
 
-Source: [02-specialists.ts](02-specialists.ts)
+**Learn:** names and personalities describe individuals; the server determines
+their capabilities. An agent can also become a callable tool through `asTool`.
 
-Inspect how named agents can return results through an `asTool` wrapper without
-invoking a remote model. Scout, Maker, and Checker are example personalities,
-not fixed capability classes. Ordinary agents share enabled local/web tools.
-The primary's messaging and group tools coordinate work through explicit briefs.
+**What happens:** Orbit, Ada, and Quill receive the same synthetic read and
+approval-required mutation tools. The lesson checks that Orbit additionally has
+`ask_ada` and `ask_quill`, and constructs an `asTool` wrapper for Ada. Neither
+the synthetic tools nor any model is invoked.
 
-**Exercise:** identify the difference between a personality instruction and a
-server-enforced approval before a local action.
+**Expect:** `Ada and Quill: different personalities, the same enabled tools.`
 
-## 3. Tool contracts
+**Try:** change Ada's purpose while keeping the supplied tools. Then remove
+`mutationTools` from the factory call and predict which assertions will fail.
+
+**Source:** [02-specialists.ts](02-specialists.ts), then
+[`createFleetAgents` in sdk.ts](../src/server/sdk.ts).
+
+## 3. Define the tool's input contract
 
 ```sh
 npm run lesson:3
 ```
 
-Source: [03-tools.ts](03-tools.ts)
+**Learn:** validation checks the shape of a request before it reaches execution.
+It is separate from approving the request.
 
-Use the real runner validator on ordinary JSON. It accepts a supported command,
-returns a detached copy, and rejects traversal, hidden paths, arbitrary shell
-execution, dependency installation, and an unexpected edit field.
+**What happens:** the app's actual validator accepts structured command and edit
+proposals, returns a detached copy, and rejects file traversal, absolute paths
+for the relative-path helper, a NUL character in an argument, and an unexpected
+edit field. It identifies `.env` and `node_modules` as excluded paths. No files
+are read and no commands are executed.
 
-Validation answers “is this a well-formed supported request?” It does not answer
-“did a person approve it?” or “is arbitrary code safe?” A valid `node --test`
-request still runs project code and still needs confinement.
+**Expect:** `Tools: accepted exact structured input; rejected file traversal,
+invalid arguments, and extra fields.`
 
-**Exercise:** add assertions for `../../outside.js`, an absolute edit path, a
-command argument containing a newline, and a binary edit. Keep the commands
-unexecuted. Which layer rejects each input?
+The validator deliberately accepts `sh` with `['-c', 'printf approved']`.
+The active app supports installed local executables with structured arguments,
+including an explicitly requested shell. This lesson does not resolve an
+executable or grant approval. The native runner performs those later steps.
 
-## 4. Human approvals
+**Try:** add an unknown field to an otherwise valid command and assert rejection.
+Change the shell script and observe that it remains valid input: what must a
+person see before approving it?
+
+**Source:** [03-tools.ts](03-tools.ts),
+[runner-policy.ts](../src/server/runner-policy.ts), then
+[native-runner.ts](../src/server/native-runner.ts).
+
+## 4. Bind approval to one exact action
 
 ```sh
 npm run lesson:4
 ```
 
-Source: [04-approvals.ts](04-approvals.ts)
+**Learn:** an approval is a decision about a particular action in a particular
+run, and can be consumed once.
 
-Exercise the real `ApprovalStore` with a deterministic clock. A request is
-pending, approval makes it eligible, and consumption spends it once. A changed
-action or another run cannot consume the decision. Denial, expiry, replay, and a
-fresh process-equivalent store all reject execution.
+**What happens:** the real `ApprovalStore` uses a deterministic clock. The lesson
+tests pending, approved, consumed, denied, and expired decisions. A changed
+action, different run, repeated consumption, and a new store all fail. It also
+checks canonical JSON ordering and a digest that changes with the run ID.
+There is no file or process execution.
 
-The canonical digest is stable across object-key order, but changes when the run
-or action values change. This is exact-action binding, not identity proof.
-The full live integration also pauses and resumes actual SDK `RunState`; this
-lesson isolates the application-level decision mechanism.
+**Expect:** `Approvals: pending → approved → consumed, exactly once.`
 
-**Exercise:** prepare two actions in one run, call `invalidateRun`, and assert that
-neither can be used. Why must consumption happen before awaiting a process launch?
+**Try:** request two actions for one run, call `invalidateRun`, and assert that
+neither can be consumed. In the app, SDK interruption and resume sit around this
+store; the lesson isolates the decision mechanism.
 
-## 5. Local tools
+**Source:** [04-approvals.ts](04-approvals.ts), then
+[approval.ts](../src/server/approval.ts).
+
+## 5. Execute an approved local action
 
 ```sh
 npm run lesson:5
 ```
 
-Source: [05-local-tools.ts](05-local-tools.ts)
+**Learn:** the native runner connects a reviewed proposal to a real file change
+or process execution.
 
-Follow the native action boundary: validate a proposal, review the exact action,
-consume its approval once, and report what actually happened. Local commands run
-with the user's permissions. A working directory and executable identity check
-are not an OS sandbox. Keep examples in disposable temporary fixtures.
+**What happens:** in a temporary folder, the lesson first refuses an unapproved
+edit and checks that the file is unchanged. It approves the edit, verifies the
+new addition code, and rejects replay. It then approves creation of
+`notes/results/result.txt`, including its missing parent directories, and approves
+a local Node command that reads the new file. The command action is printed for
+inspection. The runner shuts down and removes the fixture on exit.
 
-**Exercise:** explain why `shell:false` does not stop an explicitly approved
-interpreter from accessing other files that the user can read.
+**Expect:** messages confirming the real edit, nested creation, and local Node
+read. The script calls `approve` itself to demonstrate the boundary; the app
+presents that decision to the user.
 
-## 6. The selected workspace
+**Try:** change the proposed file content and the corresponding assertion.
+Then remove one approval and predict where execution will stop.
+
+Commands run with the user's permissions. The selected folder is a working
+directory, not an OS sandbox. `shell:false` does not prevent an explicitly
+approved interpreter from accessing other resources.
+
+**Source:** [05-local-tools.ts](05-local-tools.ts),
+[native-runner.ts](../src/server/native-runner.ts), and
+[the approval guide](../docs/approvals.md).
+
+## 6. Decide what enters file context
 
 ```sh
 npm run lesson:6
 ```
 
-Source: [06-workspace.ts](06-workspace.ts)
+**Learn:** a workspace snapshot is a filtered view with a digest of its captured
+state. It does not create an isolated copy of the project.
 
-Inspect the selected-folder policy and distinguish conversation history from
-real file state. Approved native edits persist in the selected folder; two chats
-using that folder do not get isolated copies. Use synthetic temporary fixtures.
+**What happens:** the fixture contains source, a synthetic `.env`, a dependency
+folder, a symlink, and hard-linked files. Only `sum.js` enters the snapshot.
+The lesson reads it, rejects excluded and traversal reads, changes its content,
+and checks that a fresh snapshot has a different digest. It runs no command and
+removes the temporary fixture on exit.
 
-**Exercise:** explain why restarting the server invalidates an approval but does
-not undo a file edit that already completed.
+**Expect:** `Workspace: read allowed source, excluded hidden files, dependencies,
+symlinks and hard links.`
 
-## From the lessons to the complete app
+**Try:** add a normal text file before the first snapshot and update the expected
+file list. Why should a file change after review require a new approval?
+Lesson 6 shows the digest change; the native-runner tests verify stale approvals
+are rejected.
 
-Read [the architecture walkthrough](../docs/architecture.md), then follow a demo
-run through the UI. Finally inspect `src/server/sdk.ts`, `approval.ts`, and
-`native-runner.ts` together. The important transition is from describing a request to
-validating, approving, executing, and reporting that exact request.
+**Source:** [06-workspace.ts](06-workspace.ts),
+[native-runner.ts](../src/server/native-runner.ts), and
+[workspace behavior](../docs/workspace.md).
 
-The app's tests additionally exercise real SDK orchestration with a fake model,
-including interruptions and resume. A fake model is useful for deterministic
-control-flow testing; it does not validate the remote service or spend tokens.
-Enabling live mode is a separate decision documented in
-[setup and privacy](../docs/setup.md).
+## Connect the pieces
+
+Follow the [architecture walkthrough](../docs/architecture.md) to see the HTTP
+app, SDK adapter, approval store, and native runner together. Use the
+[tiny addition exercise](../examples/tiny-project/README.md) for a small repair
+you can inspect yourself. The [testing guide](../docs/testing.md) explains which
+checks use scripted responses, which perform real local execution, and what
+requires a separate live-provider check.

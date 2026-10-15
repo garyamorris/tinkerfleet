@@ -1,145 +1,185 @@
-# Troubleshooting
+# Understand what went wrong
 
-## The demo repeats the same task
+An agent app combines a browser, a local server, a model, saved state, and tools.
+When something fails, first identify which layer reported it. The steps below
+help you diagnose the mechanism rather than repeatedly sending the same prompt.
 
-Demo mode is scripted around tiny-project and does not answer arbitrary coding
-questions. A custom persona purpose only guides a real model in live mode. Demo
-completion is not evidence of file edits or command execution.
+## The demo repeats itself or ignores my request
 
-## Startup or dependency installation fails
+The no-key demo is a script, not a model. It demonstrates a few known flows,
+including the tiny-project repair. A custom purpose can be saved there, but it
+does not generate new intelligence.
 
-Use Node.js 24+ and run `npm ci` from the repository root. Keep the lockfile;
-installation normally needs package-registry access. If port 4317 is occupied,
-stop the previous app or set `TINKERFLEET_PORT` to an available port from 1024 to
-65535. Keep the server local.
+Check the mode in **Workspace & safety**. Use the documented demo prompts to
+learn the interaction, or follow [setup](setup.md) to connect a live model.
 
-## Live chat is not ready
+## The app will not start
 
-Set `TINKERFLEET_MODE=live`, a usable `TINKERFLEET_MODEL`, and a server-side
-`OPENAI_API_KEY`. A `.env.local` file is not loaded automatically: use
-`node --env-file=.env.local --import tsx src/server/index.ts`. Never print a key
-to confirm it exists. Model and reasoning-effort support depend on the selected
-provider model. Invalid local budget settings fail startup.
+From the repository root, check `node --version`; this project needs Node.js
+24 or later. Run `npm ci` to install the locked dependencies. Read the first
+terminal error before retrying.
 
-## The bot cannot read or change files
+If port 4317 is busy, stop the server you started earlier or set
+`TINKERFLEET_PORT` to an available port between 1024 and 65535. Open that port in
+your browser. Invalid configuration values also stop startup; compare them with
+[the configuration reference](setup.md#configuration-reference).
 
-Conversation-only live mode has no workspace tools. To enable them, set
-`TINKERFLEET_WORKSPACE_TOOLS=1` and select a trusted folder with
-`TINKERFLEET_WORKSPACE`. Restart the server. An unavailable or invalid selected
-folder fails closed. Docker is not required.
+## I edited the env file, but the app still uses the old settings
 
-Review the selected folder before approving anything: approved edits change real
-files and commands run under your user's permissions. Their working directory
-is not a sandbox. A custom purpose cannot enable tools or bypass approvals.
+The Node server reads its environment at startup. The regular dev command does
+not automatically load `.env.local`.
 
-## Orbit says it must delegate a simple file task
+Stop the old server, then start from the repository root with:
 
-With workspace tools enabled, the Coordinator has direct read, edit, and command
-tools. It can handle a simple local task itself and request exact approval for
-an edit or command. Groups are for useful collaboration. Ordinary agents have the same enabled
-local tools, regardless of their names.
-Confirm the server is running the current code and the workspace-tools flag is
-on; persona wording alone cannot enable missing tools.
+```sh
+node --env-file=.env.local --import tsx src/server/index.ts
+```
 
-File-tool paths must be relative to the selected root. If you explicitly want a
-command to target another absolute path, that path can be a command argument,
-subject to your OS permissions and review. This does not expand the relative
-file-tool API or make the working directory a sandbox.
+Check the mode, model, and tools in **Workspace & safety**. Do not print the API
+key as a diagnostic. Live mode requires `TINKERFLEET_MODE=live`, a model ID in
+`TINKERFLEET_MODEL`, and a server-side `OPENAI_API_KEY`.
 
-## An approval is stale or already used
+## Live mode is configured, but the provider rejects a request
 
-A decision applies to one exact action in one run and chat. Denial, expiry,
-cancellation, or restart invalidates it. A failed action does not restore its
-spent approval. Review a fresh proposal rather than replaying the old one.
+Local readiness means the app has configuration; it does not prove account
+access to the selected model or tool. Read the reported provider error. Check
+that the model is available to your account and supports the requested features.
+If you set reasoning effort, check that the model accepts it, or remove that
+optional setting and restart.
 
-## My file changed, but another chat does not mention it
+A provider quota error differs from Tinkerfleet's own run budget. Use the next
+section for a message explicitly saying the local token budget was reached.
+Never paste a key into a chat or issue report.
 
-File state and conversation context are different. Chats keep separate message
-histories, but workspace-enabled runs use the real selected folder. Another chat
-may observe a file change when it reads the folder; it does not automatically
-receive the other chat's conversation or artifacts. Restart does not undo files.
+## A run reaches a turn, token, or time limit
 
-## The practice project's tests fail
+One user message can produce several model/tool exchanges. SDK turn and
+model-call caps default to `0`, meaning no count cap. A finite configured cap
+can still stop a run. Token and active-runtime budgets apply independently.
 
-`examples/tiny-project` contains a deliberate addition bug. Its tests are separate
-from repository checks. A demo only simulates repair. An approved live native edit
-can actually repair the fixture; use a disposable copy if you want to repeat it.
+Read **Workspace & safety** and the error to identify the limit. The default
+total is 64,000 reported tokens per run and active runtime is 120 seconds. A
+completed answer that crosses a usage threshold is retained, while further work
+is blocked. Review the result and any completed actions before submitting a
+follow-up with a fresh budget.
 
-## History cannot be loaded or saved
+Context trimming is separate: it shortens what is sent to the model while
+preserving saved history and complete tool-call/result groups. Raising limits
+can increase usage and does not guarantee completion. See
+[run limits](setup.md#keep-runs-small).
 
-The private store is `.tinkerfleet/conversations.json`. Check access and its
-limits: 100 conversations, 200 runs, and 8 MiB. Corruption stops startup rather
-than replacing history. Preserve a private backup before repair; never publish
-its contents. Restart restores history but stops unfinished runs and denies
-pending decisions.
+## A local command stops after about 15 seconds
 
-## A new bot is missing from an existing conversation
+Native commands have a separate 15-second timeout. Unlimited model turns and a
+larger run budget do not extend it. A long install, build, or interactive process
+may therefore stop even when the agent still has budget.
 
-Creating a bot saves it in the server library and makes it available to the
-Coordinator. It does not change the participants of a chat already created. Use
-**Open this bot’s chat** on the creation message to visit its new direct chat, or ask the Coordinator
-to include the bot in a new group. A group can contain the primary plus up to seven ordinary agents.
+Inspect the command's output and termination result. Prefer a smaller,
+noninteractive check that fits the runner. Do not assume a timed-out command
+made no changes, or repeatedly approve the same operation without checking its
+previous effects. This timeout remains a limitation of the teaching runner.
 
-Only a direct Coordinator can create bots. A run can create at most three, and
-the library holds up to 32 profiles. In demo mode, use the exact documented
-Ada example; arbitrary requests are not interpreted by a model.
+## A bot cannot read or edit my project
 
-## Browser verification is separate
+By default, live mode has no workspace tools. Set
+`TINKERFLEET_WORKSPACE_TOOLS=1`, select a practice folder with
+`TINKERFLEET_WORKSPACE`, and restart. Check the selected path and tool availability
+in **Workspace & safety**. An unavailable folder prevents execution.
 
-`npm run check` checks types, Node tests, and production build. See the
-[handover](../HANDOVER.txt) for browser evidence and limitations. A rendered
-button alone does not prove its action completed.
+The primary and ordinary agents have the same enabled local tools. Renaming a
+bot or changing its personality cannot turn them on. The primary can do a simple
+local task itself; it does not need to delegate every edit.
 
-## A live answer does not search or read a page
+File tools use paths relative to the selected root. For commands, a trusted
+absolute working directory inside that root is normalized before approval;
+outside directories and traversal are rejected. Command arguments are different:
+they may name an explicitly requested absolute destination and operate with your
+OS permissions. See [workspace behavior](workspace.md).
 
-Check that `TINKERFLEET_WEB_SEARCH` is not `0`, and that the selected model supports
-the hosted web-search actions you need. Ask explicitly for a current public-web
-lookup and inspect any returned sources. Page opening depends on model support.
-Private, authenticated, or inaccessible pages are not made accessible by this
-tool. Demo mode is always scripted and performs no web requests.
+## A command fails before approval
 
-## A run reaches its budget
+Preparation checks the executable, arguments, and working directory before
+showing a proposal. An installed command must be available on the server's PATH
+or supplied as an absolute executable path. The server's environment may differ
+from an interactive terminal.
 
-The default total is 64,000 reported tokens per run. A completed response that
-crosses the threshold is retained, but the app blocks another model call or
-exhausted-budget function action. Review the result before starting a new turn.
-Recent context is shortened independently; stored history is preserved. Tool
-calls and results are kept together, and exact action arguments are not cut.
-See [setup](setup.md#keep-runs-small) for configurable limits. Raising a limit
-can increase cost; it does not guarantee task completion.
+Read the validation error, verify the tool is installed, and check the proposed
+working directory. Ask for a corrected proposal. A failed preparation is not
+evidence that the command ran. The app does not install missing tools for you.
 
-## A bot does not remember an older conversation
+## An approval is stale, or the executable changed
 
-Transcript context remains scoped to its chat. Use the bot library’s **Memory**
-control to save a note for that same bot across chats, or ask it to remember one.
-Old transcripts are not imported automatically. Inspect the saved notes and
-limits: 20 per bot, 2,000 characters each, 8,000 total. Notes apply on its next
-turn and are sent to the provider.
+Approvals bind to one exact action and are single-use. Denial, expiry,
+cancellation, or restart invalidates them. Command preparation also records the
+resolved executable's identity; replacing that executable requires a fresh
+proposal.
 
-## A command times out despite unlimited turns
+Review a new action instead of replaying an old decision. A failed execution
+does not restore a consumed approval. [Approvals](approvals.md) explains why
+this state belongs in the application rather than only in a model prompt.
 
-`TINKERFLEET_MAX_TURNS=0` and `TINKERFLEET_MAX_MODEL_CALLS=0` disable only count
-caps. Token and run-time budgets remain, and native commands still have a
-15-second timeout. Unlimited turns do not make a long-running install or command
-finish. Inspect the reported result rather than assuming success.
+## The bot does not remember something from another chat
 
-## A command fails before its approval appears
+Saved transcripts and per-bot memory are different. Live transcript context
+comes from the current conversation. Open **Bots → Memory** for the intended
+bot and check whether the fact is saved there.
 
-Check the reported validation error. The command's working directory must be the
-selected workspace or a permitted existing subdirectory. The SDK normalizes a
-trusted in-workspace absolute `cwd` to a relative path; outside directories and
-traversal remain rejected. This is separate from command arguments, which may
-contain an explicitly requested absolute target. Ask for a corrected proposal;
-do not assume the failed command ran.
+Notes apply to that bot on its next turn across chats. Old history is not
+imported automatically. Each bot has room for 20 notes, 2,000 characters per note
+and 8,000 total. Remove obsolete notes if the store is full. In demo mode, you
+can verify saved notes without expecting an intelligent recall response. See
+[Memory](memory.md).
 
-## Formatting or activity looks different from the reply text
+## A new bot is not in an existing group
 
-Markdown code is only displayed. Raw HTML is inert, unsafe links are rejected,
-and images are shown as text labels without remote downloads. Source annotations
-that cannot be placed reliably in formatted text remain in the source list.
-Run activity reflects actual recorded events: no event means no claimed progress,
-and a start event alone is not evidence of completion.
+Creating a bot saves a profile and creates its direct chat. It does not rewrite
+the participants captured by an existing conversation. Use **Open this bot’s
+chat**, or ask the primary to start a new group with that bot.
 
-The trusted-cwd correction was verified in a live run that reached approval and
-completed `codex --version` with exit code 0. Outside-workspace `cwd` values remain
-rejected; explicit absolute command arguments are a separate policy.
+Only the direct primary has coordination tools. It can create up to three bots
+per run, and the library holds 32 profiles. Groups can contain the primary plus
+up to seven ordinary agents. Check the reported limit before retrying.
+
+## Search did not run, or a page could not be read
+
+Check the mode and `TINKERFLEET_WEB_SEARCH`; the demo never searches, and `0`
+disables search in live mode. Ask explicitly for a public-web lookup and inspect
+actual activity and sources. The model decides when to call enabled tools.
+
+Page actions depend on model support and page accessibility. Hosted search does
+not inherit your browser login, fill forms, or make private pages public. A link
+in a reply alone does not prove the page was read. See
+[capabilities](capabilities.md).
+
+## History looks different after restarting
+
+Restart preserves saved chat views but stops unfinished runs and denies their
+pending approvals. It does not resume SDK execution or undo local file effects.
+Submit a fresh message to continue.
+
+If loading or saving fails, check access to `.tinkerfleet/conversations.json`
+and its `.memories.json` companion. Conversation storage is bounded to 100 chats,
+200 runs, and 8 MiB. Corrupt stores fail startup rather than silently replacing
+your history. Preserve a private backup before repair; do not attach these files
+to a public issue.
+
+## A reply's formatting or activity looks unexpected
+
+Markdown is presentation, not execution. HTML stays inert, images appear as text
+labels, and only HTTP(S) links are supported. Citations that cannot be placed
+reliably inside formatted text remain in the source list.
+
+Expand **Details** to inspect actual recorded steps. A start event alone does
+not mean success, and missing events are not invented progress. Compare the
+reported status, tool output, and real file state where relevant.
+
+## Make a small reproduction
+
+Try a fresh conversation with a harmless, narrow request. Note the mode, exact
+error, expected behavior, and whether the failure happened before approval,
+after approval, or at the provider. Remove credentials and private content before
+sharing a report.
+
+**Try it:** deny a demo action and explain why it did not execute. Then run a
+lesson from [the lesson guide](../lessons/README.md) to find the same mechanism in
+code. Use [Testing](testing.md) to turn a reproducible bug into a useful check.
