@@ -24,18 +24,14 @@ Construct the real fleet factory and inspect the coordinator's name,
 instructions, tools, and absence of handoffs. Configuration is not execution:
 creating an SDK `Agent` does not make an API request.
 
-This lesson inspects the full-fleet factory, where the coordinator exposes three
-named delegation tools. In the browser workflow, start by speaking to the primary
-Coordinator; it may create a group with selected specialists. A direct
-Coordinator's group-creation tool and a group's specialist tools serve different
-steps. The coordinator owns the task and can assemble the specialists' findings instead of turning the conversation over to
-whichever role answered last.
+The primary owns the user's task and has coordination tools. It can also use
+the same enabled local tools as ordinary agents. Personality instructions guide
+behavior; the server supplies tools and enforces approvals.
 
-**Exercise:** find the sentence that says the coordinator retains responsibility.
-Would removing it grant a specialist a new tool? Which part of the program would
-actually need to change for that to happen?
+**Exercise:** would changing an agent's personality grant a tool that the server
+did not supply?
 
-## 2. Specialists as tools
+## 2. Agents as tools
 
 ```sh
 npm run lesson:2
@@ -43,18 +39,13 @@ npm run lesson:2
 
 Source: [02-specialists.ts](02-specialists.ts)
 
-Give the actual fleet factory two synthetic tool definitions. Scout receives the
-read tool; Maker and Checker receive both. Inspect a real `asTool` wrapper without
-invoking it. The wrapper is the mechanism that lets a specialist return a result
-to its caller. The tools used in this lesson never touch a workspace.
+Inspect how named agents can return results through an `asTool` wrapper without
+invoking a remote model. Scout, Maker, and Checker are example personalities,
+not fixed capability classes. Ordinary agents share enabled local/web tools.
+The primary's messaging and group tools coordinate work through explicit briefs.
 
-An agent name is a label, and instructions describe behavior. The server's tool
-assignment is what grants the concrete capability. An avatar setting cannot
-change that assignment.
-
-**Exercise:** remove the action tool from Checker. Inspect its resulting tool
-list. Then change its display name in the UI. Explain why the second change has
-no effect on its server-side capabilities.
+**Exercise:** identify the difference between a personality instruction and a
+server-enforced approval before a local action.
 
 ## 3. Tool contracts
 

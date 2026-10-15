@@ -1,6 +1,6 @@
 # Conversations, bots, and runs
 
-A **bot persona** is a reusable identity and purpose within a fixed role. A
+A **bot persona** is a reusable identity and personality. A
 **conversation** is a named chat with selected participants, its own history, and
 a draft. A **run** is one submitted task in that chat, with its own approvals,
 activity, output, artifacts, and optional local actions.
@@ -11,11 +11,10 @@ Open **Orbit / Your coordinator** in the sidebar, or use **Talk to Orbit** on
 the empty home screen. This returns to the primary bot's latest direct chat or
 opens **Talk to a bot** with it preselected. Tell it what you want to accomplish.
 It can answer directly
-or bring specialists into a shared group. You do not need to assemble the team
+or bring agents into a shared group. You do not need to assemble the team
 before explaining the task, and there is no manual group-start chooser.
 
-In live mode, the Coordinator chooses one to three available specialists with
-different roles and creates at most one group per run. The group includes the
+In live mode, the Coordinator chooses up to seven available agents and creates at most one group per run. The group includes the
 Coordinator and begins its own task from a bounded brief. Your private direct
 conversation history is not copied into it. Group participants cannot create
 further groups. The primary and group have separate run budgets and stop controls.
@@ -41,17 +40,16 @@ memory in this version.
 ## Create reusable profiles
 
 Ask the primary Coordinator: **“Create a patient Python tutor called Ada.”**
-Its `create_agent` tool accepts a name, purpose, and specialist role. Purpose
+Its `create_agent` tool accepts a name and purpose/personality. Purpose
 covers both work focus and personality—for example, patient explanations with
 small exercises. A successful creation message offers **Talk**, and the profile
 also appears in the bot library. The Coordinator can use the new bot in a group
 immediately.
 
-The three capability templates are Researcher (`scout`), Builder (`maker`), and
-Reviewer (`checker`). With workspace tools enabled, Researcher is read-only;
-Builder and Reviewer can propose local edits and installed commands, each needing
-approval. In conversation-only mode, no workspace tools are available. A purpose
-cannot grant new tools or bypass approval.
+Ordinary agents share the same enabled local and web tools. Scout, Maker, and
+Checker are example personalities, not capability classes. In conversation-only
+mode, no agent has workspace tools. When enabled, local reads and approval-gated
+edits/commands are available to the primary and ordinary agents alike.
 
 Only a private direct Coordinator has the creation tool. It may create up to
 three profiles per run; the server library holds up to 32 profiles. Names
@@ -63,8 +61,7 @@ New chats use saved profiles. Existing conversation participants remain frozen,
 so editing a library profile does not rewrite old chats or runs. The primary's
 available roster adds new library profiles for future runs while keeping existing
 IDs and their captured identities. A bot created during a run is
-available for that run's group creation. Group membership still allows only one
-specialist per capability role.
+available for that run's group creation. A group can contain the primary plus up to seven ordinary agents.
 
 The no-key demo recognizes the exact Ada example and persists the profile using
 a scripted path. This verifies saving a bot, not live model behavior or a tutor's
@@ -107,31 +104,23 @@ The demo's output is labeled **SIMULATED DEMO OUTPUT**. A completed walkthrough
 is not evidence that a command or a model ran. Live errors must remain visible.
 
 Use Tab and Shift+Tab to navigate controls and Enter or Space to activate buttons.
-Read role labels rather than relying on color. Open the full action preview
+Read agent names rather than relying on color. Open the full action preview
 before deciding, including on a narrow screen.
 
 See the [handover](../HANDOVER.txt) for verified checks and remaining limitations.
 
-## Recorded primary-first checks
+## Ask the primary to message an agent
 
-The existing primary chat retained its messages while initializing its specialist
-roster. Asking Orbit about the fixture created a linked Tiny-project repair group
-with Scout, Maker, and Checker; the primary chat stayed selected. The group showed
-**Started by Orbit**, an **Original conversation** link, and a Coordinator-authored
-initial brief. Both group approvals completed. An independent direct Quill chat
-completed while the group awaited its command approval. At 390 × 844, the page
-had no horizontal overflow and the approval controls were fully visible.
-After the final server restart, all ten conversations, the existing Maker draft,
-and completed group history returned. The source invitation and group provenance
-links persisted, and navigation worked in both directions.
-These were no-key demo checks. See [screenshots](../README.md#a-look-inside) and
-[the handover](../HANDOVER.txt) for the latest verification limits.
+The primary can send a concise brief to one ordinary agent and receive its reply
+through that agent's individual conversation. Only the brief is shared; source
+history is not copied automatically. The primary may make up to three deliveries
+per run. This is an explicit message operation, not unattended background work
+or shared memory across all chats.
 
-## Recorded creation check
+## Returning an individual agent's reply
 
-The no-key Ada example created a saved profile, its creation card opened a direct
-chat, and Ada remained after restart. The checked state retained two chats, one
-run, and five profiles. Mobile at 390 × 844 had no horizontal overflow. This
-verifies the scripted creation path and persistence, not live personality or
-hosted search. See [screenshots](../README.md#a-look-inside) and the
-[handover](../HANDOVER.txt) for the exact verification scope.
+A delegated run returns a bounded, labeled recipient reply or status to the
+source primary conversation. It is visible to the primary on its next turn.
+Delivery does not automatically wake the primary model, recursively trigger
+other agents, or prove that requested file actions completed. Follow the
+recipient's actual status and results.

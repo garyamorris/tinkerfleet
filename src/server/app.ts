@@ -23,9 +23,10 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   const store=new ConversationStore(options.statePath,options.initialRuns);
   let profiles=store.state.profiles;
   let libraryImported=store.state.libraryImported;
+  const sentMessages=new Map<string,Map<string,{conversationId:string;agentId:string}>>();
   const createdAgents=new Map<string,Map<string,Persona>>();
   const conversations=new Map(store.state.conversations.map(chat=>[chat.id,chat]));
-  const demo=new DemoEngine(options.demoDelayMs,startGroup,createAgent);
+  const demo=new DemoEngine(options.demoDelayMs,startGroup,createAgent,messageAgent);
   const liveRuns=new Map<string,Run>();
   for(const run of store.state.runs)(run.mode==='demo'?demo.runs:liveRuns).set(run.id,run);
   const legacyRunIds=new Set<string>();
@@ -42,9 +43,9 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   let execution={available:false,reason:config.workspaceToolsEnabled?'Local workspace has not been checked yet.':'Workspace tools are disabled; chat needs no local execution.'};
   let executionProbe=0;
   async function checkExecution(){if(!runner)return;const version=++executionProbe;try{const availability=await runner.checkAvailability();if(!closing&&version===executionProbe)execution={available:availability.available,reason:availability.reason??'Ready'};return availability;}catch{const unavailable={available:false,reason:'The selected local workspace could not be checked.'};if(!closing&&version===executionProbe)execution=unavailable;return unavailable;}}
-  const agentId=(name?:string):AgentId=>{const s=name?.toLowerCase();return s==='scout'||s==='maker'||s==='checker'?s:'coordinator';};
+  const participantId=(persona?:Persona)=>persona?.role==='coordinator'?'coordinator':persona?.id??'coordinator';
   function onEvent(e:SdkEvent){
-    const run=liveRuns.get(e.runId);if(!run)return;const agent=e.agent?agentId(e.agent):run.activeAgent??run.team?.[0]?.role??'coordinator';const displayName=run.team?.find(persona=>persona.role===agent)?.name??e.agent??'Coordinator';
+    const run=liveRuns.get(e.runId);if(!run)return;const agent=e.agent??run.activeAgent??participantId(run.team?.[0]);const displayName=run.team?.find(persona=>participantId(persona)===agent)?.name??e.agent??'Coordinator';
     if(e.type==='usage'){if(e.usage)run.usage={...e.usage};return;}
     if(e.type==='agent_message'){if(e.message)run.messages.push({id:randomUUID(),at:Date.parse(e.at),author:agent,text:redactSdkText(e.message),...(e.sources?.length?{sources:safeSources(e.sources,redactSdkText(e.message))}:{}),kind:'result'});touch(run);return;}
     const labels:Record<string,string>={run_started:'Run started',agent_started:`${displayName} started`,agent_finished:`${displayName} returned`,tool_started:e.tool??'Tool started',tool_finished:`${e.tool??'Tool'} finished`,approval_requested:'Your approval is needed',approval_resolved:e.approved?'Action approved':'Action declined',run_completed:'Run complete',run_failed:'Run could not finish',run_cancelled:'Run stopped'};
@@ -57,18 +58,27 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     touch(run);
     if(['run_completed','run_failed','run_cancelled'].includes(e.type))runner?.disposeRun(run.id);
   }
-  const sdk=createSdkAdapter({webSearchEnabled:mode==='live'&&config.webSearchEnabled,model:options.sdkModel??model??undefined,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort??undefined,limits:config.limits,liveEnabled:mode==='live',onEvent,startGroup,createAgent,harness:{
+  const sdk=createSdkAdapter({workspaceRoot:root,webSearchEnabled:mode==='live'&&config.webSearchEnabled,model:options.sdkModel??model??undefined,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort??undefined,limits:config.limits,liveEnabled:mode==='live',onEvent,startGroup,createAgent,messageAgent,harness:{
     snapshot:id=>workspaceRunner().snapshot(id),readFile:(id,p)=>workspaceRunner().readFile(id,p),
     prepare:async(id,action)=>{const record=await workspaceRunner().prepare(id,action);if(action.kind==='edit')beforeCache.set(record.id,redactSdkText(await workspaceRunner().readFile(id,action.path).catch(()=>'')));return record;},
     decide:(id,approvalId,digest,approved)=>approvals.decide(id,approvalId,digest,approved),
     execute:async(id,approvalId,opts)=>{const record=approvals.get(approvalId);const a=record?.action as Action|undefined;const before=a?.kind==='edit'?await workspaceRunner().readFile(id,a.path).catch(()=>''):'';const result=await workspaceRunner().execute(id,approvalId,opts);const run=liveRuns.get(id);if(run){if(a?.kind==='edit'&&result.status==='completed')run.artifacts.push({path:a.path,before,after:redactSdkText(a.content),simulated:false});if(a?.kind==='command')run.output=redactSdkText(`$ ${a.executable} ${a.args.join(' ')}\n${result.stdout}\n${result.stderr}\nStatus: ${result.status} · exit code ${result.exitCode??'none'}\nCleanup confirmed: ${result.cleanupSucceeded}`);}return result;},
     cancel:id=>runner?.cancel(id),
   }});
-  function sync(s:SdkStatus){const r=liveRuns.get(s.runId);if(!r)return;r.usage={...s.usage};r.status=s.status==='error'||s.status==='deferred'?'failed':s.status;for(const p of s.pendingApprovals){const a=r.approvals.find(a=>a.id===p.approvalId);if(a&&a.action.kind==='edit')void workspaceRunner().readFile(r.id,a.action.path).then(before=>a.before=redactSdkText(before)).catch(()=>{});}if(s.status==='deferred'&&s.message)r.messages.push({id:randomUUID(),author:r.activeAgent??r.team?.[0]?.role??'coordinator',text:s.message,at:Date.now()});}
+  function sync(s:SdkStatus){const r=liveRuns.get(s.runId);if(!r)return;r.usage={...s.usage};r.status=s.status==='error'||s.status==='deferred'?'failed':s.status;for(const p of s.pendingApprovals){const a=r.approvals.find(a=>a.id===p.approvalId);if(a&&a.action.kind==='edit')void workspaceRunner().readFile(r.id,a.action.path).then(before=>a.before=redactSdkText(before)).catch(()=>{});}if(s.status==='deferred'&&s.message)r.messages.push({id:randomUUID(),author:r.activeAgent??participantId(r.team?.[0]),text:s.message,at:Date.now()});}
   const allRuns=()=>[...demo.runs.values(),...liveRuns.values()];
   const findRun=(id:string)=>demo.runs.get(id)??liveRuns.get(id);
   function touch(run:Run){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Date.now();}
-  function persist(required=false){for(const run of allRuns()){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Math.max(chat.updatedAt,run.startedAt,run.endedAt??0,...run.messages.map(m=>m.at),...run.events.map(e=>e.at));}try{store.save([...conversations.values()],allRuns(),profiles,libraryImported);persistenceError=undefined;}catch{persistenceError='Conversation history could not be saved. Check local storage before continuing.';if(required)throw new HttpError(503,persistenceError);}}
+  function relayAgentReplies(){
+    for(const child of allRuns()){
+      if(!child.sentBy||!['awaiting_approval','completed','failed','cancelled','denied'].includes(child.status))continue;
+      const source=findRun(child.sentBy.runId),agent=child.team?.[0];if(!source||!agent)continue;
+      const response=child.status==='awaiting_approval'?'Waiting for your approval in the agent conversation.':child.messages.filter(m=>m.author===agent.id).map(m=>m.text).join('\n').slice(-4000)||`Run ${child.status}.`;
+      const text=redactSdkText(`${agent.name}: ${response}`);if(source.messages.some(m=>m.replyToRunId===child.id&&m.text===text))continue;
+      source.messages.push({id:randomUUID(),author:agent.id,replyToRunId:child.id,text,kind:'result',at:Date.now()});touch(source);
+    }
+  }
+  function persist(required=false){relayAgentReplies();for(const run of allRuns()){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Math.max(chat.updatedAt,run.startedAt,run.endedAt??0,...run.messages.map(m=>m.at),...run.events.map(e=>e.at));}try{store.save([...conversations.values()],allRuns(),profiles,libraryImported);persistenceError=undefined;}catch{persistenceError='Conversation history could not be saved. Check local storage before continuing.';if(required)throw new HttpError(503,persistenceError);}}
   function state():AppState {return {webSearchEnabled:mode==='live'&&config.webSearchEnabled,profiles,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort,limits:config.limits,conversations:[...conversations.values()],...(persistenceError?{persistenceError}:{}),mode,model:mode==='live'?model:null,workspace:path.basename(root),workspaceRoot:root,execution,liveReady:mode==='live'&&modelReady()&&(!config.workspaceToolsEnabled||execution.available),runs:allRuns(),currentRunId,maxTurns:config.limits.maxTurns};}
   function validTitle(value:unknown){if(typeof value!=='string'||!value.trim()||value.trim().length>80||/[\u0000-\u001f\u007f]/.test(value))throw new HttpError(400,'Enter a title of 1–80 characters.');return redactSdkText(value.trim());}
   function startRun(value:unknown,chat:Conversation,res?:ServerResponse,legacy=false,promptAuthor:AgentId|'user'='user',beforePublish?:(run:Run)=>void){
@@ -79,7 +89,7 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     try{
       if((profiles.some(p=>p.role!=='coordinator')||chat.availableBots)&&chat.participants.length===1&&chat.participants[0].role==='coordinator'&&!chat.startedBy)chat.availableBots=validateAvailableBots([...(chat.availableBots??[]),...profiles.filter(p=>p.role!=='coordinator'&&!chat.availableBots?.some(old=>old.id===p.id))].slice(0,32));
       const prompt=redactSdkText(value.trim()),team=validateParticipants(chat.participants),history=conversationHistory(chat.id,allRuns());
-      const run:Run=mode==='demo'?demo.start(prompt,team,{availableBots:chat.availableBots??(chat.participants.length===1&&chat.participants[0].role==='coordinator'&&!chat.startedBy?[]:undefined),promptAuthor}):{id:randomUUID(),prompt,team,mode,status:'running',startedAt:Date.now(),activeAgent:team.find(p=>p.role==='coordinator')?.role??team[0].role,messages:[{id:randomUUID(),author:promptAuthor,text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};
+      const run:Run=mode==='demo'?demo.start(prompt,team,{availableBots:chat.availableBots??(chat.participants.length===1&&chat.participants[0].role==='coordinator'&&!chat.startedBy?[]:undefined),promptAuthor}):{id:randomUUID(),prompt,team,mode,status:'running',startedAt:Date.now(),activeAgent:participantId(team.find(p=>p.role==='coordinator')??team[0]),messages:[{id:randomUUID(),author:promptAuthor,text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};
       run.conversationId=chat.id;if(mode==='live')liveRuns.set(run.id,run);if(legacy)legacyRunIds.add(run.id);
       currentRunId=run.id;chat.currentRunId=run.id;chat.draft='';touch(run);
       try{beforePublish?.(run);persist(true);}catch(e){if(mode==='demo')demo.cancel(run.id);else{run.status='cancelled';run.activeAgent=null;}throw e;}
@@ -95,11 +105,11 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
       return run;
     }catch(error){if(previousRoster===undefined)delete chat.availableBots;else chat.availableBots=previousRoster;throw error;}finally{starting.delete(chat.id);}
   }
-  async function createAgent(runId:string,request:{name:string;purpose:string;role:'scout'|'maker'|'checker'}):Promise<Persona>{
+  async function createAgent(runId:string,request:{name:string;purpose:string}):Promise<Persona>{
     const run=findRun(runId),chat=run?.conversationId?conversations.get(run.conversationId):undefined;
     if(closing||!run||run.status!=='running'||!chat||chat.startedBy||chat.participants.length!==1||chat.participants[0].role!=='coordinator')throw new Error('Only an active direct coordinator can create a bot.');
-    if(Object.keys(request).some(key=>!['name','purpose','role'].includes(key))||!['scout','maker','checker'].includes(request.role))throw new Error('Choose a specialist role.');
-    const candidate=validateParticipants([{...request,id:randomUUID(),color:'#567a75',shape:'spark'}])[0];
+    if(Object.keys(request).some(key=>!['name','purpose'].includes(key)))throw new Error('Only name and personality are accepted.');
+    const candidate=validateParticipants([{...request,role:'agent',id:randomUUID(),color:'#567a75',shape:'spark'}])[0];
     const key=canonicalJson({name:candidate.name,purpose:candidate.purpose,role:candidate.role});
     const cache=createdAgents.get(runId)??new Map<string,Persona>();const previous=cache.get(key);if(previous)return previous;
     if(cache.size>=3||profiles.length>=32||(chat.availableBots?.length??0)>=32)throw new Error('Bot creation limit reached.');
@@ -108,6 +118,20 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     run.messages.push({id:messageId,author:'coordinator',createdAgentId:candidate.id,text:`Created ${candidate.name}: ${candidate.purpose}`,kind:'result',at:Date.now()});touch(run);
     try{persist(true);}catch(error){profiles=oldProfiles;libraryImported=oldImported;chat.availableBots=oldRoster;chat.updatedAt=oldUpdated;run.messages=run.messages.filter(m=>m.id!==messageId);throw error;}
     cache.set(key,candidate);createdAgents.set(runId,cache);return candidate;
+  }
+  async function messageAgent(runId:string,request:{agentId:string;message:string}):Promise<{conversationId:string;agentId:string}>{
+    const sourceRun=findRun(runId),source=sourceRun?.conversationId?conversations.get(sourceRun.conversationId):undefined;
+    if(closing||!sourceRun||sourceRun.status!=='running'||!source||source.startedBy||source.participants.length!==1||source.participants[0].role!=='coordinator')throw new Error('Only an active direct coordinator can message an agent.');
+    if(Object.keys(request).some(k=>!['agentId','message'].includes(k))||typeof request.agentId!=='string'||typeof request.message!=='string'||!request.message.trim()||request.message.length>8000)throw new Error('Choose an available agent and a message of 1–8,000 characters.');
+    const agent=source.availableBots?.find(p=>p.id===request.agentId);if(!agent||agent.role==='coordinator')throw new Error('Recipient is not available.');
+    const brief=redactSdkText(request.message.trim()),key=canonicalJson({agentId:agent.id,message:brief}),cache=sentMessages.get(runId)??new Map<string,{conversationId:string;agentId:string}>();
+    const previous=cache.get(key);if(previous)return previous;if(cache.size>=3)throw new Error('Message limit reached for this run.');
+    let recipient=[...conversations.values()].find(c=>!c.startedBy&&c.participants.length===1&&canonicalJson(c.participants[0])===canonicalJson(agent));const created=!recipient;
+    if(!recipient){if(conversations.size>=CONVERSATION_LIMITS.conversations)throw new Error('Conversation limit reached.');const now=Date.now();recipient={id:randomUUID(),title:agent.name,participants:validateParticipants([agent]),createdAt:now,updatedAt:now,draft:'',currentRunId:null};conversations.set(recipient.id,recipient);}
+    const oldRecipient={...recipient},oldCurrent=currentRunId,oldSourceUpdated=source.updatedAt;let child:Run|undefined,linkId:string|undefined;
+    try{child=startRun(brief,recipient,undefined,false,'coordinator',run=>{recipient!.draft=oldRecipient.draft;child=run;run.sentBy={conversationId:source.id,runId,coordinatorId:source.participants[0].id};linkId=randomUUID();sourceRun.messages.push({id:linkId,author:'coordinator',text:`Sent a message to ${agent.name}.`,conversationId:recipient!.id,recipientRunId:run.id,kind:'delegation',at:Date.now()});touch(sourceRun);});
+      const result={conversationId:recipient.id,agentId:agent.id};cache.set(key,result);sentMessages.set(runId,cache);return result;
+    }catch(error){if(child){if(child.mode==='demo'){demo.cancel(child.id);demo.runs.delete(child.id);}else{child.status='cancelled';runner?.disposeRun(child.id);liveRuns.delete(child.id);}}if(linkId)sourceRun.messages=sourceRun.messages.filter(m=>m.id!==linkId);source.updatedAt=oldSourceUpdated;if(created)conversations.delete(recipient.id);else Object.assign(recipient,oldRecipient);currentRunId=oldCurrent;persist();throw error;}
   }
   async function startGroup(runId:string,request:SdkStartGroupRequest):Promise<SdkStartedGroup>{
     if(closing)throw new Error('The server is shutting down.');
@@ -154,7 +178,7 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
       const id=profileRoute[1],existing=profiles.find(p=>p.id===id);if(id&&!existing)throw new HttpError(404,'Bot not found.');
       const previous=profiles,previousImported=libraryImported;let profile:Persona|undefined;
       if(method==='DELETE'){if(!id)throw new HttpError(400,'Choose a bot.');profiles=profiles.filter(p=>p.id!==id);}
-      else{const body=await readJson(req);if(Object.keys(body).some(k=>!['name','purpose','role','color','shape'].includes(k)))throw new HttpError(400,'Only bot profile fields are accepted.');profile=validateParticipants([{...(existing??{}),...body,id:id??randomUUID()}])[0];if(existing?.role==='coordinator'&&profile.role!=='coordinator')throw new HttpError(400,'An existing coordinator must keep its coordinator role.');profiles=validateProfiles(id?profiles.map(p=>p.id===id?profile!:p):[...profiles,profile]);}
+      else{const body=await readJson(req);if(Object.keys(body).some(k=>!['name','purpose','role','color','shape'].includes(k)))throw new HttpError(400,'Only bot profile fields are accepted.');if(!existing&&body.role!==undefined&&!['agent','coordinator'].includes(String(body.role)))throw new HttpError(400,'New profiles are ordinary agents or a primary coordinator.');profile=validateParticipants([{role:'agent',...(existing??{}),...body,id:id??randomUUID()}])[0];if(existing?.role==='coordinator'&&profile.role!=='coordinator')throw new HttpError(400,'An existing coordinator must keep its coordinator role.');profiles=validateProfiles(id?profiles.map(p=>p.id===id?profile!:p):[...profiles,profile]);}
       libraryImported=true;try{persist(true);}catch(e){profiles=previous;libraryImported=previousImported;throw e;}json(res,method==='DELETE'?200:id?200:201,profile??{ok:true});return;
     }
     if(url.pathname==='/api/conversations'&&method==='POST'){

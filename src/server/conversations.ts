@@ -11,15 +11,15 @@ import type {Conversation,Message,Persona,Run} from '../shared/types.js';
 export const CONVERSATION_LIMITS=Object.freeze({conversations:100,runs:200,bytes:8*1024*1024,historyMessages:32,historyChars:16000});
 const id=z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),time=z.number().finite().nonnegative();
 const text=(max:number)=>z.string().max(max).transform(redactSdkText);
-const role=z.enum(['coordinator','scout','maker','checker']);
+const role=id;
 const participants=z.unknown().transform(value=>validateParticipants(value));
-const message=z.object({id,sources:z.unknown().transform(value=>safeSources(value)).optional(),createdAgentId:id.optional(),conversationId:id.optional(),author:z.enum(['user','coordinator','scout','maker','checker']),text:text(256000),at:time,kind:z.enum(['text','delegation','result']).optional()}).transform(value=>({...value,...(value.sources?{sources:safeSources(value.sources,value.text)}:{})}));
+const message=z.object({id,replyToRunId:id.optional(),recipientRunId:id.optional(),sources:z.unknown().transform(value=>safeSources(value)).optional(),createdAgentId:id.optional(),conversationId:id.optional(),author:id,text:text(256000),at:time,kind:z.enum(['text','delegation','result']).optional()}).transform(value=>({...value,...(value.sources?{sources:safeSources(value.sources,value.text)}:{})}));
 const action=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('edit'),path:text(512),content:text(256000)}),
  z.object({kind:z.literal('command'),resolvedExecutable:z.object({path:text(4096),identity:text(512)}).nullable().optional(),executable:text(4096),args:z.array(text(8192)).max(128),cwd:text(512).optional()}),
 ]);
 const usageCount=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const runSchema=z.object({id,usage:z.object({modelCalls:usageCount,inputTokens:usageCount,outputTokens:usageCount,totalTokens:usageCount}).optional(),conversationId:id.optional(),team:participants.optional(),prompt:text(8000),status:z.enum(['idle','running','awaiting_approval','completed','denied','cancelled','failed']),mode:z.enum(['demo','live']),
+const runSchema=z.object({id,sentBy:z.object({conversationId:id,runId:id,coordinatorId:id}).optional(),usage:z.object({modelCalls:usageCount,inputTokens:usageCount,outputTokens:usageCount,totalTokens:usageCount}).optional(),conversationId:id.optional(),team:participants.optional(),prompt:text(8000),status:z.enum(['idle','running','awaiting_approval','completed','denied','cancelled','failed']),mode:z.enum(['demo','live']),
  messages:z.array(message).max(1024),events:z.array(z.object({id,at:time,agent:role,kind:z.enum(['message','delegation','tool','approval','result','error']),title:text(4096),detail:text(256000).optional()})).max(2048),
  approvals:z.array(z.object({id,digest:z.string().max(128),agent:role,title:text(4096),description:text(4096),action,status:z.enum(['pending','approved','denied']),before:text(256000).optional()})).max(256),
  artifacts:z.array(z.object({path:text(512),before:text(256000),after:text(256000),simulated:z.boolean()})).max(256),output:text(256000),activeAgent:role.nullable(),startedAt:time,endedAt:time.optional()});
@@ -42,7 +42,7 @@ function normalize(input:unknown,restart:boolean):ConversationState {
   if(!run.team||canonicalJson(run.team)!==canonicalJson(chat.participants))throw new Error('Run participants do not match the conversation.');
   if(restart){
    const active=run.status==='running'||run.status==='awaiting_approval';
-   if(active){run.status='cancelled';run.activeAgent=null;run.endedAt=Date.now();run.messages.push({id:randomUUID(),author:run.team?.[0]?.role??'coordinator',text:'The server restarted. This run was stopped; old approvals cannot execute. Send a new message to continue.',at:Date.now()});}
+   if(active){run.status='cancelled';run.activeAgent=null;run.endedAt=Date.now();run.messages.push({id:randomUUID(),author:run.team?.[0]?.role==='coordinator'?'coordinator':run.team?.[0]?.id??'coordinator',text:'The server restarted. This run was stopped; old approvals cannot execute. Send a new message to continue.',at:Date.now()});}
    for(const approval of run.approvals)if(approval.status==='pending'||(active&&approval.status==='approved'))approval.status='denied';
   }
  }
@@ -59,7 +59,17 @@ function normalize(input:unknown,restart:boolean):ConversationState {
    for(const bot of chat.participants.slice(1))if(!source.availableBots?.some(candidate=>canonicalJson(candidate)===canonicalJson(bot)))throw new Error('Group specialist is not in its source roster.');
   }
  }
- for(const run of runs)for(const message of run.messages)if(message.conversationId){const target=conversations.find(c=>c.id===message.conversationId);if(message.author!=='coordinator'||target?.startedBy?.runId!==run.id||target.startedBy.conversationId!==run.conversationId)throw new Error('Invalid conversation link.');}
+ for(const run of runs){
+  if(run.sentBy){const origin=run.sentBy,source=conversations.find(c=>c.id===origin.conversationId),sourceRun=runs.find(r=>r.id===origin.runId),recipient=conversations.find(c=>c.id===run.conversationId);
+   if(!source||source.startedBy||source.participants.length!==1||source.participants[0].role!=='coordinator'||source.participants[0].id!==origin.coordinatorId||sourceRun?.conversationId!==source.id||!recipient||recipient.startedBy||recipient.participants.length!==1||recipient.participants[0].role==='coordinator'||!source.availableBots?.some(p=>canonicalJson(p)===canonicalJson(recipient.participants[0]))||run.messages[0]?.author!=='coordinator')throw new Error('Invalid direct agent message provenance.');
+  }
+  for(const message of run.messages)if(message.replyToRunId){const recipient=runs.find(r=>r.id===message.replyToRunId);if(!recipient||recipient.sentBy?.runId!==run.id||recipient.sentBy.conversationId!==run.conversationId||message.author!==recipient.team?.[0]?.id)throw new Error('Invalid agent reply provenance.');}
+  for(const message of run.messages)if(message.conversationId){const target=conversations.find(c=>c.id===message.conversationId);if(message.author!=='coordinator')throw new Error('Invalid conversation link.');
+   if(message.recipientRunId){const recipient=runs.find(r=>r.id===message.recipientRunId);if(!recipient||recipient.conversationId!==target?.id||recipient.sentBy?.runId!==run.id||recipient.sentBy.conversationId!==run.conversationId)throw new Error('Invalid recipient conversation link.');}
+   else if(target?.startedBy?.runId!==run.id||target.startedBy.conversationId!==run.conversationId)throw new Error('Invalid conversation link.');
+  }
+ }
+
 
  const profiles=envelope.profiles??validateProfiles([...new Map((conversations.length?conversations.flatMap(c=>[...c.participants,...(c.availableBots??[])]):[]).map(p=>[p.id,p])).values()]);
  return {version:1,conversations,runs,profiles,libraryImported:envelope.libraryImported??false};
@@ -103,7 +113,7 @@ export class ConversationStore {
 
 export function selectCoordinatorGroup(source:Conversation,run:Run,input:unknown):{title:string;brief:string;participants:Persona[]}{
  if(source.startedBy||source.participants.length!==1||source.participants[0].role!=='coordinator'||run.conversationId!==source.id||run.status!=='running'||canonicalJson(run.team)!==canonicalJson(source.participants))throw new Error('Only an active direct coordinator can start a group.');
- const request=z.object({title:z.string().trim().min(1).max(80).refine(value=>!/[\u0000-\u001f\u007f]/.test(value)),brief:z.string().trim().min(1).max(8000),botIds:z.array(id).min(1).max(3)}).strict().parse(input);
+ const request=z.object({title:z.string().trim().min(1).max(80).refine(value=>!/[\u0000-\u001f\u007f]/.test(value)),brief:z.string().trim().min(1).max(8000),botIds:z.array(id).min(1).max(7)}).strict().parse(input);
  if(new Set(request.botIds).size!==request.botIds.length)throw new Error('Select distinct available specialists.');
  const selected=request.botIds.map(id=>{const bot=source.availableBots?.find(p=>p.id===id);if(!bot)throw new Error('Requested specialist is not available.');return bot;});
  const participants=validateParticipants([source.participants[0],...selected]);

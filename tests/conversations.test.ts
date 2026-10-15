@@ -52,11 +52,11 @@ test('coordinator group selection is confined to a frozen specialist roster and 
  const origin:Run={...run('origin-run','source'),team:[profiles[0]],status:'running'};
  const request={title:'Focused group',brief:'Share only this task.',botIds:[profiles[1].id,profiles[2].id]};
  const selected=selectCoordinatorGroup(source,origin,request);assert.deepEqual(selected.participants.map(p=>p.role),['coordinator','scout','maker']);assert.ok(Object.isFrozen(selected.participants));
- for(const invalid of [{...request,botIds:[]},{...request,botIds:['unlisted']},{...request,botIds:[profiles[1].id,profiles[1].id]},{...request,botIds:[profiles[1].id,alternate.id]},{...request,botIds:[profiles[0].id]},{...request,title:'x'.repeat(81)},{...request,brief:'x'.repeat(8001)}])assert.throws(()=>selectCoordinatorGroup(source,origin,invalid));
+ for(const invalid of [{...request,botIds:[]},{...request,botIds:['unlisted']},{...request,botIds:[profiles[1].id,profiles[1].id]},{...request,botIds:[profiles[0].id]},{...request,title:'x'.repeat(81)},{...request,brief:'x'.repeat(8001)}])assert.throws(()=>selectCoordinatorGroup(source,origin,invalid));
  assert.throws(()=>selectCoordinatorGroup(source,{...origin,status:'cancelled'},request));assert.throws(()=>selectCoordinatorGroup({...source,participants:[profiles[1]]},origin,request));
  const secret='sk-'+ 'a'.repeat(40);assert.equal(selectCoordinatorGroup(source,origin,{...request,brief:secret}).brief,'[REDACTED]');
  assert.throws(()=>validateAvailableBots([profiles[0]]));assert.throws(()=>validateAvailableBots([profiles[1],profiles[1]]));assert.throws(()=>validateAvailableBots(Array.from({length:33},(_,i)=>({...profiles[1],id:`bot-${i}`}))));
- assert.equal(validateAvailableBots([profiles[1],alternate]).length,2);
+ assert.equal(validateAvailableBots([profiles[1],alternate]).length,2);assert.equal(selectCoordinatorGroup(source,origin,{...request,botIds:[profiles[1].id,alternate.id]}).participants.length,3);
 });
 
 test('group provenance and source links persist; forged origins, rosters, and duplicate creations are rejected',t=>{
@@ -97,4 +97,18 @@ test('oversized legacy library migration fails without silently discarding profi
 test('saved message citations retain safe inline links and discard unsafe URL authority',()=>{
  const directory=mkdtempSync(path.join(tmpdir(),'tinkerfleet-citations-')),file=path.join(directory,'state.json');
  try{const item=run();item.messages[0].text='Supported claim';item.messages[0].sources=[{url:'https://example.com/evidence',title:'Evidence',startIndex:0,endIndex:9},{url:'javascript:alert(1)',title:'Unsafe'}];const store=new ConversationStore(file);store.save([chat()],[item]);const sources=new ConversationStore(file).state.runs[0].messages[0].sources;assert.deepEqual(sources,[{url:'https://example.com/evidence',title:'Evidence',startIndex:0,endIndex:9}]);}finally{rmSync(directory,{recursive:true,force:true});}
+});
+
+test('direct agent delivery and replies persist by identity and reject forged source ownership',()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'tinkerfleet-direct-provenance-')),file=path.join(directory,'state.json');
+ try{
+ const primary=customTeam()[0],agent={...customTeam()[1],id:'writer-ada',role:'agent' as const};
+ const source:Conversation={...chat('primary'),participants:[primary],availableBots:[agent],currentRunId:'source-run'},recipient:Conversation={...chat('recipient'),participants:[agent],currentRunId:'recipient-run'};
+ const sourceRun:Run={...run('source-run',source.id),team:[primary],messages:[{id:'delivery',author:'coordinator',text:'Delivered',conversationId:recipient.id,recipientRunId:'recipient-run',at:2},{id:'reply',author:agent.id,text:'Ada replied',replyToRunId:'recipient-run',at:3}]};
+ const recipientRun:Run={...run('recipient-run',recipient.id),team:[agent],sentBy:{conversationId:source.id,runId:sourceRun.id,coordinatorId:primary.id},messages:[{id:'brief',author:'coordinator',text:'Explicit message',at:2},{id:'answer',author:agent.id,text:'Ada replied',at:3}]};
+ const store=new ConversationStore(file);store.save([source,recipient],[sourceRun,recipientRun]);const restored=new ConversationStore(file).state;assert.equal(restored.runs[1].messages[1].author,agent.id);assert.equal(restored.runs[0].messages[1].replyToRunId,recipientRun.id);
+ assert.throws(()=>store.save([source,recipient],[sourceRun,{...recipientRun,sentBy:{...recipientRun.sentBy!,runId:'foreign'}}]));
+ assert.throws(()=>store.save([source,recipient],[{...sourceRun,messages:[{...sourceRun.messages[1],author:'different-agent'}]},recipientRun]));
+ assert.throws(()=>store.save([{...source,availableBots:[]},recipient],[sourceRun,recipientRun]));
+ }finally{rmSync(directory,{recursive:true,force:true});}
 });

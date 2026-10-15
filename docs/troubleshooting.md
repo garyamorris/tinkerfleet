@@ -32,6 +32,20 @@ Review the selected folder before approving anything: approved edits change real
 files and commands run under your user's permissions. Their working directory
 is not a sandbox. A custom purpose cannot enable tools or bypass approvals.
 
+## Orbit says it must delegate a simple file task
+
+With workspace tools enabled, the Coordinator has direct read, edit, and command
+tools. It can handle a simple local task itself and request exact approval for
+an edit or command. Groups are for useful collaboration. Ordinary agents have the same enabled
+local tools, regardless of their names.
+Confirm the server is running the current code and the workspace-tools flag is
+on; persona wording alone cannot enable missing tools.
+
+File-tool paths must be relative to the selected root. If you explicitly want a
+command to target another absolute path, that path can be a command argument,
+subject to your OS permissions and review. This does not expand the relative
+file-tool API or make the working directory a sandbox.
+
 ## An approval is stale or already used
 
 A decision applies to one exact action in one run and chat. Denial, expiry,
@@ -64,8 +78,7 @@ pending decisions.
 Creating a bot saves it in the server library and makes it available to the
 Coordinator. It does not change the participants of a chat already created. Use
 **Talk** on the creation message to start a direct chat, or ask the Coordinator
-to include the bot in a new group. Each group can contain one specialist per
-capability role.
+to include the bot in a new group. A group can contain the primary plus up to seven ordinary agents.
 
 Only a direct Coordinator can create bots. A run can create at most three, and
 the library holds up to 32 profiles. In demo mode, use the exact documented
@@ -84,3 +97,13 @@ the hosted web-search actions you need. Ask explicitly for a current public-web
 lookup and inspect any returned sources. Page opening depends on model support.
 Private, authenticated, or inaccessible pages are not made accessible by this
 tool. Demo mode is always scripted and performs no web requests.
+
+## A run reaches its budget
+
+The default total is 64,000 reported tokens per run. A completed response that
+crosses the threshold is retained, but the app blocks another model call or
+exhausted-budget function action. Review the result before starting a new turn.
+Recent context is shortened independently; stored history is preserved. Tool
+calls and results are kept together, and exact action arguments are not cut.
+See [setup](setup.md#keep-runs-small) for configurable limits. Raising a limit
+can increase cost; it does not guarantee task completion.

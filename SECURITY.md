@@ -19,9 +19,9 @@ network endpoints, or processes that the user's account can reach.
 
 ## What the app enforces
 
-The server owns role tools, input validation, selected workspace configuration,
+The server owns tool enablement, input validation, selected workspace configuration,
 and exact-action approvals. A persona's purpose cannot grant capabilities. A direct Coordinator can create
-up to three named specialist profiles per run using existing capability templates;
+up to three named agent profiles per run;
 profiles are validated and saved in the bounded local library. Creation does not
 grant command authority or alter participants of existing conversations.
 Approvals are expiring and single-use, bound to the run and action. Denial,
@@ -45,7 +45,7 @@ malicious process or user on the same machine. Do not expose the app publicly.
 ## Conversations are context boundaries
 
 Only bounded history from the current chat supplies model context. A direct
-Coordinator may create one group per run with selected specialists and a bounded
+Coordinator may create one group per run with selected agents and a bounded
 brief; private source history is not copied wholesale. The group has a separate
 budget and stop control. Stop it explicitly if it has already been created.
 
@@ -59,7 +59,7 @@ Hosted web search is enabled by default in live mode and disabled with
 not use the user's logged-in browser or cookies. Queries are sent to the provider
 and may incur additional tool charges. Keep private material out of queries.
 Treat retrieved pages as untrusted input; they cannot authorize local commands,
-change roles, or bypass approvals. Inspect cited sources rather than treating a
+change tool configuration, or bypass approvals. Inspect cited sources rather than treating a
 search result as verified truth. Demo mode does not browse.
 
 ## Secrets, inference, and persistence

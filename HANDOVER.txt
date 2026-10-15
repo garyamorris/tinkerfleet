@@ -1,67 +1,75 @@
 Tinkerfleet build handover — 15 October 2026
 
 Scope
-Educational local agent app with a scripted demo, live conversation-only mode,
-reusable personas, primary-first Coordinator-created groups, and optional native
-workspace tools. Approved edits change real files; commands run with the user's
-permissions. The working directory is not a sandbox. Docker is not used.
+Educational local agent app with a primary Coordinator and ordinary individual
+agents defined by name and personality. All agents share enabled local/web tools.
+The primary can create agents, message them, or start groups of up to eight
+participants. Legacy role fields are compatibility data, not capability gates.
+Approved local edits change real files; commands run with the user's permissions.
+The selected working directory is not a sandbox. Docker is not used.
 
 Current verification
-- 136 tests passed; TypeScript checks and the production build passed. All six
-  offline lessons passed. Review found no blocking issue.
-- Native integration used real temporary files and commands, including a virtual
-  environment executable. Executable identity, approval, and persistence paths
-  were exercised without paid model calls.
-- Hosted search integration was tested offline, including source handling. No
-  live provider web-search request was made for this revision.
+- 173 of 173 tests passed; TypeScript and production build passed. All six offline
+  lessons passed, including equal tool access for named ordinary agents.
+- Native integration exercised real temporary files, installed commands, virtual
+  environment invocation, approval binding, and replay rejection.
+- A subsequent wording-only SDK check passed all 71 tests.
+- Hosted search and citation handling have offline integration coverage only.
 
-Current browser verification
-- The exact demo prompt “Create a patient Python tutor called Ada.” created a
-  real saved profile through the clearly scripted, no-key path.
-- The creation card opened Ada's direct chat. After restart, two conversations,
-  one run, and five profiles were retained, including Ada.
-- At 390 x 844, no horizontal overflow was observed.
-- The browser displayed a clickable inline citation and source footer through
-  the offline SDK fixture; docs/screenshots/web-citations-offline-check.jpg
-  explicitly identifies this as a rendering check with no live search.
-- Genuine screenshots: docs/screenshots/coordinator-created-agent.jpg and
-  docs/screenshots/mobile-created-agent.jpg. These demonstrate persistence and
-  navigation, not live model personality generation or web search.
+Actual live checks
+- Before the personality-only overhaul, Orbit created live-check.txt containing
+  “Tinkerfleet local tools work.” plus a newline, then cat returned that content
+  with exit code 0. Both exact action approvals were confirmed. Usage: 3 calls,
+  5,707 input tokens, 123 output tokens, 5,830 total.
+- After the overhaul, the primary created Ada with name and purpose only, sent
+  message_agent to Ada's individual conversation, and received its labeled reply
+  relay. Ada replied “Hello from Ada — it’s lovely to meet you!”
+  Primary usage: 3 calls, 6,037 input, 149 output, 6,186 total.
+  Child usage: 1 call, 917 input, 15 output, 932 total.
+- An ordinary agent used the actual SDK and NativeWorkspaceRunner to run
+  git --version and codex --version after two exact approvals. Both exited 0:
+  “git version 2.54.0 (Apple Git-157)” and “codex-cli 0.162.1”. Usage: 3 model
+  calls, 3,563 input tokens, 106 output tokens, 3,669 total.
+- Combined controlled verification: 10 calls, 16,224 input tokens, 393 output
+  tokens, 16,617 total. This excludes additional user-initiated calls and is not
+  an account-wide total or billing receipt. The checks used gpt-5.6-luna with
+  low reasoning and web search disabled; they do not validate live hosted search.
 
-Historical live smoke
-A previous revision completed one actual gpt-5.6-luna Scout conversation with low
-reasoning: one call, 219 input tokens, 10 output tokens, 229 total. The response
-was “I’m ready to chat.” That run used no tools or private conversation content.
-It is not evidence for the current agent-creation or hosted-search features.
-No paid model calls were made for this revision.
+Context and limits
+Defaults: 12 model calls, 2,048 output tokens per response, 64,000 reported tokens
+per run, and 120 seconds. Recent history is bounded to 8,000 characters; long tool
+outputs to 4,000 with a notice. Complete tool pairs and exact action arguments
+are preserved. A finished answer crossing the usage threshold is retained while
+further calls and exhausted-budget function work are blocked. Parent and child
+runs have separate budgets and stop controls; there is no overall monetary cap.
 
-Remaining limitations
-Hosted search has offline integration coverage, not live provider verification.
-Native execution was verified with temporary-fixture tests, not live-model file
-or command requests. The Ada browser example is scripted; live personality and
-agent-creation behavior remain unverified. Artifact download completion remains
-unverified. No CI result is claimed.
+Final restart and browser verification
+The main app restarted successfully and reported live readiness with hosted web
+and native tools enabled. Runtime limits were 12 calls, 64,000 tokens, 2,048
+output tokens per response, and 120 seconds. Existing conversations, runs, and
+profiles were preserved; private counts and history are not included here.
+Genuine screenshots show the live primary message to Ada and Ada's reply:
+docs/screenshots/individual-agents-live.jpg is cropped to the main conversation
+region to exclude the private chat list; mobile-individual-agents.jpg is 390 px
+wide. No tests or restart checks remain pending. git diff --check passed.
 
+Remaining limits
+Hosted web search has not been provider-verified.
+Artifact download completion remains unverified. No CI result is claimed.
 
 Run locally
-Install Node.js 24+ and npm, then run npm ci and npm run dev from this directory.
-Open http://localhost:4317. Demo mode needs neither an API key nor Docker.
-Dependency installation normally needs package-registry network access.
-For the built interface, run npm run build followed by npm start.
+Use Node.js 24+, npm ci, then npm run dev. Open http://localhost:4317. Demo is
+scripted and needs no key. Live model use requires explicit configuration.
+Workspace tools are opt-in; installed commands and real edits require exact
+approval. See README.md, docs/setup.md, and SECURITY.md.
 
-Teaching and operating limits
-Demo output is simulated. Live conversation can incur API charges. Workspace
-opt-in exposes real local reads and exact-approval writes/commands. Commands use
-structured arguments without an implicit shell, do not inherit server secrets,
-and have time/output limits; explicitly approved shell commands remain possible.
-These do not prevent access to broader resources allowed by the user's OS permissions.
-Restart retains chat history, cancels unfinished runs, and denies pending
-approvals. It does not undo file changes or completed command effects. Source
-and child group have separate budgets and stop controls, not an overall cost cap.
-Read README.md, docs/setup.md, and SECURITY.md before enabling local tools.
+Persistence and privacy
+The local server stores profiles and conversation views in the Git-ignored
+.tinkerfleet/conversations.json. Keep it private. Restart preserves history but
+cancels unfinished runs and denies pending approvals. It does not undo file or
+command effects. Credentials do not belong in source, browser settings, or logs.
 
 Publication
-Public source repository: https://github.com/garyamorris/tinkerfleet
-No hosted app deployment is included. Keep private environment files,
-dependencies, generated output, and local test artifacts out of source releases.
-The supplied .env.example documents placeholders only.
+Public source: https://github.com/garyamorris/tinkerfleet
+No hosted deployment is included. No private paths or credential values are
+included in this handover.

@@ -1,6 +1,10 @@
 import {customTeam} from './personas.fixture.js';
 import type { Persona } from '../src/shared/types.js';
 import assert from 'node:assert/strict';
+import {mkdtemp, realpath, readFile, writeFile, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {NativeWorkspaceRunner} from '../src/server/native-runner.js';
 import test, { before, after } from 'node:test';
 import { Usage, OpenAIProvider } from '@openai/agents';
 import OpenAI from 'openai';
@@ -81,7 +85,7 @@ test('real SDK nested approval pauses, denial resumes root RunState without exec
   assert.equal(model.calls.length, 2);
   assert.equal(h.executed.length, 0);
   const approval = paused.pendingApprovals[0];
-  assert.equal(approval.agent, 'Maker');
+  assert.equal(approval.agent, 'maker');
   assert.equal(approval.tool, 'run_command');
   const done = await adapter.resume({ runId: 'deny', approvalId: approval.approvalId, digest: approval.digest, approved: false });
   assert.equal(done.status, 'completed', JSON.stringify(done));
@@ -266,7 +270,7 @@ test('mutating an event cannot substitute an approved action', async () => {
 });
 
 
-test('reported token budget stops after the response that crosses it', async () => {
+test('a completed paid reply crossing the local token budget is retained', async () => {
   const h = harness();
   const model = new ScriptedModel([{
     output: [assistantMessage('This response is already accounted for.')],
@@ -274,8 +278,8 @@ test('reported token budget stops after the response that crosses it', async () 
   }]);
   const done = await createSdkAdapter({ harness: h.value, model, limits: { maxTotalTokens: 100 } })
     .start({ runId: 'tokens', prompt: 'Hello.' });
-  assert.equal(done.status, 'error');
-  assert.equal(done.message, 'Token budget reached.');
+  assert.equal(done.status, 'completed');
+  assert.equal(done.output, 'This response is already accounted for.');
   assert.equal(done.usage.totalTokens, 110);
   assert.equal(done.usage.modelCalls, 1);
   model.assertComplete();
@@ -298,19 +302,19 @@ test('a harness cannot substitute a different action while preparing approval', 
 });
 
 
-test('custom profile focus reaches only its fixed role without changing permissions',async()=>{
+test('custom profile focus and identity remain independent with equal enabled permissions',async()=>{
  const team=customTeam();
  const fleet=createFleetAgents({model:'offline',team});
  for(const profile of team){
-  const agent=fleet[profile.role];assert.equal(agent.name,profile.role[0].toUpperCase()+profile.role.slice(1));
+  const id=profile.role==='coordinator'?'coordinator':profile.id;const agent=fleet[id];assert.equal(agent.name,id);
   assert.match(String(agent.instructions),new RegExp(profile.purpose.replace('.','\\.')));
   assert.match(String(agent.instructions),/Never request secrets/);
   for(const other of team.filter(p=>p.role!==profile.role))assert.ok(!String(agent.instructions).includes(other.purpose));
  }
  const h=harness();const model=new ScriptedModel([
-  [functionCall('ask_scout',{input:'Inspect.'},{callId:'custom-scout'})],[assistantMessage('Scouted.')],
-  [functionCall('ask_maker',{input:'Implement.'},{callId:'custom-maker'})],[functionCall('run_command',command,{callId:'custom-command'})],
-  [assistantMessage('Made.')],[functionCall('ask_checker',{input:'Check.'},{callId:'custom-checker'})],
+  [functionCall('ask_custom__hscout',{input:'Inspect.'},{callId:'custom-scout'})],[assistantMessage('Scouted.')],
+  [functionCall('ask_custom__hmaker',{input:'Implement.'},{callId:'custom-maker'})],[functionCall('run_command',command,{callId:'custom-command'})],
+  [assistantMessage('Made.')],[functionCall('ask_custom__hchecker',{input:'Check.'},{callId:'custom-checker'})],
   [assistantMessage('Checked.')],[assistantMessage('Done.')],
  ]);
  const adapter=createSdkAdapter({model,harness:h.value});
@@ -320,9 +324,9 @@ test('custom profile focus reaches only its fixed role without changing permissi
  assert.match(calls[1].request.systemInstructions!,/Focus on scout clarity/);
  assert.match(calls[3].request.systemInstructions!,/Focus on maker clarity/);
  assert.doesNotMatch(calls[3].request.systemInstructions!,/MUTATED AFTER START/);
- assert.deepEqual(calls[1].request.tools.map(t=>t.name),['list_files','read_file']);
+ assert.deepEqual(calls[1].request.tools.map(t=>t.name),['list_files','read_file','run_command','edit_file']);
  assert.deepEqual(calls[3].request.tools.map(t=>t.name),['list_files','read_file','run_command','edit_file']);
- assert.deepEqual(calls[0].request.tools.map(t=>t.name),['ask_scout','ask_maker','ask_checker']);
+ assert.deepEqual(calls[0].request.tools.map(t=>t.name),['list_files','read_file','run_command','edit_file','ask_custom__hscout','ask_custom__hmaker','ask_custom__hchecker']);
  assert.equal(h.executed.length,0);
  const a=paused.pendingApprovals[0];const done=await adapter.resume({runId:'custom-roles',approvalId:a.approvalId,digest:a.digest,approved:true});
  assert.equal(done.status,'completed');assert.equal(h.executed.length,1);
@@ -336,19 +340,19 @@ test('invalid SDK profiles fail before a model request',async()=>{
 });
 
 
-function participants(...roles: string[]) { return customTeam().filter(profile => roles.includes(profile.role)); }
+function participants(...roles: string[]): Persona[] { return customTeam().filter(profile => roles.includes(profile.role)).map(profile=>({...profile,id:profile.role})); }
 
-test('direct Scout has only read tools, its own profile, and correctly attributed output', async () => {
+test('legacy Scout receives equal tools, its own profile, and ID-attributed output', async () => {
   const h = harness(), events: SdkEvent[] = [];
   const model = new ScriptedModel([[assistantMessage('Scout reply.')]]);
   const adapter = createSdkAdapter({ harness: h.value, model, onEvent: event => events.push(event) });
   const done = await adapter.start({ runId: 'direct-scout', prompt: 'Inspect.', team: participants('scout') });
   assert.equal(done.status, 'completed');
-  assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['list_files', 'read_file']);
+  assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['list_files', 'read_file', 'run_command', 'edit_file']);
   assert.match(model.calls[0].request.systemInstructions!, /Focus on scout clarity/);
-  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => [event.agent, event.message]), [['Scout', 'Scout reply.']]);
-  assert.equal(events.find(event => event.type === 'run_completed')?.agent, 'Scout');
-  assert.ok(events.every(event => !event.agent || event.agent === 'Scout'));
+  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => [event.agent, event.message]), [['scout', 'Scout reply.']]);
+  assert.equal(events.find(event => event.type === 'run_completed')?.agent, 'scout');
+  assert.ok(events.every(event => !event.agent || event.agent === 'scout'));
   assert.equal(h.executed.length, 0);
   model.assertComplete();
 });
@@ -364,13 +368,13 @@ test('direct Maker pauses for its own exact edit and resumes without a coordinat
   assert.equal(paused.status, 'awaiting_approval');
   assert.equal(h.executed.length, 0);
   const approval = paused.pendingApprovals[0];
-  assert.equal(approval.agent, 'Maker');
+  assert.equal(approval.agent, 'maker');
   const done = await adapter.resume({ runId: paused.runId, approvalId: approval.approvalId, digest: approval.digest, approved: true });
   assert.equal(done.status, 'completed');
   assert.equal(h.executed.length, 1);
   assert.ok(model.calls.every(call => call.request.tools.every(tool => !tool.name.startsWith('ask_'))));
-  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['Maker']);
-  assert.equal(events.find(event => event.type === 'approval_resolved')?.agent, 'Maker');
+  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['maker']);
+  assert.equal(events.find(event => event.type === 'approval_resolved')?.agent, 'maker');
   model.assertComplete();
 });
 
@@ -378,10 +382,10 @@ test('coordinator-only has no delegation; selected coordinator group exposes onl
   const h = harness(), events: SdkEvent[] = [];
   const solo = new ScriptedModel([[assistantMessage('Coordinator advice.')]]);
   await createSdkAdapter({ harness: h.value, model: solo }).start({ runId: 'solo-coordinator', prompt: 'Advise.', team: participants('coordinator') });
-  assert.deepEqual(solo.calls[0].request.tools, []);
+  assert.deepEqual(solo.calls[0].request.tools.map(tool => tool.name), ['list_files', 'read_file', 'run_command', 'edit_file']);
   solo.assertComplete();
   const model = new ScriptedModel([
-    [functionCall('ask_scout', { input: 'Inspect.' }, { callId: 'selected-scout' })],
+    [functionCall('ask_scout', { input: 'Inspect. Same-chat background.' }, { callId: 'selected-scout' })],
     [assistantMessage('Scout findings.')], [assistantMessage('Coordinator summary.')],
   ]);
   const done = await createSdkAdapter({ harness: h.value, model, onEvent: event => events.push(event) }).start({
@@ -389,10 +393,10 @@ test('coordinator-only has no delegation; selected coordinator group exposes onl
     history: [{ id: 'previous', author: 'user', text: 'Same-chat background.', at: 1 }],
   });
   assert.equal(done.status, 'completed');
-  assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['ask_scout']);
+  assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['list_files', 'read_file', 'run_command', 'edit_file', 'ask_scout']);
   assert.match(JSON.stringify(model.calls[1].request.input), /Same-chat background/);
-  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => [event.agent, event.message]), [['Scout', 'Scout findings.'], ['Coordinator', 'Coordinator summary.']]);
-  assert.ok(events.every(event => !event.agent || ['Scout', 'Coordinator'].includes(event.agent)));
+  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => [event.agent, event.message]), [['scout', 'Scout findings.'], ['coordinator', 'Coordinator summary.']]);
+  assert.ok(events.every(event => !event.agent || ['scout', 'coordinator'].includes(event.agent)));
   model.assertComplete();
 });
 
@@ -407,8 +411,8 @@ test('group without coordinator uses actual roots, passes within-run replies and
   const adapter = createSdkAdapter({ harness: h.value, model, onEvent: event => events.push(event) });
   const paused = await adapter.start({ runId: 'peer-group', prompt: 'Fix it.', team: participants('scout', 'maker', 'checker') });
   assert.equal(paused.status, 'awaiting_approval');
-  assert.equal(paused.pendingApprovals[0].agent, 'Maker');
-  assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['list_files', 'read_file']);
+  assert.equal(paused.pendingApprovals[0].agent, 'maker');
+  assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['list_files', 'read_file', 'run_command', 'edit_file']);
   assert.match(JSON.stringify(model.calls[1].request.input), /Scout found the issue/);
   const approval = paused.pendingApprovals[0];
   const done = await adapter.resume({ runId: paused.runId, approvalId: approval.approvalId, digest: approval.digest, approved: true });
@@ -418,8 +422,8 @@ test('group without coordinator uses actual roots, passes within-run replies and
   assert.match(model.calls[3].request.systemInstructions!, /Focus on checker clarity/);
   assert.match(JSON.stringify(model.calls[3].request.input), /Maker completed the fix/);
   assert.ok(model.calls.every(call => call.request.tools.every(tool => !tool.name.startsWith('ask_'))));
-  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['Scout', 'Maker', 'Checker']);
-  assert.equal(events.find(event => event.type === 'run_completed')?.agent, 'Checker');
+  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['scout', 'maker', 'checker']);
+  assert.equal(events.find(event => event.type === 'run_completed')?.agent, 'checker');
   model.assertComplete();
 });
 
@@ -477,10 +481,10 @@ test('concurrent direct chats isolate approvals even with identical model call I
   model.assertComplete();
 });
 
-test('oversized and wrong-participant history fails before any model request', async () => {
+test('wrong-participant and too-many-message history fails before any model request', async () => {
   const model = new ScriptedModel([]), adapter = createSdkAdapter({ harness: harness().value, model });
   await assert.rejects(adapter.start({ runId: 'wrong-history', prompt: 'Hello.', team: participants('scout'), history: [{ id: 'x', author: 'maker', text: 'Wrong participant.', at: 1 }] }));
-  await assert.rejects(adapter.start({ runId: 'huge-history', prompt: 'Hello.', team: participants('scout'), history: [{ id: 'x', author: 'user', text: 'x'.repeat(32_001), at: 1 }] }));
+  await assert.rejects(adapter.start({ runId: 'huge-history', prompt: 'Hello.', team: participants('scout'), history: Array.from({length:41},(_,index)=>({id:`history-${index}`,author:'user',text:'Earlier message.',at:1})) }));
   model.assertComplete();
 });
 
@@ -503,8 +507,8 @@ test('denial lets the current peer explain but never starts the next selected pe
   assert.equal(model.calls.length, 2);
   assert.match(JSON.stringify(model.calls[1].request.input), /rejected/);
   assert.ok(model.calls.every(call => /Focus on maker clarity/.test(call.request.systemInstructions!)));
-  assert.ok(events.every(event => !event.agent || event.agent === 'Maker'));
-  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['Maker']);
+  assert.ok(events.every(event => !event.agent || event.agent === 'maker'));
+  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['maker']);
   model.assertComplete();
 });
 
@@ -517,7 +521,7 @@ test('oversized final peer message fails closed before publishing its text or co
   assert.equal(done.status, 'error');
   assert.equal(done.message, 'Output limit reached.');
   assert.equal(done.output, undefined);
-  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['Scout']);
+  assert.deepEqual(events.filter(event => event.type === 'agent_message').map(event => event.agent), ['scout']);
   assert.equal(events.filter(event => event.type === 'run_completed').length, 0);
   assert.equal(events.filter(event => event.type === 'run_failed').length, 1);
   assert.ok(!JSON.stringify({ done, events }).includes(oversized));
@@ -543,7 +547,7 @@ test('only a private coordinator with a server roster and callback can create a 
     const done = await adapter.start({ runId: `group-exposure-${index}`, prompt: 'Advise.', team: config.team, availableBots: config.availableBots });
     assert.equal(done.status, 'completed');
     assert.equal(model.calls[0].request.tools.some(tool => tool.name === 'start_group_conversation'), config.exposed);
-    if (config.exposed) assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['start_group_conversation']);
+    if (config.exposed) assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['list_files', 'read_file', 'run_command', 'edit_file', 'start_group_conversation']);
     assert.equal(groups, 0);
     model.assertComplete();
   }
@@ -569,19 +573,18 @@ test('private coordinator starts a selected group using a detached server roster
   assert.match(model.calls[0].request.systemInstructions!, /self-contained brief/);
   assert.doesNotMatch(model.calls[0].request.systemInstructions!, /changed-after-start/);
   assert.match(JSON.stringify(model.calls[1].request.input), /created-group/);
-  assert.ok(model.calls.every(call => call.request.tools.every(tool => tool.name === 'start_group_conversation')));
-  assert.ok(events.every(event => !event.agent || event.agent === 'Coordinator'));
+  assert.ok(model.calls.every(call => call.request.tools.every(tool => ['list_files','read_file','run_command','edit_file','start_group_conversation'].includes(tool.name))));
+  assert.ok(events.every(event => !event.agent || event.agent === 'coordinator'));
   assert.equal(done.pendingApprovals.length, 0);
   model.assertComplete();
 });
 
-test('group selections reject foreign IDs, duplicates, repeated roles, and injected context before callback', async () => {
+test('group selections reject foreign IDs, duplicates, and injected context before callback', async () => {
   const availableBots = participants('scout', 'maker');
   availableBots.push({ ...availableBots[0], id: 'alternate-scout', name: 'Alternate Scout' });
   const invalidRequests = [
     { ...groupRequest(), botIds: ['unknown-bot'] },
     { ...groupRequest(), botIds: [availableBots[0].id, availableBots[0].id] },
-    { ...groupRequest(), botIds: [availableBots[0].id, 'alternate-scout'] },
     { ...groupRequest(), botIds: [] },
     { ...groupRequest(), history: [{ text: 'Untrusted replacement history.' }] },
     { ...groupRequest(), title: 'x'.repeat(81) },
@@ -818,8 +821,8 @@ test('the Responses transport makes one attempt when client retries are explicit
 });
 
 
-const agentRequest = (name = 'Methodical Maya'): SdkCreateAgentRequest => ({ name, purpose: 'Be patient and methodical, explain tradeoffs with short examples, and focus on readable code.', role: 'maker' });
-const createdProfile = (id: string, request = agentRequest()): Persona => ({ ...participants(request.role)[0], id, ...request });
+const agentRequest = (name = 'Methodical Maya'): SdkCreateAgentRequest => ({ name, purpose: 'Be patient and methodical, explain tradeoffs with short examples, and focus on readable code.' });
+const createdProfile = (id: string, request = agentRequest()): Persona => ({ ...participants('maker')[0], id, ...request, role:'agent' });
 
 test('private coordinator creates a real reusable personality then groups it in the same turn', async () => {
   const h = forbiddenHarness(), events: SdkEvent[] = [], request = agentRequest();
@@ -838,13 +841,13 @@ test('private coordinator creates a real reusable personality then groups it in 
   assert.match(JSON.stringify(model.calls[1].request.input), /new-maya/);
   assert.match(JSON.stringify(model.calls[1].request.input), /patient and methodical/);
   assert.doesNotMatch(JSON.stringify(model.calls[1].request.input), /mutated-server-result/);
-  assert.ok(events.every(event => !event.agent || event.agent === 'Coordinator'));
+  assert.ok(events.every(event => !event.agent || event.agent === 'coordinator'));
   assert.deepEqual(h.calls, []);
   model.assertComplete();
   const personalModel = new ScriptedModel([[assistantMessage('Maya advice.')]]);
   await createSdkAdapter({ harness: h.value, model: personalModel, workspaceToolsEnabled: false }).start({ runId: 'talk-to-maya', prompt: 'Help me understand.', team: [createdProfile('new-maya')] });
   assert.match(personalModel.calls[0].request.systemInstructions!, /patient and methodical/);
-  assert.match(personalModel.calls[0].request.systemInstructions!, /personality, tone, and specialist focus/);
+  assert.match(personalModel.calls[0].request.systemInstructions!, /personality, tone, and focus/);
   assert.deepEqual(personalModel.calls[0].request.tools, []);
   personalModel.assertComplete();
 });
@@ -1004,7 +1007,7 @@ test('citations stay with the actual speaker, remap redaction, and retain repeat
   const done = await createSdkAdapter({ harness: forbiddenHarness().value, model, workspaceToolsEnabled: false, webSearchEnabled: true, onEvent: event => events.push(event) }).start({ runId: 'cited-speakers', prompt: 'Research.', team: participants('coordinator', 'scout') });
   assert.equal(done.status, 'completed');
   const messages = events.filter(event => event.type === 'agent_message');
-  assert.deepEqual(messages.map(event => event.agent), ['Scout', 'Coordinator']);
+  assert.deepEqual(messages.map(event => event.agent), ['scout', 'coordinator']);
   assert.equal(messages[0].message, '[REDACTED] First fact. Second fact.');
   assert.equal(messages[0].sources?.length, 2);
   assert.equal(messages[0].sources?.[0].startIndex, messages[0].message!.indexOf('First'));
@@ -1060,4 +1063,274 @@ test('identical replies in independent runs never inherit citations or arbitrary
   const messages = events.filter(event=>event.type==='agent_message');
   assert.equal(messages[0].sources?.length,1);
   assert.equal(messages[1].sources,undefined);
+});
+
+async function nativeCoordinatorHarness(t: test.TestContext) {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'tinkerfleet-coordinator-sdk-')));
+  const approvals = new ApprovalStore();
+  const runner = new NativeWorkspaceRunner({workspaceRoot: root, approvals});
+  t.after(async () => { await runner.shutdown(); await rm(root, {recursive:true,force:true}); });
+  await writeFile(path.join(root, 'README.md'), 'Temporary coordinator workspace.\n');
+  const value: SdkHarness = {
+    snapshot: id => runner.snapshot(id), readFile: (id, name) => runner.readFile(id, name),
+    prepare: (id, action) => runner.prepare(id, action),
+    decide: (id, approvalId, digest, approved) => approvals.decide(id, approvalId, digest, approved),
+    execute: (id, approvalId, options) => runner.execute(id, approvalId, options),
+    cancel: id => runner.cancel(id),
+  };
+  return {root, runner, approvals, value};
+}
+
+test('direct coordinator reads, creates a real file and runs its command only after exact approvals', async t => {
+  const h = await nativeCoordinatorHarness(t), events: SdkEvent[] = [];
+  const script = "require('node:fs').writeFileSync('command-result.txt', 'ran locally'); console.log('native coordinator command completed');\n";
+  const model = new ScriptedModel([
+    [functionCall('list_files', {}, {callId:'coordinator-list'})],
+    [functionCall('read_file', {path:'README.md'}, {callId:'coordinator-read'})],
+    [functionCall('edit_file', {path:'verify.cjs',content:script}, {callId:'coordinator-create'})],
+    [functionCall('read_file', {path:'verify.cjs'}, {callId:'coordinator-read-created'})],
+    [functionCall('run_command', {executable:process.execPath,args:['verify.cjs'],cwd:null}, {callId:'coordinator-command'})],
+    [assistantMessage('Created verify.cjs and ran it successfully in the selected workspace.')],
+  ]);
+  const adapter = createSdkAdapter({harness:h.value,model,workspaceToolsEnabled:true,workspaceRoot:h.root,webSearchEnabled:false,onEvent:event=>events.push(event)});
+  const first = await adapter.start({runId:'native-coordinator',prompt:'Create verify.cjs and run it.',team:participants('coordinator'),history:[{id:'old-capabilities',author:'coordinator',text:'I cannot access files or run commands on your machine.',at:1}]});
+  assert.equal(first.status,'awaiting_approval',JSON.stringify(first));
+  assert.deepEqual(model.calls[0].request.tools.map(tool=>tool.name),['list_files','read_file','run_command','edit_file']);
+  assert.ok(model.calls[0].request.systemInstructions!.includes(JSON.stringify(h.root)));
+  assert.match(model.calls[0].request.systemInstructions!,/earlier conversation messages claiming these capabilities are unavailable/);
+  assert.doesNotMatch(model.calls[0].request.systemInstructions!,/do not claim to inspect files, execute actions/);
+  assert.match(JSON.stringify(model.calls[2].request.input),/Temporary coordinator workspace/);
+  assert.equal(first.pendingApprovals[0].agent,'coordinator');
+  assert.equal(first.pendingApprovals[0].tool,'edit_file');
+  await assert.rejects(readFile(path.join(h.root,'verify.cjs')),{code:'ENOENT'});
+  await assert.rejects(readFile(path.join(h.root,'command-result.txt')),{code:'ENOENT'});
+  const edit = first.pendingApprovals[0];
+  await assert.rejects(adapter.resume({runId:first.runId,approvalId:edit.approvalId,digest:'0'.repeat(64),approved:true}));
+  await assert.rejects(readFile(path.join(h.root,'verify.cjs')),{code:'ENOENT'});
+  const second = await adapter.resume({runId:first.runId,approvalId:edit.approvalId,digest:edit.digest,approved:true});
+  assert.equal(second.status,'awaiting_approval',JSON.stringify(second));
+  assert.equal(await readFile(path.join(h.root,'verify.cjs'),'utf8'),script);
+  assert.match(JSON.stringify(model.calls[4].request.input),/writeFileSync/);
+  assert.equal(h.approvals.get(edit.approvalId)?.status,'consumed');
+  const command = second.pendingApprovals[0];
+  assert.equal(command.agent,'coordinator');assert.equal(command.tool,'run_command');
+  await assert.rejects(readFile(path.join(h.root,'command-result.txt')),{code:'ENOENT'});
+  const done = await adapter.resume({runId:first.runId,approvalId:command.approvalId,digest:command.digest,approved:true});
+  assert.equal(done.status,'completed',JSON.stringify(done));
+  assert.equal(await readFile(path.join(h.root,'command-result.txt'),'utf8'),'ran locally');
+  assert.match(JSON.stringify(model.calls[5].request.input),/native coordinator command completed/);
+  assert.equal(h.approvals.get(command.approvalId)?.status,'consumed');
+  assert.deepEqual(events.filter(event=>event.type==='approval_requested').map(event=>event.agent),['coordinator','coordinator']);
+  assert.ok(events.every(event=>!event.agent||event.agent==='coordinator'));
+  await assert.rejects(adapter.resume({runId:first.runId,approvalId:command.approvalId,digest:command.digest,approved:true}));
+  model.assertComplete();
+});
+
+test('direct coordinator native commands remain blocked by denial or changed workspace', async t => {
+  const h = await nativeCoordinatorHarness(t);
+  for (const decision of ['denied','stale'] as const) {
+    const runId = `native-coordinator-${decision}`;
+    const model = new ScriptedModel([
+      [functionCall('run_command',{executable:process.execPath,args:['-e',"require('node:fs').writeFileSync('must-not-exist.txt', 'executed')"],cwd:null},{callId:runId})],
+      ...(decision==='denied'?[[assistantMessage('The command was declined; nothing ran.')]]:[]),
+    ]);
+    const adapter = createSdkAdapter({harness:h.value,model,workspaceToolsEnabled:true,workspaceRoot:h.root,webSearchEnabled:false});
+    const paused = await adapter.start({runId,prompt:'Write the requested file.',team:participants('coordinator')});
+    assert.equal(paused.status,'awaiting_approval');
+    const approval = paused.pendingApprovals[0];
+    await assert.rejects(readFile(path.join(h.root,'must-not-exist.txt')),{code:'ENOENT'});
+    if(decision==='stale')await writeFile(path.join(h.root,'README.md'),'Changed after the proposal.\n');
+    const done = await adapter.resume({runId,approvalId:approval.approvalId,digest:approval.digest,approved:decision==='stale'});
+    assert.equal(done.status,decision==='denied'?'completed':'error',JSON.stringify(done));
+    await assert.rejects(readFile(path.join(h.root,'must-not-exist.txt')),{code:'ENOENT'});
+    assert.equal(h.approvals.get(approval.approvalId)?.status,'denied');
+    model.assertComplete();
+  }
+});
+
+test('disabled workspace mode exposes neither coordinator workspace tools nor its root', async () => {
+  const h = forbiddenHarness(),model = new ScriptedModel([[assistantMessage('Conversation only.')]]);
+  await createSdkAdapter({harness:h.value,model,workspaceToolsEnabled:false,workspaceRoot:'/private/hidden-project',webSearchEnabled:false}).start({runId:'coordinator-disabled-root',prompt:'Discuss.',team:participants('coordinator')});
+  assert.deepEqual(model.calls[0].request.tools,[]);
+  assert.doesNotMatch(model.calls[0].request.systemInstructions!,/hidden-project|You can directly inspect/);
+  assert.deepEqual(h.calls,[]);
+});
+
+test('direct coordinator can request an approved absolute host write outside the selected workspace', async t => {
+  const h = await nativeCoordinatorHarness(t);
+  const destination = await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-user-destination-')));
+  t.after(()=>rm(destination,{recursive:true,force:true}));
+  const target = path.join(destination,'requested file.txt');
+  const args = ['-e',"require('node:fs').writeFileSync(process.argv[1], 'approved host write'); console.log('host write completed')",target];
+  const model = new ScriptedModel([
+    [functionCall('run_command',{executable:process.execPath,args,cwd:null},{callId:'absolute-host-command'})],
+    [assistantMessage('Wrote the requested absolute destination after approval.')],
+  ]);
+  const adapter = createSdkAdapter({harness:h.value,model,workspaceToolsEnabled:true,workspaceRoot:h.root,webSearchEnabled:false});
+  const paused = await adapter.start({runId:'coordinator-absolute-host',prompt:`Write the text "approved host write" to this exact host path: ${target}`,team:participants('coordinator')});
+  assert.equal(paused.status,'awaiting_approval',JSON.stringify(paused));
+  const approval = paused.pendingApprovals[0];
+  assert.equal(approval.agent,'coordinator');
+  assert.deepEqual(approval.action,{kind:'command',executable:process.execPath,args});
+  assert.match(model.calls[0].request.systemInstructions!,/argv may target absolute host paths when the user requested/);
+  await assert.rejects(readFile(target),{code:'ENOENT'});
+  const done = await adapter.resume({runId:paused.runId,approvalId:approval.approvalId,digest:approval.digest,approved:true});
+  assert.equal(done.status,'completed',JSON.stringify(done));
+  assert.equal(await readFile(target,'utf8'),'approved host write');
+  assert.match(JSON.stringify(model.calls[1].request.input),/host write completed/);
+  model.assertComplete();
+});
+
+const ordinary = (id: string, name=id): Persona => ({id,name,purpose:`Be thoughtful and concise as ${name}.`,role:'agent',color:'#3a7d82',shape:'orbit'});
+
+test('arbitrary same-role agent IDs have equal tools and independent approval attribution', async () => {
+  const h=harness(),events:SdkEvent[]=[];
+  const team=[...participants('coordinator'),ordinary('nova'),ordinary('lumen')];
+  const model=new ScriptedModel([
+    [functionCall('ask_nova',{input:'Create a file.'},{callId:'nova-request'})],
+    [functionCall('edit_file',{path:'nova.txt',content:'Nova file'},{callId:'nova-edit'})],
+    [assistantMessage('Nova created it.')],
+    [functionCall('ask_lumen',{input:'Check it with a command.'},{callId:'lumen-request'})],
+    [functionCall('run_command',command,{callId:'lumen-command'})],
+    [assistantMessage('Lumen checked it.')],
+    [assistantMessage('Both agents completed the approved work.')],
+  ]);
+  const adapter=createSdkAdapter({harness:h.value,model,onEvent:event=>events.push(event)});
+  const first=await adapter.start({runId:'arbitrary-agent-group',prompt:'Create and check.',team});
+  assert.equal(first.status,'awaiting_approval');assert.equal(first.pendingApprovals[0].agent,'nova');
+  assert.deepEqual(model.calls[0].request.tools.map(tool=>tool.name),['list_files','read_file','run_command','edit_file','ask_nova','ask_lumen']);
+  assert.deepEqual(model.calls[1].request.tools.map(tool=>tool.name),['list_files','read_file','run_command','edit_file']);
+  assert.equal(h.executed.length,0);
+  const a=first.pendingApprovals[0],second=await adapter.resume({runId:first.runId,approvalId:a.approvalId,digest:a.digest,approved:true});
+  assert.equal(second.status,'awaiting_approval');assert.equal(second.pendingApprovals[0].agent,'lumen');
+  const b=second.pendingApprovals[0],done=await adapter.resume({runId:first.runId,approvalId:b.approvalId,digest:b.digest,approved:true});
+  assert.equal(done.status,'completed');assert.equal(h.executed.length,2);
+  assert.deepEqual(events.filter(event=>event.type==='agent_message').map(event=>event.agent),['nova','lumen','coordinator']);
+  model.assertComplete();
+});
+
+test('selected dynamic tools preserve distinct punctuation IDs and bounded long IDs', () => {
+  const team=[...participants('coordinator'),ordinary('same-id'),ordinary('same_id'),ordinary('x'.repeat(64),'Long identifier')];
+  const fleet=createFleetAgents({model:'offline',team,workspaceToolsEnabled:false});
+  assert.deepEqual(Object.keys(fleet).sort(),['coordinator','same-id','same_id','x'.repeat(64)].sort());
+  const tools=fleet.coordinator.tools;
+  assert.equal(new Set(tools.map(tool=>tool.name)).size,3);
+  assert.ok(tools.every(tool=>/^[A-Za-z0-9_]{1,64}$/.test(tool.name)));
+  assert.ok(Object.values(fleet).filter(agent=>agent.name!=='coordinator').every(agent=>agent.tools.length===0));
+});
+
+test('primary can group seven ordinary agents without role uniqueness restrictions', async () => {
+  const bots=Array.from({length:7},(_,index)=>ordinary(`member-${index}`));let selected:string[]=[];
+  const model=new ScriptedModel([[functionCall('start_group_conversation',{title:'Shared discussion',brief:'Discuss the proposal.',botIds:bots.map(bot=>bot.id)},{callId:'seven-members'})],[assistantMessage('Group created.')]]);
+  const done=await createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false,startGroup:async(_runId,request)=>{selected=request.botIds;return{conversationId:'seven-group',title:request.title};}}).start({runId:'same-role-group',prompt:'Discuss together.',team:participants('coordinator'),availableBots:bots});
+  assert.equal(done.status,'completed');assert.equal(selected.length,7);
+  const fleet=createFleetAgents({model:'offline',team:[...participants('coordinator'),...bots],workspaceToolsEnabled:false});
+  assert.equal(fleet.coordinator.tools.length,7);
+  model.assertComplete();
+});
+
+test('private primary creates a personality without roles and messages its returned ID in the same turn', async () => {
+  const request=agentRequest(),received:unknown[]=[];
+  const model=new ScriptedModel([
+    [functionCall('create_agent',{...request},{callId:'new-agent'})],
+    [functionCall('message_agent',{agentId:'new-maya',message:'Explain the tradeoffs clearly.'},{callId:'message-new-agent'})],
+    [assistantMessage('Maya received your request; open her conversation for the result.')],
+  ]);
+  const done=await createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false,createAgent:async(_runId,input)=>{assert.deepEqual(Object.keys(input).sort(),['name','purpose']);return createdProfile('new-maya',input);},messageAgent:async(runId,input)=>{received.push({runId,input});return{conversationId:'maya-direct',agentId:input.agentId};}}).start({runId:'create-message',prompt:'Create a patient agent and ask her to explain.',team:participants('coordinator'),availableBots:[]});
+  assert.equal(done.status,'completed');
+  assert.deepEqual(received,[{runId:'create-message',input:{agentId:'new-maya',message:'Explain the tradeoffs clearly.'}}]);
+  assert.match(JSON.stringify(model.calls[2].request.input),/maya-direct/);
+  assert.deepEqual(model.calls[0].request.tools.map(tool=>tool.name),['create_agent','message_agent']);
+  model.assertComplete();
+});
+
+test('message delivery is private-primary-only, validates IDs, caches exact replay, and caps distinct sends', async () => {
+  for(const team of [[ordinary('nova')],[...participants('coordinator'),ordinary('nova')]]) {
+    const model=new ScriptedModel([[assistantMessage('Hello.')]]);
+    await createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false,messageAgent:async()=>{throw Error('must not send');}}).start({runId:`no-message-${team.length}`,prompt:'Hello.',team,availableBots:[ordinary('nova')]});
+    assert.equal(model.calls[0].request.tools.some(tool=>tool.name==='message_agent'),false);
+  }
+  let sent=0;
+  const model=new ScriptedModel(['one','one','two','three','four'].map((message,index)=>[functionCall('message_agent',{agentId:'nova',message},{callId:`send-${index}`})]));
+  const done=await createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false,messageAgent:async(_id,input)=>{sent++;return{conversationId:'nova-direct',agentId:input.agentId};}}).start({runId:'message-limit',prompt:'Send requests.',team:participants('coordinator'),availableBots:[ordinary('nova')]});
+  assert.equal(done.status,'error');assert.equal(sent,3);model.assertComplete();
+  for(const request of [{agentId:'foreign',message:'Hello.'},{agentId:'nova',message:''},{agentId:'nova',message:'Hi',history:[]}]) {
+    let calls=0;const invalid=new ScriptedModel([[functionCall('message_agent',request,{callId:'invalid-message'})]]);
+    const result=await createSdkAdapter({harness:forbiddenHarness().value,model:invalid,workspaceToolsEnabled:false,messageAgent:async()=>{calls++;return{conversationId:'no',agentId:'nova'};}}).start({runId:'invalid-message',prompt:'Send.',team:participants('coordinator'),availableBots:[ordinary('nova')]});
+    assert.equal(result.status,'error');assert.equal(calls,0);
+  }
+});
+
+test('message callback metadata is verified and cancellation prevents late results and further calls', async () => {
+  for(const result of [{conversationId:'child',agentId:'someone-else'},{conversationId:'https://foreign.invalid',agentId:'nova'}]) {
+    const model=new ScriptedModel([[functionCall('message_agent',{agentId:'nova',message:'Hello.'},{callId:'forged-metadata'})]]);
+    const done=await createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false,messageAgent:async()=>result}).start({runId:'forged-message',prompt:'Send.',team:participants('coordinator'),availableBots:[ordinary('nova')]});
+    assert.equal(done.status,'error');
+  }
+  let started!:()=>void,finish!:(result:{conversationId:string;agentId:string})=>void;
+  const entered=new Promise<void>(resolve=>{started=resolve;});
+  const model=new ScriptedModel([[functionCall('message_agent',{agentId:'nova',message:'Hello.'},{callId:'late-message'})]]);
+  const adapter=createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false,messageAgent:async()=>{started();return new Promise(resolve=>{finish=resolve;});}});
+  const pending=adapter.start({runId:'cancel-message',prompt:'Send.',team:participants('coordinator'),availableBots:[ordinary('nova')]});
+  await entered;await adapter.cancel('cancel-message');finish({conversationId:'late-child',agentId:'nova'});
+  assert.equal((await pending).status,'cancelled');assert.equal(model.calls.length,1);
+});
+
+test('trusted reply history is scoped to roster IDs and legacy aliases must be unambiguous', async () => {
+  const model=new ScriptedModel([[assistantMessage('Primary summary.')],[assistantMessage('Recipient reply.')],[assistantMessage('Legacy continued.')]]);
+  const adapter=createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false});
+  await adapter.start({runId:'relay-source',prompt:'Continue.',team:participants('coordinator'),availableBots:[ordinary('nova')],history:[{id:'relay',author:'nova',text:'SCOPED_RECIPIENT_RESULT',at:1}]});
+  await adapter.start({runId:'relay-recipient',prompt:'Continue.',team:[ordinary('nova')],history:[{id:'incoming',author:'coordinator',text:'EXPLICIT_PRIMARY_MESSAGE',at:1}]});
+  await adapter.start({runId:'legacy-author',prompt:'Continue.',team:[{...ordinary('legacy-one'),role:'maker'}],history:[{id:'old',author:'maker',text:'OLD_AGENT_REPLY',at:1}]});
+  assert.match(JSON.stringify(model.calls[0].request.input),/SCOPED_RECIPIENT_RESULT/);
+  assert.doesNotMatch(JSON.stringify(model.calls[1].request.input),/SCOPED_RECIPIENT_RESULT/);
+  assert.match(JSON.stringify(model.calls[2].request.input),/legacy-one/);
+  await assert.rejects(adapter.start({runId:'foreign-relay',prompt:'Continue.',team:participants('coordinator'),availableBots:[],history:[{id:'x',author:'nova',text:'Not registered.',at:1}]}));
+  await assert.rejects(adapter.start({runId:'ambiguous-old',prompt:'Continue.',team:[{...ordinary('one'),role:'maker'},{...ordinary('two'),role:'maker'}],history:[{id:'x',author:'maker',text:'Ambiguous author.',at:1}]}));
+  model.assertComplete();
+});
+
+test('legacy agents sharing the same former role remain independently addressable', async () => {
+  const agents=[{...ordinary('legacy-a'),role:'scout' as const},{...ordinary('legacy-b'),role:'scout' as const}];
+  const model=new ScriptedModel([
+    [functionCall('ask_legacy__ha',{input:'Give your view.'},{callId:'legacy-a-call'})],[assistantMessage('First view.')],
+    [functionCall('ask_legacy__hb',{input:'Give your view.'},{callId:'legacy-b-call'})],[assistantMessage('Second view.')],[assistantMessage('Combined views.')],
+  ]);
+  const events:SdkEvent[]=[];
+  const done=await createSdkAdapter({harness:forbiddenHarness().value,model,workspaceToolsEnabled:false,onEvent:event=>events.push(event)}).start({runId:'legacy-same-role',prompt:'Ask both agents.',team:[...participants('coordinator'),...agents],history:[{id:'a',author:'legacy-a',text:'Earlier first view.',at:1},{id:'b',author:'legacy-b',text:'Earlier second view.',at:2}]});
+  assert.equal(done.status,'completed');
+  assert.deepEqual(events.filter(event=>event.type==='agent_message').map(event=>event.agent),['legacy-a','legacy-b','coordinator']);
+  assert.deepEqual(model.calls[0].request.tools.map(tool=>tool.name),['ask_legacy__ha','ask_legacy__hb']);
+  model.assertComplete();
+});
+
+test('local token exhaustion blocks new tool work, preserves usage, and identifies the app budget', async () => {
+  const h=harness();
+  const model=new ScriptedModel([{output:[functionCall('run_command',command,{callId:'over-budget-command'})],usage:new Usage({inputTokens:90,outputTokens:20,totalTokens:110})}]);
+  const done=await createSdkAdapter({harness:h.value,model,limits:{maxTotalTokens:100}}).start({runId:'local-token-budget',prompt:'Run the test.',team:participants('coordinator')});
+  assert.equal(done.status,'error');assert.match(done.message!,/local token budget/);assert.match(done.message!,/not an API quota error/);
+  assert.equal(done.usage.totalTokens,110);assert.equal(done.usage.modelCalls,1);assert.equal(done.pendingApprovals.length,0);assert.equal(h.executed.length,0);
+  model.assertComplete();
+});
+
+test('SDK compacts long same-chat history and tool output without changing actual execution results', async () => {
+  const h=harness(),fullOutput='BEGIN_RESULT '+ 'x'.repeat(12_000)+' END_RESULT';
+  h.value.readFile=async()=>fullOutput;
+  const model=new ScriptedModel([[functionCall('read_file',{path:'notes.txt'},{callId:'long-read'})],[assistantMessage('Read the bounded context.')]]);
+  const done=await createSdkAdapter({harness:h.value,model}).start({runId:'trim-context',prompt:'CURRENT_USER_REQUEST',team:participants('coordinator'),history:[{id:'old',author:'user',text:'OLD_PRIVATE_CONTEXT '+ 'a'.repeat(20_000),at:1},{id:'new',author:'coordinator',text:'LATEST_CHAT_REPLY',at:2}]});
+  assert.equal(done.status,'completed',JSON.stringify(done));
+  const first=JSON.stringify(model.calls[0].request.input),second=JSON.stringify(model.calls[1].request.input);
+  assert.match(first,/CURRENT_USER_REQUEST/);assert.match(first,/LATEST_CHAT_REPLY/);assert.doesNotMatch(first,/OLD_PRIVATE_CONTEXT/);
+  assert.match(second,/Tool output truncated for context/);assert.match(second,/BEGIN_RESULT/);assert.match(second,/END_RESULT/);assert.ok(second.length<6_000);
+  model.assertComplete();
+});
+
+test('large roster is listed once with bounded summaries and full personality stays on its agent', () => {
+  const bots=Array.from({length:32},(_,i)=>({...ordinary(`available-${i}`),purpose:`UNIQUE_PURPOSE_${i}: `+'p'.repeat(570)}));
+  const markerTool=createFleetAgents({model:'offline'}).coordinator.tools[0];
+  const fleet=createFleetAgents({model:'offline',team:participants('coordinator'),availableBots:bots,workspaceToolsEnabled:false,groupTool:markerTool,createAgentTool:markerTool,messageAgentTool:markerTool});
+  const instructions=String(fleet.coordinator.instructions);
+  assert.equal(instructions.split('UNIQUE_PURPOSE_0:').length-1,1);assert.ok(instructions.length<16_000);
+  const direct=createFleetAgents({model:'offline',team:[bots[0]],workspaceToolsEnabled:false});
+  assert.ok(String(direct[bots[0].id].instructions).includes(bots[0].purpose));
 });

@@ -5,6 +5,14 @@ Live mode defaults to conversation-only. Enable tools with
 `TINKERFLEET_WORKSPACE=/absolute/path/to/project`. Docker is not used by the active
 application. Start with a small, trusted practice project.
 
+## Ask the Coordinator directly
+
+With workspace tools enabled, the primary Coordinator can read files, create or
+edit files, and run installed commands through the same exact-action approval
+flow as every ordinary agent. It may use a group when collaboration helps, but
+a simple local task does not require delegation. Agent names and personalities
+do not change which enabled tools they receive.
+
 ## Real files and real processes
 
 The native runner reads the selected workspace and prepares exact file or command
@@ -25,6 +33,18 @@ The process receives only `HOME`, `PATH`, `TMPDIR`, `LANG`, and configured
 `LC_ALL`/`LC_CTYPE`, not arbitrary server variables or inherited API keys.
 Runtime and output are bounded. These controls reduce accidental exposure; they do not isolate a hostile
 program or prevent it from accessing readable files on the host.
+
+## File paths and command paths
+
+The file tools accept relative paths rooted in the selected workspace. For
+example, `notes/plan.txt` names a file beneath that folder. This path policy does
+not make the process a sandbox.
+
+Command arguments may contain an explicitly requested absolute path outside
+the workspace. A command acting on that path runs with the user's permissions;
+review its destination, executable, and arguments before approval. The app does
+not promise that all machine paths are denied. Its selected working directory
+remains the starting directory for the process, not an access boundary.
 
 ## Installed commands and tools
 
@@ -62,3 +82,11 @@ Demo output is simulated and changes no real files. Native-runner tests should
 use temporary fixtures. A passing test suite does not establish that a live
 model's requested command is safe. Read [SECURITY.md](../SECURITY.md) for the trust
 model and [setup](setup.md) for the explicit opt-in.
+
+## Verified execution
+
+An ordinary agent completed `git --version` and `codex --version` through the real
+SDK/native runner with two exact approvals and exit code 0. Temporary-fixture
+tests cover file changes and approval rejection. These checks establish the tested
+paths, not that every installed tool or proposed command will work safely. See
+[the handover](../HANDOVER.txt) for the full evidence and remaining limits.

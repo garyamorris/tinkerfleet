@@ -90,7 +90,7 @@ test('independent chats isolate participants, drafts, concurrent runs and approv
  const prefix=(id:string)=>`/api/conversations/${id}`;
  assert.equal((await post(prefix(first.id),{title:'Renamed maker',draft:'First draft'})).status,200);assert.equal((await post(prefix(second.id),{draft:'Second draft'})).status,200);
  assert.equal((await post(prefix(first.id),{participants:customTeam()})).status,400);
- const starts=await Promise.all([post(prefix(first.id)+'/runs',{prompt:'Maker only'}),post(prefix(second.id)+'/runs',{prompt:'Checker only'})]);assert.deepEqual(starts.map(r=>r.status),[201,201]);
+ const starts=await Promise.all([post(prefix(first.id)+'/runs',{prompt:'Fix tiny-project in this chat'}),post(prefix(second.id)+'/runs',{prompt:'Check tiny-project in this chat'})]);assert.deepEqual(starts.map(r=>r.status),[201,201]);
  const a=await starts[0].json() as {id:string},b=await starts[1].json() as {id:string};
  assert.equal((await post(prefix(first.id)+'/runs',{prompt:'Same chat busy'})).status,409);
  let snapshot=await state();for(let i=0;i<100&&!snapshot.runs.every(r=>r.status==='awaiting_approval');i++){await delay(2);snapshot=await state();}
@@ -122,7 +122,7 @@ test('direct live chat preflight failures use its selected participant, and poll
  assert.equal((await post(`/api/conversations/${chat.id}/runs`,{prompt:'Inspect offline fixture'})).status,201);
  let state:import('../src/shared/types.js').AppState;
  for(let i=0;i<150;i++){state=await(await fetch(base+'/api/state',{headers})).json();if(state.runs[0].status==='failed')break;await delay(10);}
- assert.equal(state!.runs[0].status,'failed');assert.deepEqual(state!.runs[0].messages.filter(m=>m.author!=='user').map(m=>m.author),['scout']);assert.ok(state!.runs[0].events.every(e=>e.agent==='scout'));
+ assert.equal(state!.runs[0].status,'failed');assert.deepEqual(state!.runs[0].messages.filter(m=>m.author!=='user').map(m=>m.author),['custom-scout']);assert.ok(state!.runs[0].events.every(e=>e.agent==='custom-scout'));
  const updatedAt=state!.conversations[0].updatedAt;await delay(5);const next=await(await fetch(base+'/api/state',{headers})).json() as import('../src/shared/types.js').AppState;assert.equal(next.conversations[0].updatedAt,updatedAt);
  }finally{await app.close();}
 });
@@ -322,7 +322,7 @@ test('HTTP exact approvals bind scripted SDK actions to real local edits and tes
 test('coordinator creation persists a reusable bot and immediately uses it in a group without changing old identities',async()=>{
  const {ScriptedModel,assistantMessage,functionCall,modelResponder}=await import('@openai/agents/testing');const {mkdtemp,realpath,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
  const directory=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-library-'))),statePath=path.join(directory,'state.json'),port=45333,base=`http://127.0.0.1:${port}`;
- const request={name:'Quill',purpose:'Explain evidence patiently and concisely.',role:'scout'};
+ const request={name:'Quill',purpose:'Explain evidence patiently and concisely.'};
  let app:ReturnType<typeof createApp>;
  const model=new ScriptedModel([[functionCall('create_agent',request,{callId:'create-quill'})],[functionCall('create_agent',request,{callId:'replay-quill'})],modelResponder(()=>[functionCall('start_group_conversation',{title:'Evidence discussion',brief:'Explain supplied evidence.',botIds:[app.state().profiles.find(p=>p.name==='Quill')!.id]},{callId:'quill-group'})]),[assistantMessage('Discussing supplied evidence.')],[assistantMessage('Quill is ready in your library.')],[assistantMessage('Hello from your saved Quill.')]]);
  app=createApp({port,mode:'live',sdkModel:model,statePath,workspaceToolsEnabled:false});await new Promise<void>(r=>app.server.listen(port,'127.0.0.1',r));
@@ -344,7 +344,7 @@ test('first browser import upgrades provisional profiles once and failed bot cre
  const {mkdtemp,realpath,writeFile,readFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
  const directory=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-library-rollback-'))),statePath=path.join(directory,'state.json');
  const old=customTeam()[0],now=Date.now();await writeFile(statePath,JSON.stringify({version:1,conversations:[{id:'old-chat',title:'Preserved',participants:[old],createdAt:now,updatedAt:now,draft:'',currentRunId:null}],runs:[]}));
- const model=new ScriptedModel([[functionCall('create_agent',{name:'Unsaved bot',purpose:'Help explain evidence.',role:'scout'},{callId:'unsaved'})],[assistantMessage('Creation could not be saved.')]]);
+ const model=new ScriptedModel([[functionCall('create_agent',{name:'Unsaved bot',purpose:'Help explain evidence.'},{callId:'unsaved'})],[assistantMessage('Creation could not be saved.')]]);
  const port=45334,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',sdkModel:model,statePath,workspaceToolsEnabled:false});await new Promise<void>(r=>app.server.listen(port,'127.0.0.1',r));const originalSave=ConversationStore.prototype.save;let sawAtomic=false;
  try{
  const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
@@ -383,4 +383,39 @@ test('live workspace startup publishes readiness before any run without invoking
  try{for(let i=0;i<100&&[ready,unavailable].some(app=>app.state().execution.reason==='Local workspace has not been checked yet.');i++)await delay(3);
  assert.equal(ready.state().liveReady,true);assert.equal(ready.state().execution.available,true);assert.equal(unavailable.state().liveReady,false);assert.equal(unavailable.state().execution.available,false);assert.notEqual(unavailable.state().execution.reason,'Local workspace has not been checked yet.');assert.equal(ready.state().runs.length,0);assert.equal(model.calls.length,0);
  }finally{await ready.close();await unavailable.close();await rm(root,{recursive:true,force:true});}
+});
+
+test('primary messages a reusable arbitrary agent with recipient-only context and receives a scoped reply',async()=>{
+ const {ScriptedModel,assistantMessage,functionCall}=await import('@openai/agents/testing');const {mkdtemp,realpath,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-message-agent-'))),statePath=path.join(directory,'state.json');
+ const agent={...customTeam()[1],id:'custom-ada',role:'agent' as const,name:'Ada',purpose:'Explain ideas with friendly examples.'};
+ const model=new ScriptedModel([[assistantMessage('RECIPIENT_LOCAL_CONTEXT')],[functionCall('message_agent',{agentId:agent.id,message:'Only this explicit task brief.'},{callId:'send-ada'})],[assistantMessage('ADA_REPLY_FOR_PRIMARY')],[functionCall('message_agent',{agentId:agent.id,message:'Only this explicit task brief.'},{callId:'repeat-ada'})],[assistantMessage('The message has been delivered.')],[assistantMessage('I can see Ada’s reply.')]]);
+ const port=45338,base=`http://127.0.0.1:${port}`;let app=createApp({port,mode:'live',sdkModel:model,statePath,workspaceToolsEnabled:false});await new Promise<void>(r=>app.server.listen(port,'127.0.0.1',r));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const wait=async(predicate:()=>boolean)=>{for(let i=0;i<200&&!predicate();i++)await delay(5);assert.ok(predicate(),JSON.stringify(app.state().runs.map(r=>({status:r.status,messages:r.messages}))));};
+ const recipient=await(await post('/api/conversations',{participants:[agent]})).json() as {id:string};await post(`/api/conversations/${recipient.id}/runs`,{prompt:'Remember my recipient context.'});await wait(()=>app.state().runs.every(r=>r.status==='completed'));
+ await post(`/api/conversations/${recipient.id}`,{draft:'UNSENT_RECIPIENT_DRAFT'});const primary=await(await post('/api/conversations',{participants:[customTeam()[0]],availableBots:[agent]})).json() as {id:string};await post(`/api/conversations/${primary.id}/runs`,{prompt:'PRIVATE_PRIMARY_SENTINEL. Ask Ada only the explicit brief.'});await wait(()=>app.state().runs.length===3&&app.state().runs.every(r=>r.status==='completed'));
+ const child=app.state().runs.find(r=>r.sentBy)!;assert.equal(child.conversationId,recipient.id);assert.equal(app.state().conversations.find(c=>c.id===recipient.id)!.draft,'UNSENT_RECIPIENT_DRAFT');assert.equal(child.messages[0].author,'coordinator');assert.equal(child.messages[0].text,'Only this explicit task brief.');assert.equal(child.sentBy!.conversationId,primary.id);assert.equal(app.state().conversations.length,2);assert.equal(child.messages.at(-1)!.author,agent.id);
+ assert.doesNotMatch(JSON.stringify(model.calls[2].request),/PRIVATE_PRIMARY_SENTINEL/);assert.match(JSON.stringify(model.calls[2].request),/RECIPIENT_LOCAL_CONTEXT/);
+ // Polling saves also relays a completed delegated result without another model request.
+ await fetch(base+'/api/state',{headers});const source=app.state().runs.find(r=>r.id===child.sentBy!.runId)!;assert.equal(source.messages.filter(m=>m.recipientRunId===child.id).length,1);assert.equal(source.messages.filter(m=>m.replyToRunId===child.id&&m.author===agent.id).length,1);assert.match(source.messages.find(m=>m.replyToRunId===child.id)!.text,/ADA_REPLY_FOR_PRIMARY/);
+ await post(`/api/conversations/${primary.id}/runs`,{prompt:'What did Ada reply?'});await wait(()=>app.state().runs.every(r=>r.status==='completed'));assert.match(JSON.stringify(model.calls[5].request),/ADA_REPLY_FOR_PRIMARY/);assert.doesNotMatch(JSON.stringify(model.calls[5].request),/RECIPIENT_LOCAL_CONTEXT/);
+ await app.close();app=createApp({port,mode:'demo',statePath});assert.equal(app.state().runs.find(r=>r.id===child.id)!.sentBy!.conversationId,primary.id);assert.equal(app.state().runs.find(r=>r.id===source.id)!.messages.filter(m=>m.replyToRunId===child.id).length,1);
+ }finally{await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('failed direct delivery publication leaves no recipient, link, or hidden child run',async()=>{
+ const {ScriptedModel,assistantMessage,functionCall}=await import('@openai/agents/testing');const {ConversationStore}=await import('../src/server/conversations.js');const {mkdtemp,realpath,readFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-delivery-fail-'))),statePath=path.join(directory,'state.json'),agent={...customTeam()[1],role:'agent' as const};
+ const model=new ScriptedModel([[functionCall('message_agent',{agentId:agent.id,message:'Explicit brief'},{callId:'failed-send'})],[assistantMessage('The message could not be saved.')]]),port=45339,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',sdkModel:model,statePath,workspaceToolsEnabled:false});const save=ConversationStore.prototype.save;let stagedTogether=false;
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const source=await(await post('/api/conversations',{participants:[customTeam()[0]],availableBots:[agent]})).json() as {id:string};
+ ConversationStore.prototype.save=function(chats,runs,profiles,imported){const child=runs.find(r=>r.sentBy);if(child){stagedTogether=chats.some(c=>c.id===child.conversationId)&&runs.some(r=>r.messages.some(m=>m.recipientRunId===child.id));throw Error('Simulated full disk');}return save.call(this,chats,runs,profiles,imported);};
+ assert.equal((await post(`/api/conversations/${source.id}/runs`,{prompt:'Message my agent'})).status,201);for(let i=0;i<100&&app.state().runs.some(r=>r.status==='running');i++)await delay(5);
+ assert.equal(stagedTogether,true);assert.equal(app.state().conversations.length,1);assert.equal(app.state().runs.length,1);assert.ok(app.state().runs[0].messages.every(m=>!m.recipientRunId));const saved=JSON.parse(await readFile(statePath,'utf8'));assert.equal(saved.conversations.length,1);assert.equal(saved.runs.length,1);assert.equal(model.calls.length,1);assert.equal(app.state().runs[0].status,'failed');
+ }finally{ConversationStore.prototype.save=save;await app.close();await rm(directory,{recursive:true,force:true});}
 });

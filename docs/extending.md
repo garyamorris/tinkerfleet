@@ -9,7 +9,7 @@ is more valuable than a bigger prompt that asks an existing tool to behave.
 2. Read through the selected-workspace policy, not an arbitrary host path.
 3. Reject absolute paths, traversal, excluded files, and symlink tricks.
 4. Bound the returned text and clearly label errors.
-5. Add the tool only to the roles that need it.
+5. Respect the explicit local/web tool configuration.
 6. Test malformed input, excluded data, oversized results, and a normal request.
 
 A proposed `read_json_property` tool could return one key from a validated
@@ -29,22 +29,17 @@ error path accidentally call an unapproved action.
 
 ## Customize a persona first
 
-Ask the direct Coordinator to create a reusable profile when the goal is a
-different name, personality, or focus within an existing role. Its purpose is passed to that role's live SDK instructions; it
-does not create a tool or another role. A conversation captures its selected
-participants, and each run freezes its team. See `src/server/personas.ts` for validation and `createFleetAgents` in
-`src/server/sdk.ts` for instruction composition.
+Use a profile for a different name, personality, or focus. Its purpose becomes
+live SDK instructions, but all ordinary agents receive the same enabled tools.
+Existing conversation participants remain captured when the profile is edited.
+The primary alone has creation, messaging, and group-start capabilities.
 
-## Add a specialist
+## Add an agent
 
-Give the role a concrete job, a limited tool set, and a concise output contract.
-Expose it with `asTool` when it should return to the coordinator. Keep nested
-model calls within the same run's limits and cancellation path. Add a visible
-role only when it helps the learner understand the work; extra avatars alone
-do not improve a system.
-
-The UI's profile ID and display name are separate from the server's stable role ID.
-Never deserialize a browser-supplied tool list into an agent configuration.
+Give it a clear personality and purpose rather than inventing a permission class.
+Groups support up to eight participants including the primary. Keep message
+briefs explicit and bounded; do not copy private source history into another
+conversation. Old role fields exist only for migration compatibility.
 
 ## Change the runner
 

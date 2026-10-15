@@ -5,7 +5,7 @@ whatever is needed.” Read the proposed change or command before deciding.
 
 ## What happens in live mode
 
-1. A specialist requests a mutation tool with structured arguments.
+1. An agent requests a mutation tool with structured arguments.
 2. The SDK's `needsApproval: true` interrupts execution and returns resumable state.
 3. The server associates the pending interruption with an approval record.
 4. The browser shows the action and its fingerprint.

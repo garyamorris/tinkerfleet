@@ -25,22 +25,20 @@ It asks the server to start, inspect, stop, or decide a run. It does not hold an
 OpenAI key, execute tool implementations, choose an executable outside server
 policy, or decide whether an SDK tool requires approval.
 
-Each profile contains a name, purpose, role assignment, color, and avatar
+Each profile contains a name, purpose/personality, color, and avatar
 shape. The profile library is persisted on the local server; older browser
 profiles are migrated. Creating a conversation
 captures its selected profile. A direct Coordinator also captures a bounded
 available-bot roster. The user-facing API creates only single-bot conversations;
-a Coordinator tool creates groups with the Coordinator and selected specialists.
+a Coordinator tool creates groups with the Coordinator and selected agents.
 The server validates and freezes participants. Each run
 also captures its team, so later library edits do not change existing chats or
 runs. Multiple conversations may independently use the same reusable bot.
 
-In live mode, a profile's name and purpose are added to its assigned agent's SDK
-instructions. The server still selects that role's tools and applies its safety
-instructions. Purpose is configurable guidance, not a capability grant. Renaming
-Maker to “Administrator” or asking Scout to write files cannot add privileges.
-Colors and avatar shapes affect presentation only. Demo mode records the team
-but retains the deterministic teaching scenario.
+In live mode, profile text guides behavior. The primary and ordinary agents
+receive the same enabled workspace and web tools, with exact approval for local
+edits and commands. Names such as Scout, Maker, and Checker are example
+personalities. Legacy role fields are compatibility data, not tool gates.
 
 The native Node HTTP server listens on loopback. Host/origin validation, a
 session cookie, a same-origin request token, and response headers make it harder
@@ -48,54 +46,32 @@ for an unrelated website to drive the local API. These controls do not establish
 an identity boundary against another user or malicious process on the same host.
 Do not expose this server through a tunnel, port forward, or public reverse proxy.
 
-## 2. The Coordinator creates a group when needed
+## 2. Primary coordination and individual agents
 
-The primary interaction is a direct Coordinator conversation. In live mode,
-that agent receives `start_group_conversation` and can select specialist IDs from
-its captured `availableBots` roster. The server accepts one to three specialists
-with unique capability roles and at most one new group per source run. The
-Coordinator is included in the resulting group. Its roster holds at most 32
-specialist profiles; alternative profiles for a role are allowed, but a created
-group cannot select duplicate roles. The tool accepts a title of 1–80 characters,
-a brief of 1–8,000 characters, and one to three bot IDs.
+The primary can perform local work directly, create named agents, send an
+individual agent a message, or start a group. Ordinary agents have the same
+enabled local and web tools. Only the direct primary receives the coordination
+tools; a personality does not grant additional authority.
 
-The direct Coordinator also receives `create_agent` with `{name, purpose, role}`.
-The role is one of `scout`, `maker`, or `checker`; the server generates the profile
-ID, validates the text, and persists the result. It permits at most three creations
-per run and 32 profiles in the library. Purpose carries personality
-and focus but cannot change capability templates. Group agents and direct
-specialists do not receive this tool.
+`create_agent` saves a name and purpose/personality in the local library. Up to
+three creations are allowed per run and the library holds 32 profiles. Created
+agents are available for direct chats and same-run coordination. Existing chat
+participants stay captured rather than being rewritten by library edits.
 
-New profiles become available for same-run group creation. Future direct
-Coordinator runs append new library profiles into spare roster slots. Existing
-roster IDs keep their captured profiles, preserving old group provenance; editing
-or deleting a library profile does not rewrite them. New direct chats use the
-latest library profiles. Existing conversation participants remain frozen. Creation metadata identifies the
-new profile so the UI can offer a direct-chat action.
+`message_agent` sends a concise brief to an individual agent and receives its
+reply through the individual conversation. A primary run can make up to three
+deliveries. Only the explicit brief is shared, not private source history.
 
-The group starts its own independent run attributed to the Coordinator. Source
-and child have separate SDK run budgets: one user turn can consume two budgets.
-Stopping the source run does not stop an already-created child. The operator must
-stop the group explicitly. Per-run limits are not an overall monetary cap. It
-receives an explicit, bounded task brief rather than the source conversation's
-private history. Its Coordinator can delegate only to selected specialists via
-`agent.asTool(...)`. Child groups cannot create further groups: the group-start
-tool exists only on a direct Coordinator. Direct specialist chats do not get it.
-The ordinary user conversation endpoint cannot bypass this flow to create groups.
+`start_group_conversation` starts one group per primary run, with up to eight
+participants including the primary. Multiple ordinary agents can share similar
+purposes; there is no one-per-role restriction. The group starts its own run from
+an explicit brief. Source and child runs have separate budgets and stop controls;
+stopping the primary does not stop an already-created child. Child groups cannot
+create more groups. This is bounded collaboration, not unattended routines or
+a shared memory across every chat.
 
-Users can visit the resulting group or talk with individual bots directly.
-Existing group histories remain accessible; they do not authorize new arbitrary
-group creation. Each direct chat invokes its chosen SDK agent. The server sends
-bounded history from that chat only, not every chat with the same bot.
-
-The demo mirrors the visible interaction with a deterministic tiny-project
-request-to-group scenario; a trivial greeting stays with the primary bot. It
-does not pretend the script made a live model decision.
-
-Agents-as-tools return to their caller; they are not unrestricted autonomous
-handoffs. See the [SDK agents guide](https://openai.github.io/openai-agents-js/guides/agents/).
-The app does not implement mentions, reply threads, routines, or unattended bot
-collaboration. A custom purpose cannot create tools or bypass role permissions.
+The no-key demo remains scripted. It can demonstrate saving Ada's profile and
+opening conversations, but does not establish live personality or collaboration.
 
 ## 3. Tools cross a trust boundary
 
@@ -110,6 +86,11 @@ paths, command policy, approval identity, and bounded resources in code.
 A file's contents or a command's output can also contain hostile instructions;
 those are data, not permission from the person using the app.
 
+The agents receive selected-workspace path context. File tools use relative
+paths within that workspace. Native commands can accept an explicitly requested
+absolute path as an argument; the working directory does not constrain the
+process's OS access. Every such command still needs review and exact approval.
+
 Read tools inspect the selected local workspace. Mutation tools propose
 an exact edit or command. The edit path, new contents, executable, arguments,
 working directory, and run identity matter to approval. A changed proposal needs
@@ -118,7 +99,7 @@ a new decision.
 ## Hosted search is separate from local tools
 
 Live web search uses the SDK's `webSearchTool`, which supplies a hosted Responses
-API tool definition to every selected role, including the private Coordinator. Execution is provider-side, not a process in the selected
+API tool definition to every selected agent, including the private Coordinator. Execution is provider-side, not a process in the selected
 workspace. It remains available when local workspace tools are disabled unless
 `TINKERFLEET_WEB_SEARCH=0`. Demo mode never invokes it. See the
 [SDK hosted-tools guide](https://openai.github.io/openai-agents-js/guides/tools/).
@@ -188,8 +169,9 @@ and outstanding decisions become denied; they cannot resume. Browser reload can
 return to work still active in the same server process. Legacy `{runs}` state is
 migrated to one independent conversation per run.
 
-Live context uses at most the last 32 messages and 16,000 characters from finished
-runs in the same chat. The local store allows 100 conversations, 200 runs, and
+Live history is bounded to 8,000 characters from the same chat. Outgoing context
+trimming preserves complete tool-call/result groups and exact tool arguments;
+long tool text is bounded to 4,000 characters with an explicit notice. The local store allows 100 conversations, 200 runs, and
 8 MiB of serialized data. It is bounded local history, not an unlimited memory
 or audit system. Writes are atomic; a corrupt store fails startup without being
 overwritten. New store files use mode 0600 and new state directories mode 0700.
@@ -198,3 +180,11 @@ Model turns, tool work, output, and elapsed time are also bounded. These limits
 do not guarantee a monetary budget. SDK tracing is disabled; live inference
 still transmits profile instructions, prompts, same-chat context, relevant file
 content, and tool results. Read [Setup and privacy](setup.md).
+
+## Returning an individual agent's reply
+
+A delegated run returns a bounded, labeled recipient reply or status to the
+source primary conversation. It is visible to the primary on its next turn.
+Delivery does not automatically wake the primary model, recursively trigger
+other agents, or prove that requested file actions completed. Follow the
+recipient's actual status and results.

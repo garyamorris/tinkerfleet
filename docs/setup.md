@@ -13,7 +13,7 @@ Open http://localhost:4317. The no-key demo is scripted. It makes no model calls
 runs no commands, and edits no real files. Docker is not required.
 
 Start with Orbit, the primary Coordinator. Ask about the tiny-project fixture to
-see it create a specialist group, then review the simulated approvals. A greeting
+see it create a agent group, then review the simulated approvals. A greeting
 stays in the primary chat. The six `npm run lesson:1` through `lesson:6` commands
 teach the building blocks without model calls.
 
@@ -100,18 +100,26 @@ history separation does not isolate the filesystem.
 
 `TINKERFLEET_REASONING_EFFORT=low` requests low reasoning effort from a compatible
 model. Accepted values are `none`, `minimal`, and `low`; unset leaves the model's
-default. Optional positive-integer settings can lower these per-run caps:
+default. Optional positive-integer settings can adjust these per-run limits:
 
-| Setting | Default / maximum |
-| --- | --- |
-| `TINKERFLEET_MAX_MODEL_CALLS` | 12 |
-| `TINKERFLEET_MAX_OUTPUT_TOKENS` | 2,048 per response |
-| `TINKERFLEET_MAX_TOTAL_TOKENS` | 24,000 reported tokens |
-| `TINKERFLEET_MAX_RUN_MS` | 120,000 ms |
+| Setting | Default | Maximum |
+| --- | --- | --- |
+| `TINKERFLEET_MAX_MODEL_CALLS` | 12 | 64 |
+| `TINKERFLEET_MAX_OUTPUT_TOKENS` | 2,048 per response | 16,384 |
+| `TINKERFLEET_MAX_TOTAL_TOKENS` | 64,000 reported tokens | 1,000,000 |
+| `TINKERFLEET_MAX_RUN_MS` | 120,000 ms | 600,000 ms |
 
-Invalid settings fail startup. A response that crosses a reported token threshold
-has already been billed. Primary and child group runs have separate budgets and
-stop controls. These limits are not an overall spending cap.
+Invalid settings fail startup. A response crossing a reported token threshold
+has already been billed: a completed answer is retained, but subsequent calls
+and exhausted-budget function work are blocked. Primary and child runs have
+separate budgets and stop controls. These limits are not an overall spending cap.
+
+Context is trimmed separately from billed usage. Recent history is bounded to
+8,000 characters. Older complete turns or complete tool-call/result groups are
+removed before breaking their structure; long tool output is shortened to 4,000
+characters with a notice. Exact tool arguments are not truncated. The current
+user input and required instructions remain intact; oversized input may fail
+rather than being silently altered. Trimming does not remove saved chat history.
 
 ## What persists and what leaves the machine
 
