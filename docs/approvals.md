@@ -21,7 +21,7 @@ message cannot stand in for a verified decision from this app's user interface.
 ## Binding and replay
 
 The server hashes a canonical JSON representation of the run and action, including
-the runner's snapshot, image ID, and policy binding. Object
+the runner's action binding. Object
 key order does not change this representation; a changed value does. The digest
 is a fingerprint used to bind state. It is not a password or a signature that
 makes a user trustworthy.
@@ -48,13 +48,13 @@ saved conversation views do not restore them.
 ## What to review
 
 For an edit, inspect the relative path, before/after text, and whether the change
-matches your request. Approval updates the run's snapshot only. There is no
-automatic writeback to your original project.
+matches your request. Approval writes the change to the real selected file.
+It is not a disposable preview, and restart does not roll it back.
 
 For a command, inspect the executable, every argument, working directory, and
 purpose. A harmless-looking name is not enough: `node` can execute arbitrary
-JavaScript, and `npm test` runs project-defined scripts. The container boundary is
-still required even for allowlisted executables.
+JavaScript, including code loaded by an explicit test file. The process runs with
+your user permissions, and its working directory does not sandbox it.
 
 A successful command checks the files it actually received at that moment. It
 does not prove the proposed change is correct, secure, or ready to ship.
@@ -71,8 +71,8 @@ approval card is a historical record, not permission to resume execution.
 ## Demo versus live
 
 Demo mode uses a deterministic fixture to teach the decision flow. Its edit and
-command results are labeled as simulated. No SDK model inference or Docker
-execution occurs. The six no-key lessons include real approval-store assertions;
+command results are labeled as simulated. No SDK model inference, real file
+edit, or local command execution occurs. The six no-key lessons include real approval-store assertions;
 that tests application state transitions, not a live model's behavior.
 
 Try [lesson 4](../lessons/04-approvals.ts): approve once, consume once, then prove

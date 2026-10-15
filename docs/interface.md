@@ -3,7 +3,7 @@
 A **bot persona** is a reusable identity and purpose within a fixed role. A
 **conversation** is a named chat with selected participants, its own history, and
 a draft. A **run** is one submitted task in that chat, with its own approvals,
-activity, output, artifacts, and working file snapshot.
+activity, output, artifacts, and optional local actions.
 
 ## Start with the primary bot
 
@@ -47,6 +47,8 @@ in new conversations. Names allow up to
 a Researcher profile could “Explain unfamiliar TypeScript and find the smallest
 relevant files.” The purpose reaches that bot's live SDK instructions.
 
+Live conversation-only mode supplies no workspace tools to any role. The role
+capabilities below apply when `TINKERFLEET_WORKSPACE_TOOLS=1` is enabled.
 Roles define capability. Researcher (`scout`) is read-only. Builder (`maker`) and
 Reviewer (`checker`) can propose edits and commands, each subject to approval.
 Coordinator coordinates its selected group. Purpose text cannot add tools or
@@ -61,7 +63,7 @@ may be sent to OpenAI in live mode.
 Creating a chat captures its participant profiles. Editing a library profile
 later does not rewrite existing conversation participants or earlier runs.
 Create a new chat to use the revised profile. Each run also keeps its own team
-snapshot. Participant identity and a workspace's file snapshot are separate.
+snapshot of participant profiles. This does not copy or isolate workspace files.
 
 ## Continue a conversation
 
@@ -70,9 +72,10 @@ saved locally in the browser and synchronized to the server. Submitting
 another task adds a new run to that conversation. Only bounded history from this
 chat supplies live context; another chat with the same bot is not included.
 
-Each new run starts with a fresh isolated file snapshot. It does not inherit an
-earlier run's in-memory edits, even within the same chat. Previous artifacts are
-visible records, not a shared filesystem.
+Workspace-enabled runs operate on the real selected folder. Approved edits and
+command effects persist there. Other chats using that folder can observe those
+changes even though their conversation histories are separate. Artifacts are
+records, not a guarantee of the file's current contents.
 
 Reload returns to the active chat while the server continues its work. The
 server saves visible chat history locally in `.tinkerfleet/conversations.json`.
@@ -88,7 +91,7 @@ Denial does not execute that action. Stopping invalidates pending approvals.
 
 Use a run's **Task details** to inspect its activity, output, and changes.
 The demo's output is labeled **SIMULATED DEMO OUTPUT**. A completed walkthrough
-is not evidence that Docker or a model ran. Live errors must remain visible.
+is not evidence that a command or a model ran. Live errors must remain visible.
 
 Use Tab and Shift+Tab to navigate controls and Enter or Space to activate buttons.
 Read role labels rather than relying on color. Open the full action preview

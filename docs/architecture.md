@@ -13,7 +13,7 @@ Live: browser → local HTTP server → selected direct agent or group orchestra
 
 The demo is an interaction example, not a fake provider placed behind the live
 SDK. It lets you learn the interface and approval vocabulary without a key,
-Docker, model latency, or API spending. Prompts in demo do not produce general
+local command execution, model latency, or API spending. Prompts in demo do not produce general
 intelligence: the known tiny-project request follows a scripted delegation
 scenario, while a simple greeting stays in the primary chat.
 
@@ -89,12 +89,18 @@ collaboration. A custom purpose cannot create tools or bypass role permissions.
 
 ## 3. Tools cross a trust boundary
 
+Live conversation-only mode is the default. It supplies conversation and group
+orchestration without workspace reads, edits, commands, snapshot capture, or a
+execution prerequisite. `TINKERFLEET_WORKSPACE_TOOLS=1` explicitly enables
+local workspace tools for an operator-selected folder. The model cannot turn that switch
+on through a purpose, prompt, or tool request.
+
 A tool request is untrusted input. Tinkerfleet checks names, argument shapes,
 paths, command policy, approval identity, and bounded resources in code.
 A file's contents or a command's output can also contain hostile instructions;
 those are data, not permission from the person using the app.
 
-Read tools inspect the run's validated in-memory snapshot. Mutation tools propose
+Read tools inspect the selected local workspace. Mutation tools propose
 an exact edit or command. The edit path, new contents, executable, arguments,
 working directory, and run identity matter to approval. A changed proposal needs
 a new decision.
@@ -112,19 +118,18 @@ Tinkerfleet adds its own exact-action, one-shot approval binding around executio
 This protects the application boundary as well as the conversation loop. See
 [Approvals](approvals.md) for denial, replay, expiry, and restart behavior.
 
-## 5. Execution is a separate component
+## 5. Native execution changes real files
 
-The trusted local process validates an explicit JSON manifest of file paths and
-content, or on Linux reads a selected directory into a bounded, filtered snapshot. Approved edits update that snapshot. A command receives a serialized
-copy inside a fresh, constrained Docker container; it never receives a host
-workspace mount, the app's environment, or the API key.
+The local runner handles approved actions in the explicitly selected workspace.
+An approved edit writes a real file. An approved command is a local process,
+launched without a shell and with a minimal environment, time limit, and bounded
+output. No API key is inherited from the server environment.
 
-The container has no network and no writeable root filesystem. A small temporary
-filesystem supports the command's disposable working copy. Only bounded output
-returns to the server. Commands cannot commit their filesystem changes back to
-the source directory or the in-memory snapshot. This is a useful teaching
-boundary, not a claim that containers make arbitrary code perfectly safe.
-See [Workspace and sandbox](workspace.md) and [SECURITY.md](../SECURITY.md).
+The working directory is not OS isolation. Project code can access other files,
+network services, and processes allowed by the user's permissions. Separate chats
+using that folder can observe each other's changes. Stopping or restarting the
+app cannot undo completed writes or other command effects. See
+[Local workspace tools](workspace.md) and [SECURITY.md](../SECURITY.md).
 
 ## API, SDK, and managed service
 
@@ -150,7 +155,7 @@ isolation, application authentication, secret management, or a spending cap.
 `src/server/conversations.ts` stores visible conversation state in
 `.tinkerfleet/conversations.json`. This includes chat metadata, participants,
 drafts, and public run views. It excludes raw SDK state, execution grants, and
-working filesystem snapshots. The file is private local data, not publishable
+live process state. The file is private local data, not publishable
 merely because its contents can be shown in the UI.
 
 On restart, completed history remains visible. Unfinished runs become cancelled

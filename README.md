@@ -5,7 +5,7 @@
 Tinkerfleet is a runnable, deliberately small companion to Gary Morris's
 [Tinkerloop](https://github.com/garyamorris/tinkerloop). Tinkerloop makes a coding
 agent's model/tool loop visible. Tinkerfleet adds reusable bot personas, direct
-and group conversations, human approvals, and an isolated command runner.
+and group conversations, human approvals, and an optional local command runner.
 
 Start with the no-key demo. Then read six runnable lessons. Finally, inspect the
 real [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/) integration.
@@ -15,15 +15,13 @@ See [the build handover](HANDOVER.txt) for verified checks and remaining integra
 
 ## A look inside
 
-![Primary conversation with a Coordinator-created group](docs/screenshots/primary-conversation.jpg)
+![Tinkerfleet with a verified live Scout response](docs/screenshots/native-live-desktop.jpg)
 
-Actual no-key demo captures: [Coordinator-created group](docs/screenshots/coordinator-group.jpg),
-[talk to a bot](docs/screenshots/talk-to-bot.jpg),
-[mobile primary chat](docs/screenshots/mobile-primary.jpg), and
-[mobile group](docs/screenshots/mobile-coordinator-group.jpg).
-Desktop captures used a 1291 × 770 viewport at 2× screenshot scale; mobile
-captures used 390 × 844. Results are simulated; these captures do not show live
-model or Docker execution.
+[Mobile view](docs/screenshots/native-live-mobile.jpg). Captured at 1291 × 770
+on desktop and 390 × 844 on mobile. The Scout response came from one real
+conversation-only model call and survived restart. The displayed server now has
+local tools enabled; that response did not use them. Native edits and commands
+were verified separately with offline tests in temporary folders, not a live agent.
 
 ## Try it without a key
 
@@ -36,7 +34,7 @@ npm run dev
 
 Open **http://localhost:4317**. The default is **Demo** mode: a deterministic,
 scripted teaching simulation. It makes **no model calls**, spends **no API tokens**,
-and does **not run Docker commands**. An approval in the demo advances the scripted
+and does **not execute commands**. An approval in the demo advances the scripted
 example; its test output is explicitly simulated, not evidence of execution.
 
 Tell the primary Coordinator what you want to accomplish. For the demo, ask it
@@ -59,8 +57,8 @@ repository's test suite.
 | [2. Specialists as tools](lessons/README.md#2-specialists-as-tools) | Delegate work without surrendering coordination | `npm run lesson:2` |
 | [3. Tool contracts](lessons/README.md#3-tool-contracts) | Validate requests before touching data | `npm run lesson:3` |
 | [4. Human approvals](lessons/README.md#4-human-approvals) | Bind permission to one exact action | `npm run lesson:4` |
-| [5. The execution boundary](lessons/README.md#5-the-execution-boundary) | Inspect a fail-closed container plan | `npm run lesson:5` |
-| [6. The workspace snapshot](lessons/README.md#6-the-workspace-snapshot) | Keep source files separate from a run's edits | `npm run lesson:6` |
+| [5. Local tools](lessons/README.md#5-local-tools) | Inspect local execution and approval boundaries | `npm run lesson:5` |
+| [6. The selected workspace](lessons/README.md#6-the-selected-workspace) | Understand real files and selected-folder scope | `npm run lesson:6` |
 
 Every lesson runs without an API key or Docker. Assertions make the expected
 behavior executable. They teach the real building blocks without pretending a
@@ -76,18 +74,20 @@ Follow one task from the interface to the boundary:
 3. [`src/server/demo.ts`](src/server/demo.ts) provides the scripted teaching path.
 4. [`src/server/sdk.ts`](src/server/sdk.ts) defines the live coordinator and specialists.
 5. [`src/server/approval.ts`](src/server/approval.ts) binds decisions to exact actions.
-6. [`src/server/runner.ts`](src/server/runner.ts) validates snapshots and prepares execution.
+6. [`src/server/native-runner.ts`](src/server/native-runner.ts) prepares local file and command actions.
 
 Start with the demo and lessons before the larger SDK and runner modules. Compare
 the same approval concept across a lesson, its tests, and the browser interface.
 
 ## Four visible jobs
 
+With workspace tools enabled, the roles divide the work as follows:
+
 - **Coordinator** owns the user's task, calls specialists, and assembles the answer.
-- **Scout** reads the bounded workspace snapshot and reports what it finds.
+- **Scout** reads the selected workspace and reports what it finds.
 - **Maker** proposes edits; applying one requires human approval.
 - **Checker** proposes a command; executing it requires human approval and the
-  isolated runner.
+  local runner.
 
 The interface calls the specialist roles Researcher, Builder, and Reviewer.
 Scout, Maker, and Checker are their default profile names and SDK role identities.
@@ -107,7 +107,7 @@ approvals, and execution remain server-owned.
 | --- | --- |
 | **Bot persona** | A reusable profile: name, purpose, role, color, and avatar shape |
 | **Conversation** | A named direct or group chat with participants, history, and a draft |
-| **Run** | One submitted task within a conversation, with its own approvals, results, and file snapshot |
+| **Run** | One submitted task within a conversation, with its own approvals, results, and local actions |
 
 Create multiple independent conversations with the same bot when you want
 separate topics. New groups are Coordinator-created: the Coordinator plus one
@@ -119,9 +119,9 @@ stays scripted regardless of a profile's purpose.
 
 The sidebar lists chats by name with a preview and status. Reload returns to the
 active chat. Local conversation history survives server restart, but unfinished
-work is cancelled and its pending approvals are denied. Each new run receives a
-fresh workspace snapshot, even when continuing the same chat. Conversation
-history supplies context, not a shared filesystem or durable execution authority.
+work is cancelled and its pending approvals are denied. Workspace-enabled runs use the real selected folder. Chats keep separate
+conversation context but can observe each other's file changes when they use
+that folder. Saved history does not restore execution authority.
 
 The Coordinator shares a bounded task brief with a new group, not the private
 source chat's history. That group starts an independent run attributed to the
@@ -140,7 +140,10 @@ private data. Read the [interface guide](docs/interface.md) and
 
 ## Optional live mode
 
-Live mode can send data to OpenAI and incur API charges. Read
+Live mode uses real OpenAI model calls and can incur API charges. Its default
+is **conversation-only**: direct chats and Coordinator-created groups work
+without Docker. Workspace tools are disabled, so the app does not read a host
+project or expose file-read, edit, or command tools to the model. Read
 [setup and privacy](docs/setup.md) and the [threat model](SECURITY.md) first.
 You deliberately opt in with `TINKERFLEET_MODE=live`, provide your own
 server-side `OPENAI_API_KEY`, and set `TINKERFLEET_MODEL` to a tool-capable model
@@ -151,27 +154,26 @@ This SDK is a library running in the local server. It is not a managed Agents AP
 session, and it does not itself sandbox tool functions.
 [See the API / SDK / managed service distinction](docs/architecture.md#api-sdk-and-managed-service).
 
-**The default workspace is a bundled, validated JSON snapshot.** This portable
-input path supports Linux Docker and macOS Docker Desktop without traversing a
-host project directory. Direct directory capture is Linux-only. Remote Docker,
-custom/rootless sockets, and Windows live execution are unsupported. The macOS
-runner path is implemented and unit-tested, but has not been validated on real
-Mac/Docker hardware. Demo and no-key lessons require no Docker.
+To enable local workspace tools, explicitly set:
 
-An approved edit changes only the run's **in-memory snapshot**, after successful
-isolated execution and cleanup. An approved
-command receives a copy of that snapshot in a non-root Docker container with
-network disabled, a read-only root filesystem, no host mounts, and resource
-limits. The source directory is not mounted or written back. If Docker or the
-locally prepared `node:24-alpine` image is unavailable, command execution fails
-closed. There is no host-shell fallback.
+```dotenv
+TINKERFLEET_WORKSPACE_TOOLS=1
+TINKERFLEET_WORKSPACE=/absolute/path/to/your/practice-project
+```
+
+**Approved edits change real files. Approved commands run locally with your user's
+permissions.** The working directory is not a security sandbox; project code can
+access broader resources allowed to your account. Commands use no shell, receive
+a minimal environment without inherited server secrets, and have time/output
+bounds. Use a trusted practice folder and review each exact action. Docker is not
+part of the active application. See [setup](docs/setup.md) and [SECURITY.md](SECURITY.md).
 
 ## Find your way around
 
 - [Architecture walkthrough](docs/architecture.md): data flow and trust boundaries
-- [Setup and privacy](docs/setup.md): demo, deliberate live opt-in, and local Docker
+- [Setup and privacy](docs/setup.md): demo, real model chat, and optional local tools
 - [Approvals](docs/approvals.md): pause, review, approve or deny, then resume
-- [Workspace and sandbox](docs/workspace.md): what is copied and what is isolated
+- [Local workspace tools](docs/workspace.md): real edits, local commands, and their limits
 - [Interface tour](docs/interface.md): conversation, reusable profiles, and run details
 - [Extending Tinkerfleet](docs/extending.md): add a narrow capability safely
 - [Troubleshooting](docs/troubleshooting.md)
@@ -193,18 +195,18 @@ npm run lesson:6
 The core checks and lessons need no credentials and make no paid API calls.
 Browser verification is separate from `npm run check`; see the handover for its
 current status.
-A passing mocked/container-plan test is not proof that Docker confinement worked
-on your machine. Live model integration and an actual Docker run require their
-own explicit validation.
+Native execution tests use temporary fixtures. Passing tests do not prove a
+model-selected command is safe; live provider integration requires separate
+validation.
 
 ## Deliberately small
 
 This is an educational local application, not a production multi-tenant service.
-Conversation history persists locally. Working snapshots, SDK execution state,
-and approval authority do not survive a server restart.
+Conversation history and real file changes persist. SDK execution state and
+approval authority do not survive a server restart.
 It has no unattended background workers, remote desktop control, production
-identity provider, or automatic application of changes to your source tree.
-Container isolation shares a kernel and is not a guarantee against hostile code.
+identity provider, or OS sandbox. With workspace tools enabled, approved changes
+are applied to the selected source folder.
 
 Original Tinkerfleet UI and avatars; no third-party product screenshots or assets
 are bundled. Inspired by Tinkerloop's learning-by-building approach, with a

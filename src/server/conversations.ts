@@ -17,7 +17,8 @@ const action=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('edit'),path:text(512),content:text(256000)}),
  z.object({kind:z.literal('command'),executable:z.enum(['node','npm','ls','cat']),args:z.array(text(4096)).max(32),cwd:text(512).optional()}),
 ]);
-const runSchema=z.object({id,conversationId:id.optional(),team:participants.optional(),prompt:text(8000),status:z.enum(['idle','running','awaiting_approval','completed','denied','cancelled','failed']),mode:z.enum(['demo','live']),
+const usageCount=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const runSchema=z.object({id,usage:z.object({modelCalls:usageCount,inputTokens:usageCount,outputTokens:usageCount,totalTokens:usageCount}).optional(),conversationId:id.optional(),team:participants.optional(),prompt:text(8000),status:z.enum(['idle','running','awaiting_approval','completed','denied','cancelled','failed']),mode:z.enum(['demo','live']),
  messages:z.array(message).max(1024),events:z.array(z.object({id,at:time,agent:role,kind:z.enum(['message','delegation','tool','approval','result','error']),title:text(4096),detail:text(256000).optional()})).max(2048),
  approvals:z.array(z.object({id,digest:z.string().max(128),agent:role,title:text(4096),description:text(4096),action,status:z.enum(['pending','approved','denied']),before:text(256000).optional()})).max(256),
  artifacts:z.array(z.object({path:text(512),before:text(256000),after:text(256000),simulated:z.boolean()})).max(256),output:text(256000),activeAgent:role.nullable(),startedAt:time,endedAt:time.optional()});

@@ -1,6 +1,6 @@
 /** Lesson 3: use the application's actual validator, not a permissive lesson copy. */
 import assert from 'node:assert/strict';
-import { validateAction, validateRelativePath, isExcludedPath } from '../src/server/runner.js';
+import { validateAction, validateRelativePath, isExcludedPath } from '../src/server/runner-policy.js';
 
 const input = { kind: 'command', executable: 'node', args: ['--test', 'sum.test.js'] };
 const action = validateAction(input);
@@ -22,5 +22,5 @@ assert.deepEqual(validateAction({ kind: 'edit', path: 'sum.js', content: 'export
 });
 
 console.log('3. Tools: accepted exact structured input; rejected traversal, shells, installs, and extra fields.');
-console.log('Nothing was read or executed. A valid command still needs approval and isolation.');
-console.log('Exercise: add a failing assertion for an absolute edit path. Why is npm test still untrusted code?');
+console.log('Nothing was read or executed. A valid command still needs your approval; a selected folder is not an OS sandbox.');
+console.log('Exercise: add a failing assertion for an absolute edit path. Why can an approved JavaScript test still access files outside its working folder?');

@@ -5,12 +5,9 @@ that require credentials. Run them from the repository root after `npm ci`.
 They use `node:assert/strict` and the actual application modules where practical.
 Each process prints what it established and fails if an expected boundary changes.
 
-All six need **no API key, model call, or Docker invocation**. Agents in lessons 1
-and 2 are constructed but never run. Lesson 5 inspects a real launcher function.
-Lesson 6 validates the real portable manifest route on every platform. On Linux
-it also captures a throwaway directory and cleans it up; elsewhere it verifies
-that direct directory capture fails closed. It does not pretend a mocked Docker
-connection test is a real container run.
+All six need **no API key or model call**. Agent construction is separate from
+inference. Native file/command lessons use temporary fixtures; they do not grant
+permission to experiment on private projects. Docker is not required.
 
 A suggested order is 1 → 2 → 3 → 4 → 5 → 6. Read the short source file, run it,
 change one thing, and predict the assertion that should fail.
@@ -100,27 +97,23 @@ lesson isolates the application-level decision mechanism.
 **Exercise:** prepare two actions in one run, call `invalidateRun`, and assert that
 neither can be used. Why must consumption happen before awaiting a process launch?
 
-## 5. The execution boundary
+## 5. Local tools
 
 ```sh
 npm run lesson:5
 ```
 
-Source: [05-sandbox.ts](05-sandbox.ts)
+Source: [05-local-tools.ts](05-local-tools.ts)
 
-Inspect the same pure `buildDockerCreateArgs` function used by the runner.
-Assertions check no network, a non-root UID, a read-only root filesystem, no
-host mounts, resource limits, and a resolved local image ID. The lesson never
-starts a Docker process and uses a clearly synthetic image ID.
+Follow the native action boundary: validate a proposal, review the exact action,
+consume its approval once, and report what actually happened. Local commands run
+with the user's permissions. A working directory and allowlist are not an OS
+sandbox. Keep examples in disposable temporary fixtures.
 
-The launcher plan is a contract. Its assertions cannot demonstrate actual kernel
-isolation, a working Docker daemon, or successful container cleanup on this
-machine. Tests must be honest about the boundary they actually exercise.
+**Exercise:** explain why launching without a shell does not stop a Node program
+from accessing other files that the user can read.
 
-**Exercise:** find the tmpfs settings. Why can Node interpret a JavaScript file
-on a `noexec` filesystem? Why does an executable allowlist not replace isolation?
-
-## 6. The workspace snapshot
+## 6. The selected workspace
 
 ```sh
 npm run lesson:6
@@ -128,27 +121,18 @@ npm run lesson:6
 
 Source: [06-workspace.ts](06-workspace.ts)
 
-Validate an explicit JSON manifest using the real parser. Reject traversal,
-duplicates, link metadata, hidden files, and file/directory conflicts. Build a
-runner from a valid manifest and verify its file list and contents. The parser
-copies and freezes input, so changing the original object cannot change a run.
-This is the portable route used by the default bundled workspace.
+Inspect the selected-folder policy and distinguish conversation history from
+real file state. Approved native edits persist in the selected folder; two chats
+using that folder do not get isolated copies. Use synthetic temporary fixtures.
 
-On Linux, the lesson also creates a synthetic project containing a source file,
-hidden environment file, dependency directory, and symlink. Capture it, change
-the temporary source, and prove the existing run keeps its captured view while
-a new run sees the update. Outside Linux it asserts that direct directory capture
-fails closed. An injected executor throws if any process is accidentally launched.
-
-**Exercise:** add a binary file and a multiply-linked file to the Linux fixture;
-assert that both are excluded. For the manifest, add an oversized entry or duplicate
-path and check the error. Always use synthetic input rather than secrets.
+**Exercise:** explain why restarting the server invalidates an approval but does
+not undo a file edit that already completed.
 
 ## From the lessons to the complete app
 
 Read [the architecture walkthrough](../docs/architecture.md), then follow a demo
 run through the UI. Finally inspect `src/server/sdk.ts`, `approval.ts`, and
-`runner.ts` together. The important transition is from describing a request to
+`native-runner.ts` together. The important transition is from describing a request to
 validating, approving, executing, and reporting that exact request.
 
 The app's tests additionally exercise real SDK orchestration with a fake model,

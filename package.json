@@ -19,11 +19,12 @@
     "lesson:2": "node --import tsx lessons/02-specialists.ts",
     "lesson:3": "node --import tsx lessons/03-tools.ts",
     "lesson:4": "node --import tsx lessons/04-approvals.ts",
-    "lesson:5": "node --import tsx lessons/05-sandbox.ts",
+    "lesson:5": "node --import tsx lessons/05-local-tools.ts",
     "lesson:6": "node --import tsx lessons/06-workspace.ts"
   },
   "dependencies": {
     "@openai/agents": "0.20.0",
+    "openai": "7.34.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "zod": "4.6.7"

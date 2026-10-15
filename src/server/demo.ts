@@ -87,7 +87,7 @@ export class DemoEngine {
     if(!this.has(run,'maker')){this.verify(run);return;}
     const names=this.names(run);
     this.beginRole(run,'maker',`${names.maker}, propose the fix`,this.has(run,'scout')?`${names.scout} returned findings to ${names.coordinator}`:`${names.coordinator} → ${names.maker} · propose the fixture edit`);
-    this.message(run,'maker','A one-character fix should do it. Here’s the exact change I’d make in the disposable workspace.');
+    this.message(run,'maker','A one-character fix should do it. Here’s the exact change I’d make in the selected local folder.');
     this.request(run,{kind:'edit',path:'sum.js',content:fixedSource},'maker','Update sum.js','Change subtraction to addition. Original files stay untouched.',initialSource);
   }
   private verify(run:Run){
@@ -95,9 +95,9 @@ export class DemoEngine {
     const names=this.names(run);
     this.beginRole(run,'checker',`${names.checker}, verify the change`,`${names.coordinator} → ${names.checker} · independent verification`);
     this.message(run,'checker',run.artifacts.length
-      ?'I’ll run the project’s three tests in an isolated workspace. This demo will show a simulated test result.'
+      ?'I’ll run the project’s three tests in the selected local folder. This demo will show a simulated test result.'
       :'This conversation has not applied an edit in this run. The original tiny-project fixture still subtracts, so the simulated tests will report the bug. I’ll ask for approval before showing that command result.');
-    this.request(run,{kind:'command',executable:'node',args:['--test','sum.test.js'],cwd:'.'},'checker','Run the test suite','One command. No network. 15-second timeout. Demo output is simulated.');
+    this.request(run,{kind:'command',executable:'node',args:['--test','sum.test.js'],cwd:'.'},'checker','Run the test suite','One command in the selected folder. 15-second timeout. Demo output is simulated.');
   }
   private request(run:Run,action:Action,agent:AgentId,title:string,description:string,before?:string){
     const id=randomUUID(),digest=createHash('sha256').update(JSON.stringify({runId:run.id,id,action})).digest('hex');
@@ -134,7 +134,7 @@ export class DemoEngine {
       this.later(run,()=>{
         const fixed=run.artifacts.some(a=>a.path==='sum.js'&&a.after===fixedSource);
         run.output=fixed?'[SIMULATED DEMO OUTPUT]\n$ node --test sum.test.js\n\n✔ adds two positive numbers\n✔ handles negative numbers\n✔ adds zero\n\ntests 3   pass 3   fail 0\nexit code 0\n':'[SIMULATED DEMO OUTPUT]\n$ node --test sum.test.js\n\nFixture bug detected: sum() subtracts instead of adding.\nNo approved edit exists in this run.\nexit code 1\n';
-        this.event(run,'checker','result',fixed?'3 of 3 tests pass · simulated':'Fixture bug detected · simulated','Expected fixture output; not a real Docker run');
+        this.event(run,'checker','result',fixed?'3 of 3 tests pass · simulated':'Fixture bug detected · simulated','Expected fixture output; not a real command run');
         this.message(run,'checker',fixed?'All three fixture tests pass in the simulation. The patch is one line, and no extra files changed.':'The simulation reports the original addition bug. This run has no approved edit; another conversation’s changes do not apply here.');
         this.finish(run);
       });

@@ -1,52 +1,41 @@
 Tinkerfleet build handover — 15 October 2026
 
 Scope
-Educational TypeScript multi-agent workspace with a no-key scripted demo,
-reusable bot personas, named direct/group chats, OpenAI Agents SDK integration,
-exact-action approvals, a Docker runner, and six no-key lessons. A conversation
-captures its participants, and each run keeps its team and fresh file snapshot.
-Profile edits affect new conversations. Start by speaking to the primary
-Coordinator; it may select specialists and create a shared group. Users can
-visit direct bot conversations and Coordinator-created groups. New user-created
-conversations are single-bot only; existing group history is preserved.
+Educational local agent app with a scripted demo, live conversation-only mode,
+reusable personas, primary-first Coordinator-created groups, and optional native
+workspace tools. Approved edits change real files; commands run with the user's
+permissions. The working directory is not a sandbox. Docker is not used.
 
-Verification status
-- Final npm run check passed: 93 tests total, 91 passed, 0 failed, and 2
-  Linux-only tests skipped. TypeScript checks and the production build passed.
-- Regression coverage includes cancellation during shutdown preflight and atomic
-  publication of a child group plus its source link when saving fails.
-- No live API calls or paid model checks were performed. SDK tests use scripted
-  models; the demo is a labeled deterministic simulation.
+Current verification
+- npm run check passed: 98 tests passed, 0 failed, 0 skipped. TypeScript checks
+  and the production build passed. All six offline lessons passed.
+- Native tests performed real file edits and commands in temporary fixtures.
+  The HTTP integration test covered an exactly approved edit, an explicit-file
+  node --test command with exit code 0, and rejection of approval replay.
+  The included tiny-project sum.js remained unchanged.
+- One actual live Scout conversation succeeded using gpt-5.6-luna with low
+  reasoning: one model call, 219 input tokens, 10 output tokens, 229 total.
+  Its response was: “I’m ready to chat.” No tools or private conversation content
+  were sent. Automated paid calls stopped after this smoke check.
+- This establishes one live conversation, not model-driven native editing,
+  command execution, or group orchestration. Other SDK tests use scripted models.
 
-Confirmed browser checks
-- All eight existing conversations were preserved. The primary Orbit chat kept
-  its messages while initializing its previously absent specialist roster.
-- The fixture request caused Orbit to create a separate linked Tiny-project
-  repair group with Scout, Maker, and Checker. The primary remained selected.
-- The group showed Started by Orbit and Original conversation navigation. Its
-  initial brief was authored by the Coordinator.
-- A direct Quill chat completed while the group waited for command approval.
-  Both the group's edit and command approvals subsequently completed.
-- Ten conversations were present after these checks, including the original eight.
-- At 390 x 844, there was no horizontal overflow and approval controls were fully
-  visible. Genuine primary/group/direct-picker captures are linked in README.md.
-- After the final server restart, browser reload restored all ten conversations
-  (the original eight plus the Coordinator-created group and new Quill direct
-  chat), the existing Maker draft, and completed group history.
-- The source invitation, Started by Orbit provenance, and Original conversation
-  backlink survived. Both navigation directions were tested after restart.
-- Final desktop captures used a 1291 x 770 viewport at 2x screenshot scale;
-  mobile captures used 390 x 844.
+Current browser and persistence checks
+- After restart, the main UI preserved the real Scout response and all eleven
+  conversations: ten prior chats plus the single-call smoke conversation.
+- The server now has local tools enabled for the practice folder. The successful
+  model smoke run itself was conversation-only and performed no file edits or
+  commands. No live-agent file action is claimed.
+- Genuine captures are docs/screenshots/native-live-desktop.jpg (1291 x 770) and
+  native-live-mobile.jpg (390 x 844). Mobile had no horizontal overflow; the
+  desktop view was restored after checking.
 
-Remaining verification
-- Artifact download completion is unverified. A bounded 10-second click attempt
-  produced no completed-download event or observed sum*.js download. This does
-  not establish that the feature works or is broken.
-- Linux-only direct-directory capture tests require Linux.
-- Actual Docker execution and macOS Docker Desktop confinement/cleanup remain
-  unverified. No live OpenAI API calls, credentials, or API spending were used.
-- No CI is configured; there are no workflows, runs, or check runs. The checks
-  above were local, not CI results.
+Remaining limitations
+Artifact download completion remains unverified. No CI result is claimed.
+Native execution was verified with offline temporary-fixture tests, not a live
+model-requested file edit or command. Earlier group flows were browser-tested in
+demo mode; the single live smoke does not establish live group orchestration.
+
 
 Run locally
 Install Node.js 24+ and npm, then run npm ci and npm run dev from this directory.
@@ -55,20 +44,14 @@ Dependency installation normally needs package-registry network access.
 For the built interface, run npm run build followed by npm start.
 
 Teaching and operating limits
-The demo has a scripted tiny-project delegation path; greetings stay in the
-primary chat. Custom purposes do not create
-model intelligence. In live mode, purpose text reaches the assigned SDK agent's
-instructions but never grants tools or bypasses approvals. The profile library
-is stored in this browser, not synced or encrypted as a secret store. Private
-conversation history and drafts persist in .tinkerfleet/conversations.json.
-The source primary and a created group have separate per-run budgets. One user
-turn can consume two budgets. Stopping the primary does not stop an already-created
-group; stop the group explicitly. These limits are not an overall monetary cap.
-Restart cancels unfinished work and denies pending approvals; raw SDK state,
-grants, and working file snapshots are not restored.
-The practice project is deliberately broken. Its tests are separate from this
-repository's suite. Approved live edits affect the run snapshot, not source files.
-Read README.md, docs/setup.md, and SECURITY.md before enabling live mode.
+Demo output is simulated. Live conversation can incur API charges. Workspace
+opt-in exposes real local reads and exact-approval writes/commands. Commands use
+no shell, do not inherit server secrets, and have time/output limits; these do
+not prevent access to broader resources allowed by the user's OS permissions.
+Restart retains chat history, cancels unfinished runs, and denies pending
+approvals. It does not undo file changes or completed command effects. Source
+and child group have separate budgets and stop controls, not an overall cost cap.
+Read README.md, docs/setup.md, and SECURITY.md before enabling local tools.
 
 Publication
 Public source repository: https://github.com/garyamorris/tinkerfleet

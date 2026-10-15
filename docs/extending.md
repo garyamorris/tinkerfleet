@@ -6,14 +6,14 @@ is more valuable than a bigger prompt that asks an existing tool to behave.
 ## Add a read-only tool
 
 1. Define a narrow, validated input schema with explicit size limits.
-2. Read from the run snapshot, not an arbitrary host path.
+2. Read through the selected-workspace policy, not an arbitrary host path.
 3. Reject absolute paths, traversal, excluded files, and symlink tricks.
 4. Bound the returned text and clearly label errors.
 5. Add the tool only to the roles that need it.
 6. Test malformed input, excluded data, oversized results, and a normal request.
 
-A proposed `read_json_property` tool could return one key from an already-copied
-JSON file. It should not accept a URL, execute a JSON expression, or silently
+A proposed `read_json_property` tool could return one key from a validated
+JSON file in the selected folder. It should not accept a URL, execute a JSON expression, or silently
 fall back to reading the host filesystem.
 
 ## Add an action
@@ -48,15 +48,12 @@ Never deserialize a browser-supplied tool list into an agent configuration.
 
 ## Change the runner
 
-Treat runner changes as security-sensitive. The trusted launcher must keep the
-source directory, credentials, environment, Docker socket, and host network out
-of the container. Prefer a reviewed, pinned image digest for serious use; the
-starter's `node:24-alpine` tag is an educational convenience and is mutable.
-
-Do not weaken isolation to make an example work. Network-dependent dependency
-installation is intentionally unsupported in a command run. Build and review an
-appropriate runner image separately if you need more tools; then revisit the
-threat model rather than adding host mounts or a host-shell fallback.
+Native tools act on real files and processes. Preserve exact approvals, path
+validation, minimal process environment, shell-free launch, and time/output
+limits. Test writes and commands in temporary fixtures. Never describe a working
+directory or executable allowlist as an OS sandbox. A new command form can widen
+what project code does with the user's permissions; update the threat model and
+approval preview accordingly.
 
 ## Update the teaching trail
 

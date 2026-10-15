@@ -7,7 +7,8 @@ export interface FleetEvent {id:string;at:number;agent:AgentId;kind:'message'|'d
 export interface Message {conversationId?:string;id:string;author:AgentId|'user';text:string;kind?:'text'|'delegation'|'result';at:number}
 export interface Artifact {path:string;before:string;after:string;simulated:boolean}
 export interface Conversation {availableBots?:Persona[];startedBy?:{conversationId:string;runId:string;coordinatorId:string;brief:string};id:string;title:string;participants:Persona[];createdAt:number;updatedAt:number;draft:string;currentRunId:string|null}
-export interface Run {conversationId?:string;team?:Persona[];id:string;prompt:string;status:RunStatus;mode:'demo'|'live';messages:Message[];events:FleetEvent[];approvals:Approval[];artifacts:Artifact[];output:string;activeAgent:AgentId|null;startedAt:number;endedAt?:number}
-export interface AppState {conversations:Conversation[];persistenceError?:string;mode:'demo'|'live';model:string|null;workspace:string;docker:{available:boolean;reason:string};liveReady:boolean;runs:Run[];currentRunId:string|null;maxTurns:number}
+export interface RunUsage {modelCalls:number;inputTokens:number;outputTokens:number;totalTokens:number}
+export interface Run {usage?:RunUsage;conversationId?:string;team?:Persona[];id:string;prompt:string;status:RunStatus;mode:'demo'|'live';messages:Message[];events:FleetEvent[];approvals:Approval[];artifacts:Artifact[];output:string;activeAgent:AgentId|null;startedAt:number;endedAt?:number}
+export interface AppState {workspaceToolsEnabled:boolean;reasoningEffort:'none'|'minimal'|'low'|null;limits:{maxModelCalls:number;maxOutputTokens:number;maxTotalTokens:number;maxRunMs:number};conversations:Conversation[];persistenceError?:string;mode:'demo'|'live';model:string|null;workspace:string;workspaceRoot:string;execution:{available:boolean;reason:string};liveReady:boolean;runs:Run[];currentRunId:string|null;maxTurns:number}
 export const initialSource = 'export function sum(a, b) {\n  return a - b;\n}\n';
 export const fixedSource = 'export function sum(a, b) {\n  return a + b;\n}\n';

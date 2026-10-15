@@ -113,7 +113,7 @@ test('independent chats isolate participants, drafts, concurrent runs and approv
 
 
 test('direct live chat preflight failures use its selected participant, and polling does not reorder chats',async()=>{
- const port=45323,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live'});
+ const port=45323,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',workspaceToolsEnabled:true});
  await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
  try{
  const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
@@ -190,13 +190,13 @@ test('initial coordinator roster cannot be configured during an active run or on
 
 
 test('shutdown cancels live runs waiting on preflight before a late result can start the SDK',async()=>{
- const {SafeContainerRunner}=await import('../src/server/runner.js');
- const originalProbe=SafeContainerRunner.prototype.checkAvailability,originalSnapshot=SafeContainerRunner.prototype.snapshot;
+ const {NativeWorkspaceRunner}=await import('../src/server/native-runner.js');
+ const originalProbe=NativeWorkspaceRunner.prototype.checkAvailability,originalSnapshot=NativeWorkspaceRunner.prototype.snapshot;
  let release!:()=>void,probeSeen!:()=>void;const entered=new Promise<void>(resolve=>{probeSeen=resolve;});
  let snapshots=0;
- SafeContainerRunner.prototype.checkAvailability=async()=>{probeSeen();await new Promise<void>(resolve=>{release=resolve;});return {available:true,image:'sha256:'+ 'a'.repeat(64)};};
- SafeContainerRunner.prototype.snapshot=async function(id){snapshots++;return originalSnapshot.call(this,id);};
- const port=45327,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live'});
+ NativeWorkspaceRunner.prototype.checkAvailability=async()=>{probeSeen();await new Promise<void>(resolve=>{release=resolve;});return {available:true};};
+ NativeWorkspaceRunner.prototype.snapshot=async function(id){snapshots++;return originalSnapshot.call(this,id);};
+ const port=45327,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',workspaceToolsEnabled:true});
  await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
  try{
  const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
@@ -205,7 +205,7 @@ test('shutdown cancels live runs waiting on preflight before a late result can s
  release();await shutdown;await delay(5);
  assert.equal(snapshots,0);assert.equal(app.state().runs[0].status,'cancelled');assert.equal(app.server.listening,false);
  assert.ok(!app.state().runs[0].events.some(e=>e.title==='Run started'));
- }finally{release?.();SafeContainerRunner.prototype.checkAvailability=originalProbe;SafeContainerRunner.prototype.snapshot=originalSnapshot;if(app.server.listening)await app.close();}
+ }finally{release?.();NativeWorkspaceRunner.prototype.checkAvailability=originalProbe;NativeWorkspaceRunner.prototype.snapshot=originalSnapshot;if(app.server.listening)await app.close();}
 });
 
 
@@ -231,4 +231,88 @@ test('failed group publication cannot leave a durable child without its source l
  assert.equal(app.state().conversations.length,1);assert.equal(app.state().runs.length,1);assert.ok(app.state().runs[0].messages.every(m=>!m.conversationId));
  const saved=JSON.parse(await readFile(statePath,'utf8'));assert.equal(saved.conversations.length,1);assert.equal(saved.runs.length,1);assert.ok(saved.runs[0].messages.every((m:{conversationId?:string})=>!m.conversationId));
  }finally{ConversationStore.prototype.save=original;await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('chat-only live HTTP uses the SDK without workspace access and preserves actual usage',async()=>{
+ const {ScriptedModel,assistantMessage}=await import('@openai/agents/testing');const {Usage}=await import('@openai/agents');
+ const {NativeWorkspaceRunner}=await import('../src/server/native-runner.js');
+ const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await mkdtemp(path.join(tmpdir(),'tinkerfleet-chat-only-')),statePath=path.join(directory,'state.json');
+ const probe=NativeWorkspaceRunner.prototype.checkAvailability,snapshot=NativeWorkspaceRunner.prototype.snapshot;let workspaceCalls=0;
+ NativeWorkspaceRunner.prototype.checkAvailability=async()=>{workspaceCalls++;throw Error('Workspace forbidden');};NativeWorkspaceRunner.prototype.snapshot=async()=>{workspaceCalls++;throw Error('Workspace forbidden');};
+ const model=new ScriptedModel([{output:[assistantMessage('An offline verified conversation reply.')],usage:new Usage({inputTokens:17,outputTokens:9,totalTokens:26})}]);
+ const port=45329,base=`http://127.0.0.1:${port}`;let app=createApp({port,mode:'live',sdkModel:model,workspaceToolsEnabled:false,workspaceRoot:'/does-not-exist/tinkerfleet',statePath,sdkLimits:{maxModelCalls:1,maxOutputTokens:512}});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ assert.equal(app.state().liveReady,true);assert.equal(app.state().workspaceToolsEnabled,false);
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const chat=await(await post('/api/conversations',{participants:[customTeam()[1]]})).json() as {id:string};
+ const response=await post(`/api/conversations/${chat.id}/runs`,{prompt:'Explain addition'});assert.equal(response.status,201);const run=await response.json() as {id:string};
+ for(let i=0;i<100&&app.state().runs[0].status==='running';i++)await delay(3);
+ assert.equal(app.state().runs[0].status,'completed');assert.match(app.state().runs[0].messages.at(-1)!.text,/offline verified/);
+ assert.deepEqual(app.state().runs[0].usage,{modelCalls:1,inputTokens:17,outputTokens:9,totalTokens:26});
+ assert.equal((await post(`/api/conversations/${chat.id}/runs/${run.id}/approval`,{approvalId:'forged',digest:'forged',approved:true})).status,409);
+ await app.close();assert.equal(workspaceCalls,0);
+ app=createApp({port,mode:'demo',statePath,workspaceToolsEnabled:false});assert.deepEqual(app.state().runs[0].usage,{modelCalls:1,inputTokens:17,outputTokens:9,totalTokens:26});
+ }finally{NativeWorkspaceRunner.prototype.checkAvailability=probe;NativeWorkspaceRunner.prototype.snapshot=snapshot;await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('enabled workspace fails closed before any model call if the selected folder is unavailable',async()=>{
+ const {ScriptedModel}=await import('@openai/agents/testing');const {NativeWorkspaceRunner}=await import('../src/server/native-runner.js');
+ const original=NativeWorkspaceRunner.prototype.checkAvailability;NativeWorkspaceRunner.prototype.checkAvailability=async()=>({available:false,reason:'Selected folder unavailable'});
+ const model=new ScriptedModel([]),port=45330,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',sdkModel:model,workspaceToolsEnabled:true});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ assert.equal((await fetch(base+'/api/runs',{method:'POST',headers,body:JSON.stringify({prompt:'Inspect the selected folder'})})).status,201);
+ for(let i=0;i<100&&app.state().runs[0].status==='running';i++)await delay(3);
+ assert.equal(app.state().runs[0].status,'failed');assert.equal(app.state().execution.available,false);assert.equal(app.state().liveReady,false);assert.equal(model.calls.length,0);
+ }finally{NativeWorkspaceRunner.prototype.checkAvailability=original;await app.close();}
+});
+
+test('chat-only coordinator can start an isolated live group without workspace tools',async()=>{
+ const {ScriptedModel,assistantMessage,functionCall}=await import('@openai/agents/testing');const profiles=customTeam();
+ const model=new ScriptedModel([[functionCall('start_group_conversation',{title:'Planning group',brief:'Discuss addition using supplied information.',botIds:[profiles[1].id]},{callId:'create-group'})],[assistantMessage('The group can discuss this without files.')],[assistantMessage('The planning group is ready.')]]);
+ const port=45331,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',sdkModel:model,workspaceToolsEnabled:false,workspaceRoot:'/does-not-exist/tinkerfleet'});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const chat=await(await post('/api/conversations',{participants:[profiles[0]],availableBots:[profiles[1]]})).json() as {id:string};
+ assert.equal((await post(`/api/conversations/${chat.id}/runs`,{prompt:'Discuss addition with a specialist'})).status,201);
+ for(let i=0;i<100&&(app.state().runs.length<2||app.state().runs.some(r=>r.status==='running'));i++)await delay(3);
+ const state=app.state(),group=state.conversations.find(c=>c.startedBy);assert.ok(group);assert.equal(state.runs.length,2);assert.ok(state.runs.every(r=>r.status==='completed'));assert.equal(group.availableBots,undefined);
+ assert.equal(state.runs.find(r=>r.conversationId===group.id)!.messages[0].author,'coordinator');assert.equal(state.runs.find(r=>r.conversationId===chat.id)!.messages.filter(m=>m.conversationId===group.id).length,1);
+ assert.equal(state.runs.reduce((n,r)=>n+(r.usage?.modelCalls??0),0),3);
+ }finally{await app.close();}
+});
+
+test('HTTP exact approvals bind scripted SDK actions to real local edits and test execution',async()=>{
+ const {ScriptedModel,assistantMessage,functionCall}=await import('@openai/agents/testing');
+ const {mkdtemp,realpath,mkdir,writeFile,readFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const root=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-http-native-')));
+ const before='export const add = (a,b) => a-b;\n',after='export const add = (a,b) => a+b;\n';
+ await mkdir(path.join(root,'src'));await writeFile(path.join(root,'src/math.js'),before);
+ await writeFile(path.join(root,'math.test.js'),"import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport {add} from './src/math.js';\ntest('approved addition works',()=>assert.equal(add(2,3),5));\n");
+ const model=new ScriptedModel([[functionCall('edit_file',{path:'src/math.js',content:after},{callId:'local-edit'})],[functionCall('run_command',{executable:'node',args:['--test','math.test.js'],cwd:'.'},{callId:'local-test'})],[assistantMessage('The approved edit and test succeeded.')]]);
+ const port=45332,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',sdkModel:model,workspaceToolsEnabled:true,workspaceRoot:root});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const chat=await(await post('/api/conversations',{participants:[customTeam()[2]]})).json() as {id:string};
+ const created=await post(`/api/conversations/${chat.id}/runs`,{prompt:'Fix addition and verify the explicit test file'});assert.equal(created.status,201);const {id}=await created.json() as {id:string};
+ const run=()=>app.state().runs.find(r=>r.id===id)!;
+ const wait=async(predicate:()=>boolean)=>{for(let i=0;i<200&&!predicate();i++)await delay(5);assert.ok(predicate(),JSON.stringify({status:run().status,messages:run().messages}));};
+ await wait(()=>run().status==='awaiting_approval');const edit=run().approvals[0];assert.equal(edit.action.kind,'edit');assert.equal(edit.before,before);assert.equal(await readFile(path.join(root,'src/math.js'),'utf8'),before);assert.equal(run().artifacts.length,0);
+ const endpoint=`/api/conversations/${chat.id}/runs/${id}/approval`;
+ assert.equal((await post(endpoint,{approvalId:edit.id,digest:'changed',approved:true})).status,409);assert.equal(await readFile(path.join(root,'src/math.js'),'utf8'),before);
+ const editDecision={approvalId:edit.id,digest:edit.digest,approved:true};assert.equal((await post(endpoint,editDecision)).status,202);
+ await wait(()=>run().approvals.length===2&&run().status==='awaiting_approval');assert.equal(await readFile(path.join(root,'src/math.js'),'utf8'),after);assert.equal(run().artifacts.length,1);assert.equal(run().artifacts[0].simulated,false);assert.equal(run().output,'');
+ assert.equal((await post(endpoint,editDecision)).status,409);assert.equal(run().artifacts.length,1);
+ const command=run().approvals[1];assert.equal(command.action.kind,'command');assert.equal((await post(endpoint,{approvalId:command.id,digest:command.digest,approved:true})).status,202);
+ await wait(()=>run().status==='completed');assert.match(run().output,/approved addition works/);assert.match(run().output,/exit code 0/);assert.equal(run().usage!.modelCalls,3);assert.equal(run().artifacts.length,1);assert.ok(run().approvals.every(a=>a.status==='approved'));
+ assert.equal((await post(endpoint,{approvalId:command.id,digest:command.digest,approved:true})).status,409);
+ }finally{await app.close();await rm(root,{recursive:true,force:true});}
 });

@@ -1,117 +1,72 @@
 # Troubleshooting
 
-## The demo keeps fixing the same example
+## The demo repeats the same task
 
-That is intentional. Demo mode is a deterministic interaction lesson, not model
-inference. Use the lessons to understand the building blocks. Live mode is a
-separate, explicit opt-in with privacy and billing consequences.
+Demo mode is scripted around tiny-project and does not answer arbitrary coding
+questions. A custom persona purpose only guides a real model in live mode. Demo
+completion is not evidence of file edits or command execution.
 
-## `npm ci` or startup fails
+## Startup or dependency installation fails
 
-Check `node --version`; the project requires Node 24+. Run commands from the
-repository root. `npm ci` needs access to the dependency registry and uses the
-committed lockfile. Do not delete the lockfile to work around a reproducibility
-problem without understanding the resulting dependency changes.
+Use Node.js 24+ and run `npm ci` from the repository root. Keep the lockfile;
+installation normally needs package-registry access. If port 4317 is occupied,
+stop the previous app or set `TINKERFLEET_PORT` to an available port from 1024 to
+65535. Keep the server local.
 
-If port 4317 is already occupied, stop the previous local Tinkerfleet process or
-choose another allowed local port with `TINKERFLEET_PORT` (1024–65535), then
-restart. Open the exact localhost address
-printed by the server. Do not disable Host or Origin checks to use another host.
+## Live chat is not ready
 
-## Live mode is not ready
+Set `TINKERFLEET_MODE=live`, a usable `TINKERFLEET_MODEL`, and a server-side
+`OPENAI_API_KEY`. A `.env.local` file is not loaded automatically: use
+`node --env-file=.env.local --import tsx src/server/index.ts`. Never print a key
+to confirm it exists. Model and reasoning-effort support depend on the selected
+provider model. Invalid local budget settings fail startup.
 
-Check the server environment, not the browser's JavaScript:
+## The bot cannot read or change files
 
-- `TINKERFLEET_MODE` must explicitly be `live`.
-- `TINKERFLEET_MODEL` must be a real tool-capable model ID your account can use.
-- `OPENAI_API_KEY` must be present in the server process.
+Conversation-only live mode has no workspace tools. To enable them, set
+`TINKERFLEET_WORKSPACE_TOOLS=1` and select a trusted folder with
+`TINKERFLEET_WORKSPACE`. Restart the server. An unavailable or invalid selected
+folder fails closed. Docker is not required.
 
-A `.env.local` file is not magic. Use the documented `node --env-file=.env.local`
-command or your own environment loader. Never log a key to confirm it exists.
-A failed live run is not silently converted into a successful demo.
-
-## Docker or the runner image is unavailable
-
-The runner fails closed. Check Docker's status and prepare the documented image
-yourself. No approved command should execute on the host as a fallback. If Docker
-is not appropriate for this machine, keep using the no-key demo and lessons.
-On macOS use the default portable manifest with Docker Desktop. Direct directory
-capture is Linux-only. The app does not use remote Docker contexts or arbitrary
-socket paths.
-
-Do not infer a real container run from simulated output, a successful dependency
-install, or tests that inspect launcher flags. Those verify different things.
-
-## A command cannot install packages or reach the network
-
-Expected: command containers have network disabled. `node_modules` is excluded
-from the snapshot. The practice project uses only Node built-ins. Supporting a
-new dependency environment means deliberately preparing and reviewing a runner
-image, not weakening the command's network policy during a run.
+Review the selected folder before approving anything: approved edits change real
+files and commands run under your user's permissions. Their working directory
+is not a sandbox. A custom purpose cannot enable tools or bypass approvals.
 
 ## An approval is stale or already used
 
-A decision applies to one exact pending action in one run. It cannot be replayed
-or moved to a new proposal. Expiry, stopping, or a server restart invalidates the
-old decision. Restart preserves chat history but cancels unfinished work and
-denies pending approvals. Reload and submit a fresh task in the chat. Do not edit an action's
-JSON or retry a consumed approval to force it through.
+A decision applies to one exact action in one run and chat. Denial, expiry,
+cancellation, or restart invalidates it. A failed action does not restore its
+spent approval. Review a fresh proposal rather than replaying the old one.
 
-## My source file did not change
+## My file changed, but another chat does not mention it
 
-Expected. Edits affect the run's in-memory snapshot. Command files are disposable
-and are not written back either. Review the proposed change and apply it yourself
-if you want to keep it. This protects the original project and makes the boundary
-visible while learning.
-
-## My file does not appear in the workspace
-
-The default source is the explicit `examples/tiny-project.snapshot.json` manifest,
-not a live directory mount. Changing a source file does not update that manifest.
-Review and update the manifest content, or choose Linux directory capture with
-`TINKERFLEET_WORKSPACE`. An invalid manifest is rejected rather than partially
-imported. The browser cannot expand the selected source.
-
-Paths, extensions, secret-like filenames, symlinks, file count, and byte limits
-restrict what can enter a snapshot. Select a small, regular-text, non-sensitive
-project. Do not rename a secret to bypass a filter. See
-[Workspace and sandbox](workspace.md).
+File state and conversation context are different. Chats keep separate message
+histories, but workspace-enabled runs use the real selected folder. Another chat
+may observe a file change when it reads the folder; it does not automatically
+receive the other chat's conversation or artifacts. Restart does not undo files.
 
 ## The practice project's tests fail
 
-`examples/tiny-project` is deliberately broken. Its tests are separate from the
-repository checks. The intended fix changes subtraction to addition in `sum.js`.
-A successful demo only simulates that repair; it does not change the fixture.
+`examples/tiny-project` contains a deliberate addition bug. Its tests are separate
+from repository checks. A demo only simulates repair. An approved live native edit
+can actually repair the fixture; use a disposable copy if you want to repeat it.
 
-## Browser verification is separate
+## History cannot be loaded or saved
 
-`npm run check` checks TypeScript, the Node test suite, and the production build.
-It does not establish browser layout, keyboard navigation, or interaction behavior.
-See [the handover](../HANDOVER.txt) for recorded browser evidence and remaining
-verification. Follow the manual browser checklist in
-[Contributing](../CONTRIBUTING.md). A missing browser or an absent browser test
-suite is not a passed UI check.
-
-## A continued chat does not retain file edits
-
-Conversation history and working files have different lifetimes. Each submitted
-run captures a fresh workspace snapshot. Earlier changes remain visible as
-artifacts but are not imported as the next run's filesystem. Review and apply
-changes to your input source yourself when you want future runs to include them.
-
-## Local history cannot be loaded or saved
-
-The default state file is `.tinkerfleet/conversations.json`. Check that the local
-process can access its private state directory and that the store is within its
-limits. A corrupt store stops startup rather than silently replacing history.
-Preserve a private backup before attempting repair; do not publish its contents.
-The store is limited to 100 conversations, 200 runs, and 8 MiB of serialized data.
+The private store is `.tinkerfleet/conversations.json`. Check access and its
+limits: 100 conversations, 200 runs, and 8 MiB. Corruption stops startup rather
+than replacing history. Preserve a private backup before repair; never publish
+its contents. Restart restores history but stops unfinished runs and denies
+pending decisions.
 
 ## An older primary chat has no specialist roster
 
-Older direct Coordinator chats may predate the available-bot roster. The app can
-initialize that roster once while the chat is idle. The captured roster is then
-fixed; changing the bot library does not replace it. Create a new direct
-Coordinator conversation when you need a different set of available specialists.
-Existing group histories stay accessible, but user conversation creation remains
-direct-only.
+An older idle Coordinator chat can initialize its missing roster once. It then
+stays fixed. Create a new Coordinator chat to choose a different available-bot
+set. Existing group history remains accessible; user-created chats are direct-only.
+
+## Browser verification is separate
+
+`npm run check` checks types, Node tests, and production build. See the
+[handover](../HANDOVER.txt) for browser evidence and limitations. A rendered
+button alone does not prove its action completed.
