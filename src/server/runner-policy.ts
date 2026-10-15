@@ -2,10 +2,10 @@ import path from 'node:path';
 import {canonicalJson} from './approval.js';
 import {redactSdkText} from './safety.js';
 
-export type CommandAction = { kind: 'command'; executable: 'node' | 'ls' | 'cat'; args: string[]; cwd?: string };
+export type CommandAction = { kind: 'command'; executable: string; args: string[]; cwd?: string };
 export type EditAction = { kind: 'edit'; path: string; content: string };
 export type RunnerAction = CommandAction | EditAction;
-export type BoundRunnerAction = RunnerAction & { snapshotDigest: string; workspaceRoot: string; policyVersion: 'native-1' };
+export type BoundRunnerAction = RunnerAction & { snapshotDigest: string; workspaceRoot: string; policyVersion: 'native-2'; resolvedExecutable: {path: string; identity: string} | null };
 export interface SnapshotInfo { runId: string; digest: string; files: string[]; totalBytes: number; excluded: string[] }
 export interface RunnerResult {
   runId: string; approvalId: string; kind: RunnerAction['kind'];
@@ -28,7 +28,7 @@ export const RUNNER_LIMITS = Object.freeze({
 });
 const EXCLUDED_DIRECTORY = /^(?:node_modules|vendor|dist|build|coverage|secrets?|credentials?|__pycache__)$/i;
 const SECRET_FILENAME = /(?:^|[._-])(?:secrets?|credentials?|passwords?|tokens?)(?:[._-]|$)|^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)|\.(?:pem|key|p12|pfx|keystore|db|sqlite\d*|log)$/i;
-export const TEXT_EXTENSION = /\.(?:[cm]?[jt]sx?|json|md|txt|css|html?|ya?ml|toml|csv|svg)$/i;
+export const TEXT_EXTENSION = /\.(?:[cm]?[jt]sx?|json|md|txt|css|html?|ya?ml|toml|csv|svg|py|sh|bash|zsh|sql|rs|go|java|c|cpp|h|hpp|xml|ini|conf)$/i;
 const SECRET_CONTENT = /-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|\bAKIA[A-Z0-9]{16}\b|\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}|\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*["'][^"'\s]{12,}["']/i;
 
 export function isExcludedPath(relativePath: string): boolean {
@@ -39,6 +39,7 @@ export function validateRelativePath(value: unknown): string {
     throw new RunnerError('UNSAFE_PATH', 'Use a relative path inside the selected workspace.');
   }
   const parts = value.split('/');
+  if (parts.length > 13) throw new RunnerError('UNSAFE_PATH', 'Workspace paths are limited to twelve nested directories.');
   if (parts.some(part => !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(part) || part === '..') || isExcludedPath(value)) {
     throw new RunnerError('UNSAFE_PATH', 'Traversal, hidden files, credential paths, and special path syntax are not allowed.');
   }
@@ -64,28 +65,18 @@ export function validateAction(value: unknown): RunnerAction {
   if (action.kind !== 'command' || Object.keys(action).some(key => !['kind', 'executable', 'args', 'cwd'].includes(key))) {
     throw new RunnerError('INVALID_ACTION', 'Expected a command or edit action.');
   }
-  if (!['node', 'ls', 'cat'].includes(String(action.executable)) || !Array.isArray(action.args) || action.args.length > 32 ||
-      action.args.some(arg => typeof arg !== 'string' || arg.length > 240 || /[\u0000-\u001f\u007f]/.test(arg))) {
-    throw new RunnerError('COMMAND_NOT_ALLOWED', 'Only the explicit command and argv allowlist is supported.');
+  // argv is data. A shell runs only when the approved executable explicitly names one.
+  if (typeof action.executable !== 'string' || action.executable.length > 1024 ||
+      /[\u0000-\u001f\u007f]/.test(action.executable) ||
+      !(path.isAbsolute(action.executable) || /^[A-Za-z0-9_][A-Za-z0-9_.+-]*$/.test(action.executable)) ||
+      !Array.isArray(action.args) || action.args.length > 128 ||
+      action.args.some(arg => typeof arg !== 'string' || arg.length > 8192 || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(arg)) ||
+      Buffer.byteLength(canonicalJson(action.args)) > 64 * 1024) {
+    throw new RunnerError('INVALID_COMMAND', 'Use an installed command name or absolute executable path and a bounded argument array.');
   }
   const args = action.args as string[];
-  const safePaths = (values: string[]) => values.forEach(arg => validateRelativePath(arg));
-  switch (action.executable) {
-    case 'node':
-      if (args.length === 1 && args[0] === '--version') break;
-      if (args[0] === '--test' || args[0] === '--check') {
-        if (args.length < 2 || (args[0] === '--check' && args.length !== 2)) throw new RunnerError('COMMAND_NOT_ALLOWED', 'Node checks and tests require explicit JavaScript files.');
-        safePaths(args.slice(1));
-        if (args.slice(1).some(arg => !/\.[cm]?js$/.test(arg))) throw new RunnerError('COMMAND_NOT_ALLOWED', 'Node accepts explicit JavaScript files only.');
-      } else {
-        if (args.length !== 1 || !/\.[cm]?js$/.test(args[0]!)) throw new RunnerError('COMMAND_NOT_ALLOWED', 'Use node FILE.js, node --test FILES, or node --check FILE.');
-        safePaths(args);
-      }
-      break;
-    case 'ls': safePaths(args); break;
-    case 'cat':
-      if (!args.length) throw new RunnerError('COMMAND_NOT_ALLOWED', 'cat requires an explicit snapshot file.');
-      safePaths(args); break;
+  if (redactSdkText(action.executable) !== action.executable || args.some(arg => redactSdkText(arg) !== arg)) {
+    throw new RunnerError('SECRET_CONTENT', 'Do not put credentials in command arguments.');
   }
   const cwd = action.cwd === undefined ? undefined : action.cwd === '.' ? '.' : validateRelativePath(action.cwd);
   return { kind: 'command', executable: action.executable as CommandAction['executable'], args: [...args], ...(cwd ? { cwd } : {}) };

@@ -7,7 +7,7 @@ import {initialSource,fixedSource} from '../shared/types.js';
 export class DemoEngine {
   readonly runs = new Map<string,Run>();
   private timers = new Map<string,ReturnType<typeof setTimeout>>();
-  constructor(private delayMs=650, private startGroup?:(runId:string,request:{title:string;brief:string;botIds:string[]})=>Promise<{conversationId:string;title:string}>) {}
+  constructor(private delayMs=650, private startGroup?:(runId:string,request:{title:string;brief:string;botIds:string[]})=>Promise<{conversationId:string;title:string}>, private createAgent?:(runId:string,request:{name:string;purpose:string;role:'scout'|'maker'|'checker'})=>Promise<Persona>) {}
 
   start(prompt:string,team?:Persona[],options:{availableBots?:Persona[];promptAuthor?:AgentId|'user'}={}):Run {
     const runTeam=team===undefined?undefined:validateParticipants(team);
@@ -38,12 +38,31 @@ export class DemoEngine {
 
   /** This is a visible teaching script, not a model deciding how to collaborate. */
   private async coordinate(run:Run,availableBots:Persona[]){
+    // A small documented example, not general language understanding or a model call.
+    const creation=/^(?:please\s+)?(?:create|make|add)\s+(?:me\s+)?(.{1,400}?)\s+(?:called|named)\s+([A-Za-z][A-Za-z0-9 -]{0,39}?)[.!]?$/i.exec(run.prompt.trim());
+    if(creation&&this.createAgent){
+      const description=creation[1].trim(),name=creation[2].trim();
+      const role=/\b(build|builder|develop|developer|write|writer|make|maker|implement)\b/i.test(description)?'maker':/\b(review|reviewer|test|tester|check|checker)\b/i.test(description)?'checker':'scout';
+      try{
+        const persona=await this.createAgent(run.id,{name,purpose:`Act as ${description}.`,role});
+        if(run.status!=='running')return;
+        this.message(run,'coordinator',`This scripted example saved ${persona.name} to your bot library. You can talk to them directly, or ask me to bring them into a shared conversation. Their personality guides live replies; the no-key demo remains scripted.`,'result');
+        run.status='completed';run.activeAgent=null;run.endedAt=Date.now();
+        this.event(run,'coordinator','result','Agent saved to your library','Scripted example · no model call or local command');
+      }catch{
+        if(run.status!=='running')return;
+        run.status='failed';run.activeAgent=null;run.endedAt=Date.now();
+        this.message(run,'coordinator','I could not save that agent. Check the bot library and workspace status before trying again.');
+        this.event(run,'coordinator','error','Agent could not be saved','The request failed safely.');
+      }
+      return;
+    }
     const asksForTeam=/\b(fix|build|implement|debug|test|tests|review|collaborate|team|group)\b/i.test(run.prompt);
     const staysDirect=/\b(?:do not|don't|without|no)\b[^.!?]{0,45}\b(?:group|team|specialists?|collaborat\w*)\b/i.test(run.prompt);
     const selected=(['scout','maker','checker'] as const).flatMap(role=>{const bot=availableBots.find(p=>p.role===role);return bot?[bot]:[];});
     if(!asksForTeam||staysDirect||selected.length===0||!this.startGroup){
       this.message(run,'coordinator',selected.length
-        ?'We can keep this conversation between us. In the no-key demo, ask me to fix the failing tests in tiny-project to see me bring specialists into a shared conversation.'
+        ?'We can keep this conversation between us. In the no-key demo, try “Create a patient Python tutor called Ada.” Or ask me to fix the failing tests in tiny-project to see specialists work together.'
         :'We can keep planning here. Add a specialist to your bot library and start a new conversation with me to try the coordinated demo.','result');
       run.status='completed';run.activeAgent=null;run.endedAt=Date.now();
       this.event(run,'coordinator','result','Primary conversation complete','Scripted response · no specialist contacted');return;

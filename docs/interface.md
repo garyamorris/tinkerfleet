@@ -40,30 +40,35 @@ memory in this version.
 
 ## Create reusable profiles
 
-Open the bot library, choose **Create persona**, and give the profile a name,
-purpose, role, color, and avatar shape. **Save persona** stores it for selection
-in new conversations. Names allow up to
-40 characters; purposes allow up to 600 and may span multiple lines. For example,
-a Researcher profile could “Explain unfamiliar TypeScript and find the smallest
-relevant files.” The purpose reaches that bot's live SDK instructions.
+Ask the primary Coordinator: **“Create a patient Python tutor called Ada.”**
+Its `create_agent` tool accepts a name, purpose, and specialist role. Purpose
+covers both work focus and personality—for example, patient explanations with
+small exercises. A successful creation message offers **Talk**, and the profile
+also appears in the bot library. The Coordinator can use the new bot in a group
+immediately.
 
-Live conversation-only mode supplies no workspace tools to any role. The role
-capabilities below apply when `TINKERFLEET_WORKSPACE_TOOLS=1` is enabled.
-Roles define capability. Researcher (`scout`) is read-only. Builder (`maker`) and
-Reviewer (`checker`) can propose edits and commands, each subject to approval.
-Coordinator coordinates its selected group. Purpose text cannot add tools or
-bypass approval; colors and shapes affect appearance only.
+The three capability templates are Researcher (`scout`), Builder (`maker`), and
+Reviewer (`checker`). With workspace tools enabled, Researcher is read-only;
+Builder and Reviewer can propose local edits and installed commands, each needing
+approval. In conversation-only mode, no workspace tools are available. A purpose
+cannot grant new tools or bypass approval.
 
-The reusable library is stored in this browser. It does not sync between
-browsers; clearing site data removes local preferences. Existing cosmetic
-preferences migrate into profiles. Keep credentials and private information out
-of profile text: it is not encrypted secret storage, and selected names/purposes
-may be sent to OpenAI in live mode.
+Only a private direct Coordinator has the creation tool. It may create up to
+three profiles per run; the server library holds up to 32 profiles. Names
+allow 40 characters and purposes 600. Existing browser profiles migrate into the
+server-persisted library. Keep private data and credentials out of profile text;
+it may become live model instructions and is not encrypted secret storage.
 
-Creating a chat captures its participant profiles. Editing a library profile
-later does not rewrite existing conversation participants or earlier runs.
-Create a new chat to use the revised profile. Each run also keeps its own team
-snapshot of participant profiles. This does not copy or isolate workspace files.
+New chats use saved profiles. Existing conversation participants remain frozen,
+so editing a library profile does not rewrite old chats or runs. The primary's
+available roster adds new library profiles for future runs while keeping existing
+IDs and their captured identities. A bot created during a run is
+available for that run's group creation. Group membership still allows only one
+specialist per capability role.
+
+The no-key demo recognizes the exact Ada example and persists the profile using
+a scripted path. This verifies saving a bot, not live model behavior or a tutor's
+personality in a conversation.
 
 ## Continue a conversation
 
@@ -82,6 +87,14 @@ server saves visible chat history locally in `.tinkerfleet/conversations.json`.
 After a server restart, history remains, but unfinished runs are cancelled and
 pending approvals denied. Submit a fresh task to continue; the old execution
 cannot resume. Legacy saved runs become independent conversations.
+
+## Search and inspect sources
+
+In live mode, ask for a public-web lookup or provide a public URL. Search-enabled
+answers can show clickable sources; open them to check the evidence. Page reading
+depends on model support. This does not access a logged-in browser or automate
+forms. The demo never searches the web, and a source link alone is not proof that
+a claim is correct.
 
 ## Review actions and results
 
@@ -113,3 +126,12 @@ and completed group history returned. The source invitation and group provenance
 links persisted, and navigation worked in both directions.
 These were no-key demo checks. See [screenshots](../README.md#a-look-inside) and
 [the handover](../HANDOVER.txt) for the latest verification limits.
+
+## Recorded creation check
+
+The no-key Ada example created a saved profile, its creation card opened a direct
+chat, and Ada remained after restart. The checked state retained two chats, one
+run, and five profiles. Mobile at 390 × 844 had no horizontal overflow. This
+verifies the scripted creation path and persistence, not live personality or
+hosted search. See [screenshots](../README.md#a-look-inside) and the
+[handover](../HANDOVER.txt) for the exact verification scope.

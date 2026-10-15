@@ -37,3 +37,8 @@ export function validateAvailableBots(input:unknown):Persona[]{
  const profiles=input.map(value=>{const profile=validateParticipants([value])[0];if(profile.role==='coordinator'||ids.has(profile.id))throw new Error('Available bots must be specialists with unique IDs.');ids.add(profile.id);return profile;});
  return Object.freeze(profiles) as unknown as Persona[];
 }
+
+export function validateProfiles(input:unknown):Persona[]{
+ if(!Array.isArray(input)||input.length>32)throw new Error('The bot library allows up to 32 profiles.');
+ const ids=new Set<string>();return input.map(value=>{const p=validateParticipants([value])[0];if(ids.has(p.id))throw new Error('Profile IDs must be unique.');ids.add(p.id);return p;});
+}

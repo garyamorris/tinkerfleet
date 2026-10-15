@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, realpath, mkdir, writeFile, readFile, rm, symlink, link, rename, readdir} from 'node:fs/promises';
+import {mkdtemp, realpath, mkdir, writeFile, readFile, rm, symlink, link, rename, readdir, chmod, unlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {ApprovalStore} from '../src/server/approval.js';
@@ -25,7 +25,7 @@ test('native runner requires exact approval, writes the real selected file, and 
   const input = {kind: 'edit', path: 'src/math.js', content: 'export const add = (a,b) => a+b;\n'};
   const record = await runner.prepare('first', input);
   assert.equal(record.action.workspaceRoot, root);
-  assert.equal(record.action.policyVersion, 'native-1');
+  assert.equal(record.action.policyVersion, 'native-2');
   input.content = 'caller changed this';
   assert.ok(Object.isFrozen(record.action));
   await assert.rejects(runner.execute('first', record.id), {code: 'NOT_APPROVED'});
@@ -42,12 +42,21 @@ test('native runner requires exact approval, writes the real selected file, and 
   assert.equal((await readdir(path.join(root, 'src'))).some(name => name.startsWith('.tinkerfleet')), false);
 });
 
-test('new file creation requires an existing safe parent', async t => {
+test('approved file creation makes nested safe parents, then supports editing the new file', async t => {
   const {root, approvals, runner} = await fixture(t);
   const grant = await runner.prepare('first', {kind: 'edit', path: 'src/new.txt', content: 'created locally\n'});
   approvals.approve(grant.id); assert.equal((await runner.execute('first', grant.id)).status, 'completed');
   assert.equal(await readFile(path.join(root, 'src/new.txt'), 'utf8'), 'created locally\n');
-  await assert.rejects(runner.prepare('first', {kind: 'edit', path: 'missing/new.txt', content: 'no'}));
+  const nested = await runner.prepare('first', {kind: 'edit', path: 'new/nested/script.py', content: 'print(42)\n'});
+  await assert.rejects(readFile(path.join(root, 'new/nested/script.py')), {code: 'ENOENT'});
+  await assert.rejects(runner.execute('first', nested.id), {code: 'NOT_APPROVED'});
+  assert.equal((await readdir(root)).includes('new'), false);
+  approvals.approve(nested.id);
+  assert.equal((await runner.execute('first', nested.id)).status, 'completed');
+  assert.equal(await readFile(path.join(root, 'new/nested/script.py'), 'utf8'), 'print(42)\n');
+  const edit = await runner.prepare('first', {kind: 'edit', path: 'new/nested/script.py', content: 'print(43)\n'});
+  approvals.approve(edit.id); await runner.execute('first', edit.id);
+  assert.equal(await readFile(path.join(root, 'new/nested/script.py'), 'utf8'), 'print(43)\n');
 });
 
 test('any included file change or workspace replacement invalidates approval', async t => {
@@ -89,17 +98,18 @@ test('hidden, credential, binary, linked and dependency files never enter contex
 test('oversized source, credential edit content, and unsafe command forms are rejected', async t => {
   const {root, runner} = await fixture(t);
   for (const action of [
-    {kind: 'command', executable: 'npm', args: ['test']},
-    {kind: 'command', executable: 'node', args: ['-e', 'process.exit()']},
-    {kind: 'command', executable: 'node', args: ['--test']},
-    {kind: 'command', executable: 'node', args: ['--test', 'readme.txt']},
-    {kind: 'command', executable: 'cat', args: ['../outside']},
-    {kind: 'command', executable: 'ls', args: ['-a']},
+    {kind: 'command', executable: 'echo hello', args: []},
+    {kind: 'command', executable: '../tool', args: []},
+    {kind: 'command', executable: 'sh', args: ['nul\0argument']},
+    {kind: 'command', executable: 'sh', args: 'not-an-array'},
+    {kind: 'command', executable: 'sh', args: Array(129).fill('x')},
+    {kind: 'command', executable: 'sh', args: ['x'.repeat(8193)]},
+    {kind: 'command', executable: 'sh', args: [], resolvedExecutable: {path: '/bin/sh', identity: 'forged'}},
     {kind: 'edit', path: 'key.txt', content: `sk-${'x'.repeat(40)}`},
     {kind: 'edit', path: 'invalid.txt', content: '\ud800'},
     {kind: 'edit', path: 'large.txt', content: 'x'.repeat(RUNNER_LIMITS.fileBytes + 1)},
   ]) assert.throws(() => validateAction(action));
-  await assert.rejects(runner.prepare('first', {kind: 'command', executable: 'node', args: ['missing.js']}), {code: 'FILE_NOT_FOUND'});
+  await assert.rejects(runner.prepare('first', {kind: 'command', executable: 'tinkerfleet-no-such-tool', args: []}), {code: 'EXECUTABLE_NOT_FOUND'});
   await writeFile(path.join(root, 'too-large.txt'), Buffer.alloc(RUNNER_LIMITS.fileBytes + 1, 65));
   await assert.rejects(runner.snapshot('first'), {code: 'SNAPSHOT_LIMIT'});
 });
@@ -132,7 +142,7 @@ test('global execution lock, cancellation, and shutdown drain a running local co
   const second = await other.prepare('second', {kind: 'command', executable: 'node', args: ['--version']}); approvals.approve(second.id);
   const pending = runner.execute('first', grant.id); await started;
   await assert.rejects(other.execute('second', second.id), {code: 'RUN_BUSY'});
-  assert.deepEqual(calls[0], {executable: process.execPath, args: ['--version'], cwd: root});
+  assert.deepEqual(calls[0], {executable: grant.action.resolvedExecutable!.path, args: ['--version'], cwd: root});
   assert.equal((await runner.shutdown()).cleanupSucceeded, true);
   assert.equal((await pending).status, 'cancelled');
   await assert.rejects(runner.prepare('next', {kind: 'command', executable: 'node', args: ['--version']}), {code: 'RUN_CLOSED'});
@@ -180,4 +190,102 @@ test('transport stops ordinary child processes after the parent exits', async t 
   assert.equal(result.exitCode, 0); assert.equal(result.cleanupSucceeded, true);
   await new Promise(resolve => setTimeout(resolve, 250));
   await assert.rejects(readFile(path.join(root, 'child-survived.txt')), {code: 'ENOENT'});
+});
+
+
+test('installed Python and an explicit shell run only after exact approval, with literal argv preserved', async t => {
+  const {root, runner, approvals} = await fixture(t);
+  const literal = 'spaces; $(not-a-command) * > not-a-file';
+  const python = await runner.prepare('python', {kind: 'command', executable: 'python3', args: ['-c', 'import sys; print(sys.argv[1])', literal]});
+  assert.ok(path.isAbsolute(python.action.resolvedExecutable!.path));
+  assert.ok(Object.isFrozen(python.action.resolvedExecutable));
+  await assert.rejects(runner.execute('python', python.id), {code: 'NOT_APPROVED'});
+  approvals.approve(python.id);
+  assert.equal((await runner.execute('python', python.id)).stdout.trim(), literal);
+  assert.equal((await readdir(root)).includes('not-a-file'), false);
+  const shell = await runner.prepare('shell', {kind: 'command', executable: '/bin/sh', args: ['-c', 'printf "%s" "$1"', 'teaching-example', 'approved shell arguments']});
+  assert.ok(shell.action.kind === 'command');
+  assert.equal(shell.action.executable, '/bin/sh');
+  approvals.approve(shell.id);
+  const result = await runner.execute('shell', shell.id);
+  assert.equal(result.status, 'completed'); assert.equal(result.stdout, 'approved shell arguments');
+  const cwd = await runner.prepare('cwd', {kind: 'command', executable: 'pwd', args: [], cwd: 'src'});
+  approvals.approve(cwd.id);
+  assert.equal((await runner.execute('cwd', cwd.id)).stdout.trim(), path.join(root, 'src'));
+});
+
+test('child environment includes ordinary tool settings but no server credentials or loader hooks', async t => {
+  const names = ['OPENAI_API_KEY', 'TINKERFLEET_PRIVATE_TEST', 'NODE_OPTIONS', 'PYTHONPATH'];
+  const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  for (const name of names) process.env[name] = 'synthetic-value-not-a-real-secret';
+  t.after(() => { for (const name of names) { if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]; } });
+  const {runner, approvals} = await fixture(t);
+  const action = await runner.prepare('env', {kind: 'command', executable: process.execPath, args: ['-e', 'console.log(JSON.stringify(process.env))']});
+  approvals.approve(action.id);
+  const result = await runner.execute('env', action.id);
+  assert.equal(result.status, 'completed');
+  const env = JSON.parse(result.stdout) as Record<string, string>;
+  assert.ok(env.HOME && env.PATH && env.TMPDIR && env.LANG);
+  assert.ok(Object.keys(env).every(name => ['HOME', 'PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'LC_CTYPE', '__CF_USER_TEXT_ENCODING'].includes(name)));
+  for (const name of names) assert.equal(env[name], undefined);
+});
+
+test('executable replacement or symlink retargeting outside the workspace invalidates its approval', async t => {
+  const {runner, approvals} = await fixture(t);
+  const tools = await realpath(await mkdtemp(path.join(tmpdir(), 'tinkerfleet-tools-')));
+  t.after(() => rm(tools, {recursive: true, force: true}));
+  const first = path.join(tools, 'first'), second = path.join(tools, 'second'), alias = path.join(tools, 'tool');
+  await writeFile(first, '#!/bin/sh\nprintf first\n'); await chmod(first, 0o755);
+  await writeFile(second, '#!/bin/sh\nprintf second\n'); await chmod(second, 0o755);
+  await symlink(first, alias);
+  const grant = await runner.prepare('replace', {kind: 'command', executable: alias, args: []});
+  assert.equal(grant.action.resolvedExecutable!.path, alias);
+  assert.match(grant.action.resolvedExecutable!.identity, /^[a-f0-9]{64}$/);
+  approvals.approve(grant.id);
+  await unlink(alias); await symlink(second, alias);
+  await assert.rejects(runner.execute('replace', grant.id), {code: 'EXECUTABLE_CHANGED'});
+  assert.equal(approvals.get(grant.id)?.status, 'denied');
+  const rewrite = await runner.prepare('rewrite', {kind: 'command', executable: first, args: []}); approvals.approve(rewrite.id);
+  await writeFile(first, '#!/bin/sh\nprintf changed-binary\n');
+  await assert.rejects(runner.execute('rewrite', rewrite.id), {code: 'EXECUTABLE_CHANGED'});
+});
+
+test('PATH resolves installed tool names while ignoring current-directory entries and later PATH changes', async t => {
+  const tools = await realpath(await mkdtemp(path.join(tmpdir(), 'tinkerfleet-path-')));
+  t.after(() => rm(tools, {recursive: true, force: true}));
+  const tool = path.join(tools, 'teaching-tool');
+  await writeFile(tool, '#!/bin/sh\nprintf "%s" "$1"\n'); await chmod(tool, 0o755);
+  const previousPath = process.env.PATH;
+  process.env.PATH = `.:relative:${tools}:/usr/bin:/bin`;
+  t.after(() => { if (previousPath === undefined) delete process.env.PATH; else process.env.PATH = previousPath; });
+  const {root, runner, approvals} = await fixture(t);
+  await writeFile(path.join(root, 'teaching-tool'), '#!/bin/sh\nprintf wrong\n'); await chmod(path.join(root, 'teaching-tool'), 0o755);
+  const grant = await runner.prepare('path', {kind: 'command', executable: 'teaching-tool', args: ['literal argument']});
+  assert.equal(grant.action.resolvedExecutable!.path, tool);
+  approvals.approve(grant.id); process.env.PATH = '/does-not-exist';
+  assert.equal((await runner.execute('path', grant.id)).stdout, 'literal argument');
+});
+
+test('a symlink introduced where new directories were approved cannot redirect file creation', async t => {
+  const {root, runner, approvals} = await fixture(t);
+  const outside = await realpath(await mkdtemp(path.join(tmpdir(), 'tinkerfleet-outside-')));
+  t.after(() => rm(outside, {recursive: true, force: true}));
+  const grant = await runner.prepare('new', {kind: 'edit', path: 'new/nested/file.txt', content: 'approved'});
+  approvals.approve(grant.id);
+  await symlink(outside, path.join(root, 'new'));
+  await assert.rejects(runner.execute('new', grant.id), {code: 'STALE_APPROVAL'});
+  assert.deepEqual(await readdir(outside), []);
+});
+
+
+test('symlinked executables retain their approved invocation path for virtual environments and applets', async t => {
+  const {runner, approvals} = await fixture(t);
+  const tools = await realpath(await mkdtemp(path.join(tmpdir(), 'tinkerfleet-alias-')));
+  t.after(() => rm(tools, {recursive: true, force: true}));
+  const alias = path.join(tools, 'teaching-shell');
+  await symlink('/bin/sh', alias);
+  const grant = await runner.prepare('alias', {kind: 'command', executable: alias, args: ['-c', 'printf "%s" "$0"']});
+  assert.equal(grant.action.resolvedExecutable!.path, alias);
+  approvals.approve(grant.id);
+  assert.equal((await runner.execute('alias', grant.id)).stdout, alias);
 });

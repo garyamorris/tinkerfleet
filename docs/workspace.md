@@ -8,28 +8,41 @@ application. Start with a small, trusted practice project.
 ## Real files and real processes
 
 The native runner reads the selected workspace and prepares exact file or command
-proposals. Approving an edit changes the real selected file. Approving a command
+proposals. Approving an edit changes the real selected file or creates a new
+file and its missing parent directories inside the selected folder. Approving a command
 starts a local process with the selected working directory. Commands can also
 modify files through project code. Changes are not automatically rolled back.
 
 **The selected folder is a scope for the app's tools, not an OS sandbox.** A
 command runs with your user's permissions and can access resources beyond its
 working directory. JavaScript can open absolute paths or the network and launch
-other programs. An executable allowlist does not prevent this.
+other programs. Executable identity checks do not prevent this.
 
-The launcher uses an executable and argument vector without a shell. It passes a
-minimal environment rather than inheriting server secrets and bounds runtime and
-output. These controls reduce accidental exposure; they do not isolate a hostile
+The launcher passes an executable and argument vector with `shell:false`. It
+does not implicitly interpret shell syntax. If a proposed command explicitly
+invokes `sh` or `bash -c`, its script is part of the exact action you must review.
+The process receives only `HOME`, `PATH`, `TMPDIR`, `LANG`, and configured
+`LC_ALL`/`LC_CTYPE`, not arbitrary server variables or inherited API keys.
+Runtime and output are bounded. These controls reduce accidental exposure; they do not isolate a hostile
 program or prevent it from accessing readable files on the host.
 
-## Supported command forms
+## Installed commands and tools
 
-The native runner accepts `node`, `ls`, and `cat` only. Node forms are
-`node --version`, `node FILE.js`, `node --check FILE.js`, and
-`node --test FILES` with explicit JavaScript file paths. `ls` accepts optional
-relative paths; `cat` requires explicit relative file paths. `npm` is not a
-supported runner command. Repository setup commands such as `npm ci` are separate
-commands you run yourself.
+A command may name an installed executable on the server's `PATH`, such as
+`python3`, `node`, or `git`, or use an absolute executable path. The server
+resolves the absolute executable path before approval and binds that invocation
+path and its target identity to that proposal. It checks both again before execution; a
+replacement requires a new approval.
+
+Arguments are a structured list, not a shell command line. Review the executable,
+every argument, working directory, and any script passed to an interpreter.
+Installed tools are not automatically safe, and tools are not installed for you.
+The selected folder is still not a sandbox.
+
+New-file edits can create nested directories after approval. Paths remain
+validated; traversal and symlink paths are rejected. File replacement uses an
+atomic rename, but commands can have other real effects that cannot be rolled
+back. The runner serializes file and command actions within this server.
 
 ## Approval and shared state
 

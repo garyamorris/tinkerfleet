@@ -82,3 +82,26 @@ test('group creation failure does not claim success or request an action in the 
  const demo=new DemoEngine(1,async()=>{throw new Error('private failure detail');});
  try{const run=demo.start('Fix the tests',team.filter(p=>p.role==='coordinator'),{availableBots:team.filter(p=>p.role!=='coordinator')});await until(()=>run.status==='failed');assert.equal(run.approvals.length,0);assert.doesNotMatch(JSON.stringify(run),/private failure detail/);}finally{demo.dispose();}
 });
+
+
+test('primary demo saves a named personality through the server callback without model or project actions',async()=>{
+ const {customTeam}=await import('./personas.fixture.js');const team=customTeam();const requests:unknown[]=[];
+ const demo=new DemoEngine(1,undefined,async(runId,request)=>{requests.push({runId,...request});return {...team.find(p=>p.role==='scout')!,id:'new-ada',...request};});
+ try{
+  const run=demo.start('Create a patient Python tutor called Ada.',team.filter(p=>p.role==='coordinator'),{availableBots:[]});
+  await until(()=>run.status==='completed');assert.deepEqual(requests,[{runId:run.id,name:'Ada',purpose:'Act as a patient Python tutor.',role:'scout'}]);
+  assert.equal(run.approvals.length,0);assert.equal(run.artifacts.length,0);assert.equal(run.output,'');assert.match(run.messages.at(-1)!.text,/scripted example saved Ada/);
+  const direct=demo.start('Create a patient Python tutor called Extra.',team.filter(p=>p.role==='scout'));
+  await until(()=>direct.status==='completed');assert.equal(requests.length,1);
+ }finally{demo.dispose();}
+});
+
+test('stopped and failed demo creations cannot claim a saved agent',async()=>{
+ const {customTeam}=await import('./personas.fixture.js');const team=customTeam();let calls=0;
+ const demo=new DemoEngine(2,undefined,async()=>{calls++;throw new Error('private creation failure');});
+ try{
+  const stopped=demo.start('Create a Python tutor called Ada.',team.filter(p=>p.role==='coordinator'),{availableBots:[]});demo.cancel(stopped.id);await delay(15);assert.equal(calls,0);
+  const failed=demo.start('Create a Python tutor called Ada.',team.filter(p=>p.role==='coordinator'),{availableBots:[]});await until(()=>failed.status==='failed');assert.equal(calls,1);
+  assert.doesNotMatch(JSON.stringify(failed),/private creation failure|scripted example saved/);assert.equal(failed.approvals.length,0);
+ }finally{demo.dispose();}
+});

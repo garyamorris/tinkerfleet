@@ -1,8 +1,8 @@
 import {spawn} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {constants, type Stats} from 'node:fs';
-import {lstat, open, readdir, realpath, rename, unlink} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {access, lstat, mkdir, open, readdir, realpath, rename, rmdir, unlink} from 'node:fs/promises';
+import {homedir, tmpdir} from 'node:os';
 import path from 'node:path';
 import {ApprovalStore, canonicalJson, type ApprovalRecord} from './approval.js';
 import {redactSdkText} from './safety.js';
@@ -21,12 +21,14 @@ const changed = () => new RunnerError('STALE_APPROVAL', 'Workspace changed; requ
 let executing = false;
 
 /** Portable checks are best effort against concurrent local processes, not an OS sandbox. */
-async function directories(absolute: string): Promise<Map<string, string>> {
+async function directories(absolute: string, allowMissing = false): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   let current = path.parse(absolute).root;
   for (const part of absolute.slice(current.length).split(path.sep).filter(Boolean)) {
     current = path.join(current, part);
-    const s = await lstat(current);
+    let s: Stats;
+    try { s = await lstat(current); }
+    catch (error) { if (allowMissing && missing(error)) break; throw error; }
     if (!s.isDirectory() || s.isSymbolicLink()) throw new RunnerError('UNSAFE_PATH', 'Directory symlinks and special files are not allowed.');
     result.set(current, identity(s));
   }
@@ -114,14 +116,38 @@ function safeOutput(stdout: string, stderr: string, limit: number): {stdout: str
   };
   return {stdout: take(stdout), stderr: take(stderr)};
 }
-/** shell:false, fixed executable paths, no inherited environment. JS still has user privileges. */
-export function createNativeProcessExecutor(spawnProcess: typeof spawn = spawn): ProcessExecutor {
+/** Only ordinary tool-discovery settings enter children; API keys and loader hooks do not. */
+function localEnvironment(): Record<string, string> {
+  const searchPath = (process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin').split(path.delimiter)
+    .filter(entry => path.isAbsolute(entry) && !/[\u0000-\u001f\u007f]/.test(entry)).join(path.delimiter);
+  const env: Record<string, string> = {PATH: searchPath, HOME: homedir(), TMPDIR: tmpdir(), LANG: 'en_US.UTF-8'};
+  for (const name of ['LANG', 'LC_ALL', 'LC_CTYPE']) {
+    const value = process.env[name];
+    if (value && /^[A-Za-z0-9_.@-]{1,80}$/.test(value)) env[name] = value;
+  }
+  return Object.freeze(env);
+}
+async function resolveExecutable(executable: string, searchPath: string): Promise<{path: string; identity: string}> {
+  const candidates = path.isAbsolute(executable) ? [executable] : searchPath.split(path.delimiter).filter(Boolean).map(dir => path.join(dir, executable));
+  for (const candidate of candidates) {
+    try {
+      // Preserve invocation spelling for virtual environments and multicall tools; bind the target identity too.
+      const resolved = await realpath(candidate), stat = await lstat(resolved);
+      if (!stat.isFile()) continue;
+      await access(resolved, constants.X_OK);
+      return {path: path.resolve(candidate), identity: createHash('sha256').update(canonicalJson({target: resolved, stamp: stamp(stat), mode: stat.mode})).digest('hex')};
+    } catch { /* Try the next server PATH entry without exposing filesystem errors. */ }
+  }
+  throw new RunnerError('EXECUTABLE_NOT_FOUND', 'Executable was not found or is not executable on this machine.');
+}
+/** No implicit shell or arbitrary inherited environment. Approved tools retain user privileges. */
+export function createNativeProcessExecutor(spawnProcess: typeof spawn = spawn, environment = localEnvironment()): ProcessExecutor {
   return (executable, args, options) => new Promise(resolve => {
     if (options.signal?.aborted) return resolve({exitCode: null, stdout: '', stderr: '', termination: 'cancelled', cleanupSucceeded: true});
     let child: ReturnType<typeof spawn>;
     try {
       child = spawnProcess(executable, [...args], {cwd: options.cwd, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-        env: {PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', HOME: '/nonexistent'}});
+        env: environment});
     } catch { return resolve({exitCode: null, stdout: '', stderr: '', error: 'Could not start local command.', cleanupSucceeded: true}); }
     const chunks: {stdout: Buffer[]; stderr: Buffer[]} = {stdout: [], stderr: []};
     let bytes = 0, settled = false, termination: ProcessResult['termination'];
@@ -166,6 +192,7 @@ export class NativeWorkspaceRunner {
   readonly approvals: ApprovalStore;
   readonly #root: string;
   readonly #process: ProcessExecutor;
+  readonly #environment = localEnvironment();
   readonly #snapshots = new Map<string, Snapshot>();
   readonly #prepared = new Map<string, {runId: string; action: RunnerAction; bound: BoundRunnerAction}>();
   readonly #closed = new Set<string>();
@@ -175,7 +202,7 @@ export class NativeWorkspaceRunner {
   constructor(options: {workspaceRoot: string; approvals?: ApprovalStore; executeProcess?: ProcessExecutor}) {
     if (!options.workspaceRoot || !path.isAbsolute(options.workspaceRoot)) throw new RunnerError('UNSAFE_WORKSPACE', 'Choose an absolute project directory.');
     this.#root = path.resolve(options.workspaceRoot); this.approvals = options.approvals ?? new ApprovalStore();
-    this.#process = options.executeProcess ?? createNativeProcessExecutor();
+    this.#process = options.executeProcess ?? createNativeProcessExecutor(spawn, this.#environment);
   }
   private assertOpen(runId: string): void {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(runId)) throw new RunnerError('INVALID_RUN', 'Invalid run ID.');
@@ -205,7 +232,7 @@ export class NativeWorkspaceRunner {
   }
   private async validateTargets(action: RunnerAction, snapshot: Snapshot): Promise<void> {
     if (action.kind === 'edit') {
-      await directories(path.dirname(path.join(this.#root, action.path)));
+      await directories(path.dirname(path.join(this.#root, action.path)), true);
       if (!snapshot.files.has(action.path)) {
         try { await lstat(path.join(this.#root, action.path)); }
         catch (error) { if (missing(error)) return; throw error; }
@@ -215,31 +242,44 @@ export class NativeWorkspaceRunner {
     }
     const cwd = action.cwd && action.cwd !== '.' ? action.cwd : '';
     if (!snapshot.directories.has(cwd)) throw new RunnerError('UNSAFE_PATH', 'Command directory must be in the selected workspace.');
-    if (action.executable === 'node' && action.args[0] === '--version') return;
-    const names = action.executable === 'node' && action.args[0]!.startsWith('--') ? action.args.slice(1) : action.args;
-    for (const name of names) {
-      const relative = cwd ? `${cwd}/${name}` : name;
-      if (!snapshot.files.has(relative) && !(action.executable === 'ls' && snapshot.directories.has(relative))) {
-        throw new RunnerError('FILE_NOT_FOUND', 'Commands may name only included workspace files and directories.');
-      }
-    }
+    // Arguments may refer to host resources: the exact command is approved, not sandboxed.
   }
+
   async prepare(runId: string, input: unknown): Promise<ApprovalRecord<BoundRunnerAction>> {
     const action = validateAction(input), s = await this.current(runId);
     await this.validateTargets(action, s); this.assertOpen(runId);
     if (action.kind === 'edit' && (s.totalBytes - Buffer.byteLength(s.files.get(action.path)?.content ?? '') + Buffer.byteLength(action.content) > RUNNER_LIMITS.snapshotBytes || (!s.files.has(action.path) && s.files.size >= RUNNER_LIMITS.files))) {
       throw new RunnerError('SNAPSHOT_LIMIT', 'Edit exceeds workspace limits.');
     }
-    const bound: BoundRunnerAction = {...action, workspaceRoot: this.#root, snapshotDigest: s.digest, policyVersion: 'native-1'};
+    const resolvedExecutable = action.kind === 'command' ? await resolveExecutable(action.executable, this.#environment.PATH!) : null;
+    this.assertOpen(runId);
+    const bound: BoundRunnerAction = {...action, workspaceRoot: this.#root, snapshotDigest: s.digest, policyVersion: 'native-2', resolvedExecutable};
     const record = this.approvals.request(runId, bound);
     this.#prepared.set(record.id, {runId, action, bound}); return record;
   }
   private async write(action: Extract<RunnerAction, {kind: 'edit'}>, snapshot: Snapshot, signal: AbortSignal): Promise<void> {
     const target = path.join(this.#root, action.path), parent = path.dirname(target);
-    const parents = await directories(parent), before = snapshot.files.get(action.path);
+    const parents = await directories(this.#root), before = snapshot.files.get(action.path);
+    const createdDirectories: string[] = [];
+    let committed = false;
     const temp = path.join(parent, `.tinkerfleet-${randomUUID()}.tmp`);
     let created = false;
     try {
+      // Create one component at a time, checking every existing ancestor and rejecting links.
+      let current = this.#root;
+      for (const component of path.relative(this.#root, parent).split(path.sep).filter(Boolean)) {
+        await verifyDirectories(parents);
+        current = path.join(current, component);
+        try { await lstat(current); }
+        catch (error) {
+          if (!missing(error)) throw error;
+          if (signal.aborted) throw new RunnerError('CANCELLED', 'Action cancelled before writing.');
+          await mkdir(current, {mode: 0o755}); createdDirectories.push(current);
+        }
+        const stat = await lstat(current);
+        if (!stat.isDirectory() || stat.isSymbolicLink()) throw changed();
+        parents.set(current, identity(stat));
+      }
       const handle = await open(temp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, before?.mode ?? 0o600);
       created = true;
       try { await handle.writeFile(action.content, 'utf8'); await handle.sync(); } finally { await handle.close(); }
@@ -251,8 +291,15 @@ export class NativeWorkspaceRunner {
       }
       if (signal.aborted) throw new RunnerError('CANCELLED', 'Action cancelled before writing.');
       // Atomic replacement; ancestor checks cannot eliminate hostile-process races on macOS.
-      await rename(temp, target); created = false;
-    } finally { if (created) await unlink(temp).catch(() => { this.#cleanupBlocked = true; }); }
+      await rename(temp, target); created = false; committed = true;
+    } finally {
+      if (created) await unlink(temp).catch(() => { this.#cleanupBlocked = true; });
+      if (!committed) for (const directory of createdDirectories.reverse()) {
+        // Only remove our own still-empty directories; never remove another process's changes.
+        try { await verifyDirectories(parents); await rmdir(directory); parents.delete(directory); }
+        catch { break; }
+      }
+    }
   }
   async execute(runId: string, approvalId: string, options: {signal?: AbortSignal} = {}): Promise<RunnerResult> {
     this.assertOpen(runId);
@@ -273,6 +320,17 @@ export class NativeWorkspaceRunner {
         this.#prepared.delete(approvalId); throw changed();
       }
       await this.validateTargets(prepared.action, s); this.assertOpen(runId);
+      if (prepared.action.kind === 'command') {
+        let resolved;
+        try { resolved = await resolveExecutable(prepared.action.executable, this.#environment.PATH!); } catch { resolved = null; }
+        if (canonicalJson(resolved) !== canonicalJson(prepared.bound.resolvedExecutable)) {
+          const record = this.approvals.get(approvalId);
+          if (record?.status === 'pending' || record?.status === 'approved') this.approvals.deny(approvalId);
+          this.#prepared.delete(approvalId);
+          throw new RunnerError('EXECUTABLE_CHANGED', 'The executable changed since review; request a new approval.');
+        }
+        this.assertOpen(runId);
+      }
       this.approvals.consume(approvalId, runId, prepared.bound); this.#prepared.delete(approvalId);
       let outcome: ProcessResult;
       const action = prepared.action;
@@ -282,7 +340,7 @@ export class NativeWorkspaceRunner {
         outcome = {exitCode: 0, stdout: `Updated ${action.path}\n`, stderr: ''};
       } else {
         const cwd = path.join(this.#root, action.cwd ?? '.');
-        const executable = action.executable === 'node' ? process.execPath : `/bin/${action.executable}`;
+        const executable = prepared.bound.resolvedExecutable!.path;
         outcome = await this.#process(executable, action.args, {cwd, signal: controller.signal, timeoutMs: RUNNER_LIMITS.timeoutMs, maxOutputBytes: RUNNER_LIMITS.outputBytes});
       }
       const cleanupSucceeded = outcome.cleanupSucceeded !== false && !this.#cleanupBlocked;

@@ -15,13 +15,12 @@ See [the build handover](HANDOVER.txt) for verified checks and remaining integra
 
 ## A look inside
 
-![Tinkerfleet with a verified live Scout response](docs/screenshots/native-live-desktop.jpg)
+![Coordinator-created Ada profile in Tinkerfleet](docs/screenshots/coordinator-created-agent.jpg)
 
-[Mobile view](docs/screenshots/native-live-mobile.jpg). Captured at 1291 × 770
-on desktop and 390 × 844 on mobile. The Scout response came from one real
-conversation-only model call and survived restart. The displayed server now has
-local tools enabled; that response did not use them. Native edits and commands
-were verified separately with offline tests in temporary folders, not a live agent.
+[Mobile view](docs/screenshots/mobile-created-agent.jpg), checked at 390 × 844
+without horizontal overflow. These captures show the no-key Ada teaching example:
+the profile is really saved and opens a direct chat, while the response is
+scripted. They do not demonstrate live personality generation or web search.
 
 ## Try it without a key
 
@@ -101,6 +100,35 @@ includes that Coordinator and delegates only to its selected specialists through
 `agent.asTool(...)`. Groups cannot create more groups. Tools, validation,
 approvals, and execution remain server-owned.
 
+## Search the public web
+
+In live mode, ask a bot to search current public information or read a public
+page, then follow the clickable sources in its answer. Hosted web search is on
+by default; set `TINKERFLEET_WEB_SEARCH=0` to disable it. It works independently
+of local workspace tools and can incur additional API tool charges.
+
+This is model-driven public-web research, not control of your logged-in browser,
+forms, or accounts. Page-opening capabilities depend on the chosen model.
+The no-key demo remains scripted and never searches the web. See
+[setup](docs/setup.md#public-web-search) for the boundary and provider references.
+
+## Ask for a bot
+
+Tell the primary Coordinator: **“Create a patient Python tutor called Ada.”**
+It can create a reusable specialist with a name and purpose covering its job,
+personality, and communication style. The saved bot appears in the library and
+its creation message offers **Talk**. You can talk to it directly, and the
+Coordinator can bring it into a group—even in the same run that created it.
+
+New bots use one of three existing capability templates: Researcher, Builder,
+or Reviewer. Personality does not create new permissions. The server saves up
+to 32 profiles and permits at most three creations per Coordinator
+run. Existing conversations keep their captured profiles.
+
+The no-key demo recognizes the exact Ada example and really saves a profile,
+but uses a clearly scripted response. It does not demonstrate live model
+selection or the tutor's personality in conversation.
+
 ## Bots, conversations, and runs
 
 | Concept | What it means |
@@ -131,8 +159,9 @@ not stop a group already created; stop that group explicitly. These limits are
 not an overall monetary cap. This is explicit delegation, not cross-chat memory.
 
 Creating a conversation captures its participant profiles. Library edits apply
-to new conversations, leaving existing chats and runs unchanged. Profile
-preferences live in browser storage. The server stores conversation
+to new conversations, leaving existing chats and runs unchanged. The bot
+library is persisted on the local server, with older browser profiles migrated.
+The server stores conversation
 views in the private, Git-ignored `.tinkerfleet/conversations.json` file. These
 views can contain prompts, messages, drafts, and artifact text; treat them as
 private data. Read the [interface guide](docs/interface.md) and
@@ -163,9 +192,12 @@ TINKERFLEET_WORKSPACE=/absolute/path/to/your/practice-project
 
 **Approved edits change real files. Approved commands run locally with your user's
 permissions.** The working directory is not a security sandbox; project code can
-access broader resources allowed to your account. Commands use no shell, receive
-a minimal environment without inherited server secrets, and have time/output
-bounds. Use a trusted practice folder and review each exact action. Docker is not
+access broader resources allowed to your account. Commands resolve installed tools from the server's PATH or an explicit path.
+Every command needs exact approval, including its arguments and working directory.
+The launcher does not insert a shell; an explicitly approved shell command can
+still run a script. Commands receive a small environment whitelist without
+inherited server secrets and have time/output bounds. Approved file edits can
+also create new files and nested folders. Use a trusted practice folder and review each exact action. Docker is not
 part of the active application. See [setup](docs/setup.md) and [SECURITY.md](SECURITY.md).
 
 ## Find your way around

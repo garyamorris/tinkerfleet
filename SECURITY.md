@@ -20,13 +20,20 @@ network endpoints, or processes that the user's account can reach.
 ## What the app enforces
 
 The server owns role tools, input validation, selected workspace configuration,
-and exact-action approvals. A persona's purpose cannot grant capabilities.
+and exact-action approvals. A persona's purpose cannot grant capabilities. A direct Coordinator can create
+up to three named specialist profiles per run using existing capability templates;
+profiles are validated and saved in the bounded local library. Creation does not
+grant command authority or alter participants of existing conversations.
 Approvals are expiring and single-use, bound to the run and action. Denial,
 cancellation, stale state, and invalid decisions cannot authorize execution.
 SDK mutation tools also pause for approval before execution.
 
-Commands are launched without a shell, with a minimal environment that does not
-inherit server API keys, and with bounded time/output. This does not make project
+Commands resolve from the server's PATH or an explicit absolute executable path.
+Approval binds the resolved file identity, which is rechecked before execution.
+The launcher uses `shell:false`; an explicitly approved shell executable can
+still interpret its supplied script. The environment is limited to HOME, PATH,
+TMPDIR, LANG, and configured LC_ALL/LC_CTYPE, excluding inherited server API keys.
+Time and output are bounded. This does not make project
 code safe. A process can read accessible credentials from disk, call the network,
 or spawn subprocesses with the authority available to the user. Choose a trusted
 practice folder and inspect the exact command, not just its description.
@@ -44,6 +51,16 @@ budget and stop control. Stop it explicitly if it has already been created.
 
 Chats do not isolate the filesystem or provide separate OS accounts. Two chats
 using the same workspace can observe each other's real changes.
+
+## Public-web research
+
+Hosted web search is enabled by default in live mode and disabled with
+`TINKERFLEET_WEB_SEARCH=0`. It is separate from native workspace tools and does
+not use the user's logged-in browser or cookies. Queries are sent to the provider
+and may incur additional tool charges. Keep private material out of queries.
+Treat retrieved pages as untrusted input; they cannot authorize local commands,
+change roles, or bypass approvals. Inspect cited sources rather than treating a
+search result as verified truth. Demo mode does not browse.
 
 ## Secrets, inference, and persistence
 

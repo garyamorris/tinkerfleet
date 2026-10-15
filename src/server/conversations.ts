@@ -1,9 +1,10 @@
+import {safeSources} from './sources.js';
 import {constants,closeSync,existsSync,fsyncSync,fstatSync,lstatSync,mkdirSync,openSync,readFileSync,renameSync,unlinkSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {canonicalJson} from './approval.js';
-import {validateParticipants,validateAvailableBots} from './personas.js';
+import {validateParticipants,validateAvailableBots,validateProfiles} from './personas.js';
 import {redactSdkText} from './safety.js';
 import type {Conversation,Message,Persona,Run} from '../shared/types.js';
 
@@ -12,10 +13,10 @@ const id=z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),time=z.number().finite().non
 const text=(max:number)=>z.string().max(max).transform(redactSdkText);
 const role=z.enum(['coordinator','scout','maker','checker']);
 const participants=z.unknown().transform(value=>validateParticipants(value));
-const message=z.object({id,conversationId:id.optional(),author:z.enum(['user','coordinator','scout','maker','checker']),text:text(256000),at:time,kind:z.enum(['text','delegation','result']).optional()});
+const message=z.object({id,sources:z.unknown().transform(value=>safeSources(value)).optional(),createdAgentId:id.optional(),conversationId:id.optional(),author:z.enum(['user','coordinator','scout','maker','checker']),text:text(256000),at:time,kind:z.enum(['text','delegation','result']).optional()}).transform(value=>({...value,...(value.sources?{sources:safeSources(value.sources,value.text)}:{})}));
 const action=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('edit'),path:text(512),content:text(256000)}),
- z.object({kind:z.literal('command'),executable:z.enum(['node','npm','ls','cat']),args:z.array(text(4096)).max(32),cwd:text(512).optional()}),
+ z.object({kind:z.literal('command'),resolvedExecutable:z.object({path:text(4096),identity:text(512)}).nullable().optional(),executable:text(4096),args:z.array(text(8192)).max(128),cwd:text(512).optional()}),
 ]);
 const usageCount=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const runSchema=z.object({id,usage:z.object({modelCalls:usageCount,inputTokens:usageCount,outputTokens:usageCount,totalTokens:usageCount}).optional(),conversationId:id.optional(),team:participants.optional(),prompt:text(8000),status:z.enum(['idle','running','awaiting_approval','completed','denied','cancelled','failed']),mode:z.enum(['demo','live']),
@@ -23,12 +24,12 @@ const runSchema=z.object({id,usage:z.object({modelCalls:usageCount,inputTokens:u
  approvals:z.array(z.object({id,digest:z.string().max(128),agent:role,title:text(4096),description:text(4096),action,status:z.enum(['pending','approved','denied']),before:text(256000).optional()})).max(256),
  artifacts:z.array(z.object({path:text(512),before:text(256000),after:text(256000),simulated:z.boolean()})).max(256),output:text(256000),activeAgent:role.nullable(),startedAt:time,endedAt:time.optional()});
 const conversationSchema=z.object({id,availableBots:z.unknown().transform(value=>validateAvailableBots(value)).optional(),startedBy:z.object({conversationId:id,runId:id,coordinatorId:id,brief:text(8000)}).optional(),title:text(80).refine(v=>!!v.trim()),participants,createdAt:time,updatedAt:time,draft:text(8000),currentRunId:id.nullable()});
-export interface ConversationState {version:1;conversations:Conversation[];runs:Run[]}
+export interface ConversationState {libraryImported:boolean;profiles:Persona[];version:1;conversations:Conversation[];runs:Run[]}
 export function defaultParticipants():Persona[]{return validateParticipants(['coordinator','scout','maker','checker'].map(role=>({id:`default-${role}`,role,name:role[0].toUpperCase()+role.slice(1),purpose:`Follow the ${role} role in the coding workflow.`,color:'#567a75',shape:'orbit'})));}
 
 /** Persist only explicitly listed public fields: never SDK state, grants, session cookies, or credentials. */
 function normalize(input:unknown,restart:boolean):ConversationState {
- const envelope=z.object({version:z.literal(1).optional(),conversations:z.array(conversationSchema).max(CONVERSATION_LIMITS.conversations).optional(),runs:z.array(runSchema).max(CONVERSATION_LIMITS.runs)}).parse(input);
+ const envelope=z.object({libraryImported:z.boolean().optional(),profiles:z.unknown().transform(validateProfiles).optional(),version:z.literal(1).optional(),conversations:z.array(conversationSchema).max(CONVERSATION_LIMITS.conversations).optional(),runs:z.array(runSchema).max(CONVERSATION_LIMITS.runs)}).parse(input);
  const runs=envelope.runs as Run[];
  let conversations=envelope.conversations as Conversation[]|undefined;
  if(!conversations){
@@ -60,7 +61,8 @@ function normalize(input:unknown,restart:boolean):ConversationState {
  }
  for(const run of runs)for(const message of run.messages)if(message.conversationId){const target=conversations.find(c=>c.id===message.conversationId);if(message.author!=='coordinator'||target?.startedBy?.runId!==run.id||target.startedBy.conversationId!==run.conversationId)throw new Error('Invalid conversation link.');}
 
- return {version:1,conversations,runs};
+ const profiles=envelope.profiles??validateProfiles([...new Map((conversations.length?conversations.flatMap(c=>[...c.participants,...(c.availableBots??[])]):[]).map(p=>[p.id,p])).values()]);
+ return {version:1,conversations,runs,profiles,libraryImported:envelope.libraryImported??false};
 }
 
 export function conversationHistory(conversationId:string,runs:readonly Run[]):Message[]{
@@ -82,11 +84,11 @@ export class ConversationStore {
     try{const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1||stat.size>CONVERSATION_LIMITS.bytes)throw new Error('Invalid state file.');input=JSON.parse(readFileSync(fd,'utf8'));}finally{closeSync(fd);}
    }
    this.state=normalize(input,true);
-  }catch{throw new Error('Conversation history could not be read safely. The saved file was left unchanged; restore or repair it before starting.');}
+  }catch(error){if(error instanceof Error&&error.message==='The bot library allows up to 32 profiles.')throw new Error('Saved history contains more than 32 bot profiles. All saved data was left unchanged; reduce or export the library before starting.');throw new Error('Conversation history could not be read safely. The saved file was left unchanged; restore or repair it before starting.');}
  }
- save(conversations:Conversation[],runs:Run[]):void {
+ save(conversations:Conversation[],runs:Run[],profiles:Persona[]=this.state.profiles,libraryImported=this.state.libraryImported):void {
   if(!this.statePath)return;
-  const serialized=JSON.stringify(normalize({version:1,conversations,runs},false));
+  const serialized=JSON.stringify(normalize({version:1,conversations,runs,profiles,libraryImported},false));
   if(Buffer.byteLength(serialized)>CONVERSATION_LIMITS.bytes)throw new Error('Conversation storage limit reached.');
   if(serialized===this.lastSaved)return;
   const directory=path.dirname(this.statePath);mkdirSync(directory,{recursive:true,mode:0o700});

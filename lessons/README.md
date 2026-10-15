@@ -107,11 +107,11 @@ Source: [05-local-tools.ts](05-local-tools.ts)
 
 Follow the native action boundary: validate a proposal, review the exact action,
 consume its approval once, and report what actually happened. Local commands run
-with the user's permissions. A working directory and allowlist are not an OS
-sandbox. Keep examples in disposable temporary fixtures.
+with the user's permissions. A working directory and executable identity check
+are not an OS sandbox. Keep examples in disposable temporary fixtures.
 
-**Exercise:** explain why launching without a shell does not stop a Node program
-from accessing other files that the user can read.
+**Exercise:** explain why `shell:false` does not stop an explicitly approved
+interpreter from accessing other files that the user can read.
 
 ## 6. The selected workspace
 

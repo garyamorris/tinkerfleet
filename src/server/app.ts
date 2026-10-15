@@ -1,6 +1,7 @@
+import {safeSources} from './sources.js';
 import {runtimeConfig,type RuntimeOptions} from './config.js';
 import type {Model} from '@openai/agents';
-import {validateParticipants,validateAvailableBots} from './personas.js';
+import {validateParticipants,validateAvailableBots,validateProfiles} from './personas.js';
 import {ConversationStore,CONVERSATION_LIMITS,conversationHistory,defaultParticipants,selectCoordinatorGroup} from './conversations.js';
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {randomUUID} from 'node:crypto';
@@ -20,8 +21,11 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   const modelReady=()=>!!options.sdkModel||!!model&&!!process.env.OPENAI_API_KEY;
   const root=path.resolve(options.workspaceRoot??process.env.TINKERFLEET_WORKSPACE??'examples/tiny-project');
   const store=new ConversationStore(options.statePath,options.initialRuns);
+  let profiles=store.state.profiles;
+  let libraryImported=store.state.libraryImported;
+  const createdAgents=new Map<string,Map<string,Persona>>();
   const conversations=new Map(store.state.conversations.map(chat=>[chat.id,chat]));
-  const demo=new DemoEngine(options.demoDelayMs,startGroup);
+  const demo=new DemoEngine(options.demoDelayMs,startGroup,createAgent);
   const liveRuns=new Map<string,Run>();
   for(const run of store.state.runs)(run.mode==='demo'?demo.runs:liveRuns).set(run.id,run);
   const legacyRunIds=new Set<string>();
@@ -36,22 +40,24 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   const security=createSecurity(options.port);
   let currentRunId:string|null=null;
   let execution={available:false,reason:config.workspaceToolsEnabled?'Local workspace has not been checked yet.':'Workspace tools are disabled; chat needs no local execution.'};
+  let executionProbe=0;
+  async function checkExecution(){if(!runner)return;const version=++executionProbe;try{const availability=await runner.checkAvailability();if(!closing&&version===executionProbe)execution={available:availability.available,reason:availability.reason??'Ready'};return availability;}catch{const unavailable={available:false,reason:'The selected local workspace could not be checked.'};if(!closing&&version===executionProbe)execution=unavailable;return unavailable;}}
   const agentId=(name?:string):AgentId=>{const s=name?.toLowerCase();return s==='scout'||s==='maker'||s==='checker'?s:'coordinator';};
   function onEvent(e:SdkEvent){
     const run=liveRuns.get(e.runId);if(!run)return;const agent=e.agent?agentId(e.agent):run.activeAgent??run.team?.[0]?.role??'coordinator';const displayName=run.team?.find(persona=>persona.role===agent)?.name??e.agent??'Coordinator';
     if(e.type==='usage'){if(e.usage)run.usage={...e.usage};return;}
-    if(e.type==='agent_message'){if(e.message)run.messages.push({id:randomUUID(),at:Date.parse(e.at),author:agent,text:redactSdkText(e.message),kind:'result'});touch(run);return;}
+    if(e.type==='agent_message'){if(e.message)run.messages.push({id:randomUUID(),at:Date.parse(e.at),author:agent,text:redactSdkText(e.message),...(e.sources?.length?{sources:safeSources(e.sources,redactSdkText(e.message))}:{}),kind:'result'});touch(run);return;}
     const labels:Record<string,string>={run_started:'Run started',agent_started:`${displayName} started`,agent_finished:`${displayName} returned`,tool_started:e.tool??'Tool started',tool_finished:`${e.tool??'Tool'} finished`,approval_requested:'Your approval is needed',approval_resolved:e.approved?'Action approved':'Action declined',run_completed:'Run complete',run_failed:'Run could not finish',run_cancelled:'Run stopped'};
     run.events.push({id:randomUUID(),at:Date.parse(e.at),agent,kind:e.type.startsWith('approval')?'approval':e.type.startsWith('tool')?'tool':e.type.startsWith('agent')?'delegation':e.type==='run_failed'?'error':'result',title:labels[e.type]??e.type,detail:e.message??e.tool});
     if(e.type==='agent_started')run.activeAgent=agent;
-    if(e.type==='approval_requested'&&e.approval){const p=e.approval;run.status='awaiting_approval';run.approvals.push({id:p.approvalId,digest:p.digest,agent,title:p.action.kind==='edit'?`Update ${p.action.path}`:`Run ${p.action.executable}`,description:'Review this exact action. It changes actual local files or runs a local command in the selected folder. Commands run with your user permissions.',action:p.action,status:'pending',before:beforeCache.get(p.approvalId)});}
+    if(e.type==='approval_requested'&&e.approval){const p=e.approval;const bound=approvals.get(p.approvalId)?.action;const action=p.action.kind==='command'&&bound&&typeof bound==='object'&&'resolvedExecutable' in bound?{...p.action,resolvedExecutable:bound.resolvedExecutable as {path:string;identity:string}|null}:p.action;run.status='awaiting_approval';run.approvals.push({id:p.approvalId,digest:p.digest,agent,title:p.action.kind==='edit'?`Update ${p.action.path}`:`Run ${p.action.executable}`,description:'Review this exact action. It changes actual local files or runs a local command in the selected folder. Commands run with your user permissions.',action,status:'pending',before:beforeCache.get(p.approvalId)});}
     if(e.type==='approval_resolved'){const p=run.approvals.find(a=>a.id===e.approvalId);if(p)p.status=e.approved?'approved':'denied';run.status='running';}
     if(e.type==='run_completed'){run.status='completed';run.activeAgent=null;run.endedAt=Date.now();}
     if(e.type==='run_failed'||e.type==='run_cancelled'){run.status=e.type==='run_failed'?'failed':'cancelled';run.activeAgent=null;run.endedAt=Date.now();for(const a of run.approvals)if(a.status==='pending')a.status='denied';if(e.message)run.messages.push({id:randomUUID(),at:Date.now(),author:agent,text:e.message});}
     touch(run);
     if(['run_completed','run_failed','run_cancelled'].includes(e.type))runner?.disposeRun(run.id);
   }
-  const sdk=createSdkAdapter({model:options.sdkModel??model??undefined,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort??undefined,limits:config.limits,liveEnabled:mode==='live',onEvent,startGroup,harness:{
+  const sdk=createSdkAdapter({webSearchEnabled:mode==='live'&&config.webSearchEnabled,model:options.sdkModel??model??undefined,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort??undefined,limits:config.limits,liveEnabled:mode==='live',onEvent,startGroup,createAgent,harness:{
     snapshot:id=>workspaceRunner().snapshot(id),readFile:(id,p)=>workspaceRunner().readFile(id,p),
     prepare:async(id,action)=>{const record=await workspaceRunner().prepare(id,action);if(action.kind==='edit')beforeCache.set(record.id,redactSdkText(await workspaceRunner().readFile(id,action.path).catch(()=>'')));return record;},
     decide:(id,approvalId,digest,approved)=>approvals.decide(id,approvalId,digest,approved),
@@ -62,31 +68,46 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   const allRuns=()=>[...demo.runs.values(),...liveRuns.values()];
   const findRun=(id:string)=>demo.runs.get(id)??liveRuns.get(id);
   function touch(run:Run){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Date.now();}
-  function persist(required=false){for(const run of allRuns()){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Math.max(chat.updatedAt,run.startedAt,run.endedAt??0,...run.messages.map(m=>m.at),...run.events.map(e=>e.at));}try{store.save([...conversations.values()],allRuns());persistenceError=undefined;}catch{persistenceError='Conversation history could not be saved. Check local storage before continuing.';if(required)throw new HttpError(503,persistenceError);}}
-  function state():AppState {return {workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort,limits:config.limits,conversations:[...conversations.values()],...(persistenceError?{persistenceError}:{}),mode,model:mode==='live'?model:null,workspace:path.basename(root),workspaceRoot:root,execution,liveReady:mode==='live'&&modelReady()&&(!config.workspaceToolsEnabled||execution.available),runs:allRuns(),currentRunId,maxTurns:config.limits.maxTurns};}
+  function persist(required=false){for(const run of allRuns()){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Math.max(chat.updatedAt,run.startedAt,run.endedAt??0,...run.messages.map(m=>m.at),...run.events.map(e=>e.at));}try{store.save([...conversations.values()],allRuns(),profiles,libraryImported);persistenceError=undefined;}catch{persistenceError='Conversation history could not be saved. Check local storage before continuing.';if(required)throw new HttpError(503,persistenceError);}}
+  function state():AppState {return {webSearchEnabled:mode==='live'&&config.webSearchEnabled,profiles,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort,limits:config.limits,conversations:[...conversations.values()],...(persistenceError?{persistenceError}:{}),mode,model:mode==='live'?model:null,workspace:path.basename(root),workspaceRoot:root,execution,liveReady:mode==='live'&&modelReady()&&(!config.workspaceToolsEnabled||execution.available),runs:allRuns(),currentRunId,maxTurns:config.limits.maxTurns};}
   function validTitle(value:unknown){if(typeof value!=='string'||!value.trim()||value.trim().length>80||/[\u0000-\u001f\u007f]/.test(value))throw new HttpError(400,'Enter a title of 1–80 characters.');return redactSdkText(value.trim());}
   function startRun(value:unknown,chat:Conversation,res?:ServerResponse,legacy=false,promptAuthor:AgentId|'user'='user',beforePublish?:(run:Run)=>void){
     if(typeof value!=='string'||!value.trim()||value.length>8000)throw new HttpError(400,'Enter a task of 1–8,000 characters.');
     if(starting.has(chat.id)||allRuns().some(run=>run.conversationId===chat.id&&['running','awaiting_approval'].includes(run.status)))throw new HttpError(409,'Finish or stop this conversation’s current run first.');
     if(allRuns().length>=CONVERSATION_LIMITS.runs)throw new HttpError(409,'Saved run limit reached. Existing history was preserved.');
-    if(!beforePublish)persist(true);starting.add(chat.id);
+    if(!beforePublish)persist(true);starting.add(chat.id);const previousRoster=chat.availableBots;
     try{
+      if((profiles.some(p=>p.role!=='coordinator')||chat.availableBots)&&chat.participants.length===1&&chat.participants[0].role==='coordinator'&&!chat.startedBy)chat.availableBots=validateAvailableBots([...(chat.availableBots??[]),...profiles.filter(p=>p.role!=='coordinator'&&!chat.availableBots?.some(old=>old.id===p.id))].slice(0,32));
       const prompt=redactSdkText(value.trim()),team=validateParticipants(chat.participants),history=conversationHistory(chat.id,allRuns());
-      const run:Run=mode==='demo'?demo.start(prompt,team,{availableBots:chat.availableBots,promptAuthor}):{id:randomUUID(),prompt,team,mode,status:'running',startedAt:Date.now(),activeAgent:team.find(p=>p.role==='coordinator')?.role??team[0].role,messages:[{id:randomUUID(),author:promptAuthor,text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};
+      const run:Run=mode==='demo'?demo.start(prompt,team,{availableBots:chat.availableBots??(chat.participants.length===1&&chat.participants[0].role==='coordinator'&&!chat.startedBy?[]:undefined),promptAuthor}):{id:randomUUID(),prompt,team,mode,status:'running',startedAt:Date.now(),activeAgent:team.find(p=>p.role==='coordinator')?.role??team[0].role,messages:[{id:randomUUID(),author:promptAuthor,text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};
       run.conversationId=chat.id;if(mode==='live')liveRuns.set(run.id,run);if(legacy)legacyRunIds.add(run.id);
       currentRunId=run.id;chat.currentRunId=run.id;chat.draft='';touch(run);
       try{beforePublish?.(run);persist(true);}catch(e){if(mode==='demo')demo.cancel(run.id);else{run.status='cancelled';run.activeAgent=null;}throw e;}
       if(res)json(res,201,run);if(mode==='demo')return run;
       const id=run.id;
       void(async()=>{
-        if(runner){const availability=await runner.checkAvailability();execution={available:availability.available,reason:availability.reason??'Ready'};}
+        const availability=runner?await checkExecution():undefined;
         if(closing||run.status==='cancelled')return;
-        if(!modelReady()||(config.workspaceToolsEnabled&&!execution.available)){onEvent({runId:id,type:'run_failed',at:new Date().toISOString(),message:config.workspaceToolsEnabled?'Live workspace mode needs an accessible local folder, an explicit model, and a server-side API key. Nothing has been sent to a model.':'Live chat needs an explicit model and a server-side API key. Nothing has been sent to a model.'});persist();return;}
+        if(!modelReady()||(config.workspaceToolsEnabled&&!availability?.available)){onEvent({runId:id,type:'run_failed',at:new Date().toISOString(),message:config.workspaceToolsEnabled?'Live workspace mode needs an accessible local folder, an explicit model, and a server-side API key. Nothing has been sent to a model.':'Live chat needs an explicit model and a server-side API key. Nothing has been sent to a model.'});persist();return;}
         if(runner)await runner.snapshot(id);if(closing||(run.status as string)==='cancelled')return;
-        sync(await sdk.start({runId:id,prompt,team,history,availableBots:chat.availableBots}));persist();
+        sync(await sdk.start({runId:id,prompt,team,history,availableBots:chat.availableBots??(chat.participants.length===1&&chat.participants[0].role==='coordinator'&&!chat.startedBy?[]:undefined)}));persist();
       })().catch(()=>{if(run.status!=='cancelled')onEvent({runId:id,type:'run_failed',at:new Date().toISOString(),message:'The run failed safely. Review local configuration before starting another run.'});persist();});
       return run;
-    }finally{starting.delete(chat.id);}
+    }catch(error){if(previousRoster===undefined)delete chat.availableBots;else chat.availableBots=previousRoster;throw error;}finally{starting.delete(chat.id);}
+  }
+  async function createAgent(runId:string,request:{name:string;purpose:string;role:'scout'|'maker'|'checker'}):Promise<Persona>{
+    const run=findRun(runId),chat=run?.conversationId?conversations.get(run.conversationId):undefined;
+    if(closing||!run||run.status!=='running'||!chat||chat.startedBy||chat.participants.length!==1||chat.participants[0].role!=='coordinator')throw new Error('Only an active direct coordinator can create a bot.');
+    if(Object.keys(request).some(key=>!['name','purpose','role'].includes(key))||!['scout','maker','checker'].includes(request.role))throw new Error('Choose a specialist role.');
+    const candidate=validateParticipants([{...request,id:randomUUID(),color:'#567a75',shape:'spark'}])[0];
+    const key=canonicalJson({name:candidate.name,purpose:candidate.purpose,role:candidate.role});
+    const cache=createdAgents.get(runId)??new Map<string,Persona>();const previous=cache.get(key);if(previous)return previous;
+    if(cache.size>=3||profiles.length>=32||(chat.availableBots?.length??0)>=32)throw new Error('Bot creation limit reached.');
+    const oldProfiles=profiles,oldRoster=chat.availableBots,oldUpdated=chat.updatedAt,oldImported=libraryImported;
+    const messageId=randomUUID();libraryImported=true;profiles=validateProfiles([...profiles,candidate]);chat.availableBots=validateAvailableBots([...(chat.availableBots??[]),candidate]);
+    run.messages.push({id:messageId,author:'coordinator',createdAgentId:candidate.id,text:`Created ${candidate.name}: ${candidate.purpose}`,kind:'result',at:Date.now()});touch(run);
+    try{persist(true);}catch(error){profiles=oldProfiles;libraryImported=oldImported;chat.availableBots=oldRoster;chat.updatedAt=oldUpdated;run.messages=run.messages.filter(m=>m.id!==messageId);throw error;}
+    cache.set(key,candidate);createdAgents.set(runId,cache);return candidate;
   }
   async function startGroup(runId:string,request:SdkStartGroupRequest):Promise<SdkStartedGroup>{
     if(closing)throw new Error('The server is shutting down.');
@@ -120,6 +141,22 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     if(url.pathname==='/api/session'&&method==='GET'){security.check(req,false);json(res,200,security.bootstrap(res));return;}
     security.check(req);
     if(url.pathname==='/api/state'&&method==='GET'){persist();json(res,200,state());return;}
+    if(url.pathname==='/api/profiles/import'&&method==='POST'){
+      const body=await readJson(req);if(Object.keys(body).some(k=>k!=='profiles'))throw new HttpError(400,'Only profiles are accepted.');
+      let incoming:Persona[];try{incoming=validateProfiles(body.profiles);}catch(error){throw new HttpError(400,(error as Error).message);}
+      if(!libraryImported&&incoming.some(p=>p.role!=='coordinator'&&profiles.some(old=>old.id===p.id&&old.role==='coordinator')))throw new HttpError(400,'An existing coordinator must keep its coordinator role.');
+      const previous=profiles,previousImported=libraryImported;
+      profiles=validateProfiles([...new Map((libraryImported?[...incoming,...profiles]:[...profiles,...incoming]).map(p=>[p.id,p])).values()]);libraryImported=true;
+      try{persist(true);}catch(e){profiles=previous;libraryImported=previousImported;throw e;}json(res,200,profiles);return;
+    }
+    const profileRoute=/^\/api\/profiles(?:\/([a-zA-Z0-9_-]+))?$/.exec(url.pathname);
+    if(profileRoute&&(method==='POST'||method==='DELETE')){
+      const id=profileRoute[1],existing=profiles.find(p=>p.id===id);if(id&&!existing)throw new HttpError(404,'Bot not found.');
+      const previous=profiles,previousImported=libraryImported;let profile:Persona|undefined;
+      if(method==='DELETE'){if(!id)throw new HttpError(400,'Choose a bot.');profiles=profiles.filter(p=>p.id!==id);}
+      else{const body=await readJson(req);if(Object.keys(body).some(k=>!['name','purpose','role','color','shape'].includes(k)))throw new HttpError(400,'Only bot profile fields are accepted.');profile=validateParticipants([{...(existing??{}),...body,id:id??randomUUID()}])[0];if(existing?.role==='coordinator'&&profile.role!=='coordinator')throw new HttpError(400,'An existing coordinator must keep its coordinator role.');profiles=validateProfiles(id?profiles.map(p=>p.id===id?profile!:p):[...profiles,profile]);}
+      libraryImported=true;try{persist(true);}catch(e){profiles=previous;libraryImported=previousImported;throw e;}json(res,method==='DELETE'?200:id?200:201,profile??{ok:true});return;
+    }
     if(url.pathname==='/api/conversations'&&method==='POST'){
       const body=await readJson(req);
       if(Object.keys(body).some(key=>!['title','participants','availableBots'].includes(key)))throw new HttpError(400,'Only title, one participant, and an optional coordinator roster are accepted.');
@@ -180,6 +217,6 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   }
   const server=createServer(async(req,res)=>{security.headers(res,!!options.production);try{const url=new URL(req.url??'/',`http://127.0.0.1:${options.port}`);security.check(req,false,url.pathname==='/');if(url.pathname.startsWith('/api/'))await api(req,res,url);else if(options.serve)await options.serve(req,res);else throw new HttpError(404,'Asset not found.');}catch(e){if(res.headersSent){res.end();return;}json(res,e instanceof HttpError?e.status:400,{error:e instanceof HttpError?e.message:'The request could not be completed safely.'});}});
   server.requestTimeout=15_000;server.headersTimeout=10_000;server.keepAliveTimeout=5_000;
-  persist(true);const saveTimer=setInterval(()=>persist(),250);saveTimer.unref();
+  persist(true);if(mode==='live'&&runner)void checkExecution();const saveTimer=setInterval(()=>persist(),250);saveTimer.unref();
   return {server,state,async close(){closing=true;clearInterval(saveTimer);for(const run of liveRuns.values())if(['running','awaiting_approval'].includes(run.status)){run.status='cancelled';run.activeAgent=null;run.endedAt=Date.now();for(const approval of run.approvals)if(approval.status==='pending')approval.status='denied';touch(run);}try{for(const id of demo.runs.keys())demo.cancel(id);await Promise.all([...liveRuns.keys()].map(id=>sdk.cancel(id)));for(const id of liveRuns.keys())runner?.disposeRun(id);const cleanup=runner?await runner.shutdown():{cleanupSucceeded:true};persist(true);return cleanup;}finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}}};
 }

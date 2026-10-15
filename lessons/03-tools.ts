@@ -14,13 +14,13 @@ assert.ok(isExcludedPath('node_modules/dependency.js'));
 assert.ok(isExcludedPath('.env'));
 assert.throws(() => validateRelativePath('../outside.js'));
 assert.throws(() => validateRelativePath('/etc/passwd'));
-assert.throws(() => validateAction({ kind: 'command', executable: 'sh', args: ['-c', 'echo unsafe'] }));
-assert.throws(() => validateAction({ kind: 'command', executable: 'npm', args: ['install'] }));
+assert.deepEqual(validateAction({ kind: 'command', executable: 'sh', args: ['-c', 'printf approved'] }), { kind: 'command', executable: 'sh', args: ['-c', 'printf approved'] });
+assert.throws(() => validateAction({ kind: 'command', executable: 'node', args: ['bad\0argument'] }));
 assert.throws(() => validateAction({ kind: 'edit', path: 'sum.js', content: 'safe', bypassApproval: true }));
 assert.deepEqual(validateAction({ kind: 'edit', path: 'sum.js', content: 'export const answer = 42;\n' }), {
   kind: 'edit', path: 'sum.js', content: 'export const answer = 42;\n',
 });
 
-console.log('3. Tools: accepted exact structured input; rejected traversal, shells, installs, and extra fields.');
+console.log('3. Tools: accepted exact structured input; rejected file traversal, invalid arguments, and extra fields.');
 console.log('Nothing was read or executed. A valid command still needs your approval; a selected folder is not an OS sandbox.');
-console.log('Exercise: add a failing assertion for an absolute edit path. Why can an approved JavaScript test still access files outside its working folder?');
+console.log('Exercise: add a failing assertion for an absolute edit path. Why must an explicit sh -c command show the full script in its approval?');

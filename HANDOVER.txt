@@ -7,34 +7,40 @@ workspace tools. Approved edits change real files; commands run with the user's
 permissions. The working directory is not a sandbox. Docker is not used.
 
 Current verification
-- npm run check passed: 98 tests passed, 0 failed, 0 skipped. TypeScript checks
-  and the production build passed. All six offline lessons passed.
-- Native tests performed real file edits and commands in temporary fixtures.
-  The HTTP integration test covered an exactly approved edit, an explicit-file
-  node --test command with exit code 0, and rejection of approval replay.
-  The included tiny-project sum.js remained unchanged.
-- One actual live Scout conversation succeeded using gpt-5.6-luna with low
-  reasoning: one model call, 219 input tokens, 10 output tokens, 229 total.
-  Its response was: “I’m ready to chat.” No tools or private conversation content
-  were sent. Automated paid calls stopped after this smoke check.
-- This establishes one live conversation, not model-driven native editing,
-  command execution, or group orchestration. Other SDK tests use scripted models.
+- 136 tests passed; TypeScript checks and the production build passed. All six
+  offline lessons passed. Review found no blocking issue.
+- Native integration used real temporary files and commands, including a virtual
+  environment executable. Executable identity, approval, and persistence paths
+  were exercised without paid model calls.
+- Hosted search integration was tested offline, including source handling. No
+  live provider web-search request was made for this revision.
 
-Current browser and persistence checks
-- After restart, the main UI preserved the real Scout response and all eleven
-  conversations: ten prior chats plus the single-call smoke conversation.
-- The server now has local tools enabled for the practice folder. The successful
-  model smoke run itself was conversation-only and performed no file edits or
-  commands. No live-agent file action is claimed.
-- Genuine captures are docs/screenshots/native-live-desktop.jpg (1291 x 770) and
-  native-live-mobile.jpg (390 x 844). Mobile had no horizontal overflow; the
-  desktop view was restored after checking.
+Current browser verification
+- The exact demo prompt “Create a patient Python tutor called Ada.” created a
+  real saved profile through the clearly scripted, no-key path.
+- The creation card opened Ada's direct chat. After restart, two conversations,
+  one run, and five profiles were retained, including Ada.
+- At 390 x 844, no horizontal overflow was observed.
+- The browser displayed a clickable inline citation and source footer through
+  the offline SDK fixture; docs/screenshots/web-citations-offline-check.jpg
+  explicitly identifies this as a rendering check with no live search.
+- Genuine screenshots: docs/screenshots/coordinator-created-agent.jpg and
+  docs/screenshots/mobile-created-agent.jpg. These demonstrate persistence and
+  navigation, not live model personality generation or web search.
+
+Historical live smoke
+A previous revision completed one actual gpt-5.6-luna Scout conversation with low
+reasoning: one call, 219 input tokens, 10 output tokens, 229 total. The response
+was “I’m ready to chat.” That run used no tools or private conversation content.
+It is not evidence for the current agent-creation or hosted-search features.
+No paid model calls were made for this revision.
 
 Remaining limitations
-Artifact download completion remains unverified. No CI result is claimed.
-Native execution was verified with offline temporary-fixture tests, not a live
-model-requested file edit or command. Earlier group flows were browser-tested in
-demo mode; the single live smoke does not establish live group orchestration.
+Hosted search has offline integration coverage, not live provider verification.
+Native execution was verified with temporary-fixture tests, not live-model file
+or command requests. The Ada browser example is scripted; live personality and
+agent-creation behavior remain unverified. Artifact download completion remains
+unverified. No CI result is claimed.
 
 
 Run locally
@@ -46,8 +52,9 @@ For the built interface, run npm run build followed by npm start.
 Teaching and operating limits
 Demo output is simulated. Live conversation can incur API charges. Workspace
 opt-in exposes real local reads and exact-approval writes/commands. Commands use
-no shell, do not inherit server secrets, and have time/output limits; these do
-not prevent access to broader resources allowed by the user's OS permissions.
+structured arguments without an implicit shell, do not inherit server secrets,
+and have time/output limits; explicitly approved shell commands remain possible.
+These do not prevent access to broader resources allowed by the user's OS permissions.
 Restart retains chat history, cancels unfinished runs, and denies pending
 approvals. It does not undo file changes or completed command effects. Source
 and child group have separate budgets and stop controls, not an overall cost cap.

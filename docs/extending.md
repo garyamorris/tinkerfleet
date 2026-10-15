@@ -29,8 +29,8 @@ error path accidentally call an unapproved action.
 
 ## Customize a persona first
 
-Use a reusable profile when the goal is a different name, avatar, or focus within
-an existing role. Its purpose is passed to that role's live SDK instructions; it
+Ask the direct Coordinator to create a reusable profile when the goal is a
+different name, personality, or focus within an existing role. Its purpose is passed to that role's live SDK instructions; it
 does not create a tool or another role. A conversation captures its selected
 participants, and each run freezes its team. See `src/server/personas.ts` for validation and `createFleetAgents` in
 `src/server/sdk.ts` for instruction composition.
@@ -49,10 +49,11 @@ Never deserialize a browser-supplied tool list into an agent configuration.
 ## Change the runner
 
 Native tools act on real files and processes. Preserve exact approvals, path
-validation, minimal process environment, shell-free launch, and time/output
+validation, resolved-executable identity binding, minimal process environment,
+structured argument launch, and time/output
 limits. Test writes and commands in temporary fixtures. Never describe a working
-directory or executable allowlist as an OS sandbox. A new command form can widen
-what project code does with the user's permissions; update the threat model and
+directory or executable allowlist as an OS sandbox. An installed tool can act
+with the user's permissions; update the threat model and
 approval preview accordingly.
 
 ## Update the teaching trail

@@ -51,6 +51,27 @@ and the Coordinator can create groups. Workspace read, edit, and command tools
 are absent; no host project is captured. Saved local chat history is still read
 and written. Docker is not part of the active app.
 
+## Public web search
+
+Live mode enables OpenAI's hosted web-search tool by default. Ask for current
+public information or supply a public page URL. Responses can include clickable
+source links; inspect the source before relying on a claim. Page opening and
+in-page reading depend on model support. The tool does not control a logged-in
+browser, fill forms, or inherit browser cookies. The
+[OpenAI web-search guide](https://developers.openai.com/api/docs/guides/tools-web-search)
+describes supported actions and citations.
+
+Set `TINKERFLEET_WEB_SEARCH=0` to disable it; `1` or an unset value enables it in
+live mode. Other nonempty values are rejected. Demo mode never makes web requests.
+Web search is independent of `TINKERFLEET_WORKSPACE_TOOLS` and needs no local
+command approval. Queries go to the hosted provider. Keep private material out
+of search requests; retrieved pages are untrusted data, not permission to act.
+
+Search can incur tool charges in addition to model usage. The app's model-call
+and token counters are not a complete tool-charge ledger or billing receipt.
+See the provider's [web-search usage notes](https://developers.openai.com/api/docs/guides/tools-web-search#usage-notes)
+for current terms. No paid web-search verification is implied by offline tests.
+
 ## Enable local workspace tools
 
 For a trusted practice folder, add:
@@ -61,14 +82,15 @@ TINKERFLEET_WORKSPACE=/absolute/path/to/your/practice-project
 ```
 
 Restart the server after changing configuration. Choose a small, non-sensitive
-folder you are prepared to modify. The bundled `examples/tiny-project` is a
+folder you are prepared to modify. Bots can propose installed local tools and
+create or edit files, including new files in nested folders. The bundled `examples/tiny-project` is a
 practice option and contains a deliberate bug.
 
 **Approved edits change real files in the selected folder. Approved commands run
 locally with your user's permissions.** A working directory is not a sandbox:
-project code can access other resources allowed to that user. No shell is used,
-and commands receive a minimal environment without inherited API credentials,
-plus time/output limits. These measures do not provide OS isolation.
+project code can access other resources allowed to that user. The launcher does not insert a shell; an explicitly proposed shell command is
+still allowed after review. Commands receive a small environment whitelist
+without inherited API credentials, plus time/output limits. These measures do not provide OS isolation.
 
 Read [workspace behavior](workspace.md) and [SECURITY.md](../SECURITY.md) before
 enabling tools. Other chats using the same folder can see real changes. Chat
@@ -99,7 +121,8 @@ output. SDK tracing is disabled, but inference still goes to OpenAI. Consult the
 [API data controls](https://platform.openai.com/docs/guides/your-data) for provider
 handling.
 
-Profiles live in browser storage. Private conversation views, drafts, and results
+Profiles are saved in the local server library, with migration from older browser
+preferences. Private conversation views, drafts, and results
 persist in `.tinkerfleet/conversations.json`; this directory is ignored by Git.
 It is not encrypted or a complete secret scrubber. Keep it out of source archives.
 Restart keeps history but cancels unfinished work and denies pending approvals;

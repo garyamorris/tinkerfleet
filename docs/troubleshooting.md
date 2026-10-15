@@ -59,14 +59,28 @@ than replacing history. Preserve a private backup before repair; never publish
 its contents. Restart restores history but stops unfinished runs and denies
 pending decisions.
 
-## An older primary chat has no specialist roster
+## A new bot is missing from an existing conversation
 
-An older idle Coordinator chat can initialize its missing roster once. It then
-stays fixed. Create a new Coordinator chat to choose a different available-bot
-set. Existing group history remains accessible; user-created chats are direct-only.
+Creating a bot saves it in the server library and makes it available to the
+Coordinator. It does not change the participants of a chat already created. Use
+**Talk** on the creation message to start a direct chat, or ask the Coordinator
+to include the bot in a new group. Each group can contain one specialist per
+capability role.
+
+Only a direct Coordinator can create bots. A run can create at most three, and
+the library holds up to 32 profiles. In demo mode, use the exact documented
+Ada example; arbitrary requests are not interpreted by a model.
 
 ## Browser verification is separate
 
 `npm run check` checks types, Node tests, and production build. See the
 [handover](../HANDOVER.txt) for browser evidence and limitations. A rendered
 button alone does not prove its action completed.
+
+## A live answer does not search or read a page
+
+Check that `TINKERFLEET_WEB_SEARCH` is not `0`, and that the selected model supports
+the hosted web-search actions you need. Ask explicitly for a current public-web
+lookup and inspect any returned sources. Page opening depends on model support.
+Private, authenticated, or inaccessible pages are not made accessible by this
+tool. Demo mode is always scripted and performs no web requests.

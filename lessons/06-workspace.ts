@@ -26,7 +26,7 @@ try {
   assert.notEqual(before.digest,after.digest);
   console.log('6. Workspace: read allowed source, excluded hidden files, dependencies, symlinks and hard links.');
   console.log('A new capture detects changed source. Approvals are tied to the reviewed folder state.');
-  console.log('These checks limit the file tools; JavaScript commands still run with your user permissions.');
+  console.log('These checks limit the file tools; approved commands still run with your user permissions.');
   console.log('No model calls or command execution. Temporary fixture removed on exit.');
 } finally {
   await runner.shutdown();

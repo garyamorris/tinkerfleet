@@ -25,8 +25,9 @@ It asks the server to start, inspect, stop, or decide a run. It does not hold an
 OpenAI key, execute tool implementations, choose an executable outside server
 policy, or decide whether an SDK tool requires approval.
 
-Each browser profile contains a name, purpose, role assignment, color, and avatar
-shape. The profile library stays in browser storage. Creating a conversation
+Each profile contains a name, purpose, role assignment, color, and avatar
+shape. The profile library is persisted on the local server; older browser
+profiles are migrated. Creating a conversation
 captures its selected profile. A direct Coordinator also captures a bounded
 available-bot roster. The user-facing API creates only single-bot conversations;
 a Coordinator tool creates groups with the Coordinator and selected specialists.
@@ -58,10 +59,19 @@ specialist profiles; alternative profiles for a role are allowed, but a created
 group cannot select duplicate roles. The tool accepts a title of 1–80 characters,
 a brief of 1–8,000 characters, and one to three bot IDs.
 
-An older direct Coordinator chat with no stored roster may initialize it once
-while idle. Identical retries are allowed; replacing an existing roster is
-rejected. This preserves old chats without silently changing their collaborator
-choices later.
+The direct Coordinator also receives `create_agent` with `{name, purpose, role}`.
+The role is one of `scout`, `maker`, or `checker`; the server generates the profile
+ID, validates the text, and persists the result. It permits at most three creations
+per run and 32 profiles in the library. Purpose carries personality
+and focus but cannot change capability templates. Group agents and direct
+specialists do not receive this tool.
+
+New profiles become available for same-run group creation. Future direct
+Coordinator runs append new library profiles into spare roster slots. Existing
+roster IDs keep their captured profiles, preserving old group provenance; editing
+or deleting a library profile does not rewrite them. New direct chats use the
+latest library profiles. Existing conversation participants remain frozen. Creation metadata identifies the
+new profile so the UI can offer a direct-chat action.
 
 The group starts its own independent run attributed to the Coordinator. Source
 and child have separate SDK run budgets: one user turn can consume two budgets.
@@ -105,6 +115,20 @@ an exact edit or command. The edit path, new contents, executable, arguments,
 working directory, and run identity matter to approval. A changed proposal needs
 a new decision.
 
+## Hosted search is separate from local tools
+
+Live web search uses the SDK's `webSearchTool`, which supplies a hosted Responses
+API tool definition to every selected role, including the private Coordinator. Execution is provider-side, not a process in the selected
+workspace. It remains available when local workspace tools are disabled unless
+`TINKERFLEET_WEB_SEARCH=0`. Demo mode never invokes it. See the
+[SDK hosted-tools guide](https://openai.github.io/openai-agents-js/guides/tools/).
+
+Public search and model-supported page reading do not operate the user's browser
+session. Returned sources are evidence to inspect, not trusted instructions or
+authority to run commands. The app preserves validated source links with messages
+for later review. Provider tool charges are distinct from local command execution
+and are not fully described by a model-call count.
+
 ## 4. SDK interruption is real control flow
 
 The live tools use SDK `needsApproval: true`. The SDK returns an interruption and
@@ -122,8 +146,9 @@ This protects the application boundary as well as the conversation loop. See
 
 The local runner handles approved actions in the explicitly selected workspace.
 An approved edit writes a real file. An approved command is a local process,
-launched without a shell and with a minimal environment, time limit, and bounded
-output. No API key is inherited from the server environment.
+launched with structured arguments, a minimal environment, a time limit, and
+bounded output. No shell is inserted implicitly; an explicitly approved shell
+can still execute its supplied script. No API key is inherited from the server environment.
 
 The working directory is not OS isolation. Project code can access other files,
 network services, and processes allowed by the user's permissions. Separate chats

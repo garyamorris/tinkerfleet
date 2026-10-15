@@ -67,7 +67,7 @@ test('group provenance and source links persist; forged origins, rosters, and du
  const group:Conversation={...chat('child'),participants:profiles,startedBy:{conversationId:'source',runId:'origin-run',coordinatorId:profiles[0].id,brief},currentRunId:'child-run'};
  const child:Run={...run('child-run','child'),team:profiles,prompt:brief,messages:[{id:'brief',author:'coordinator',text:brief,at:2}]};
  const state={version:1 as const,conversations:[source,group],runs:[origin,child]};
- const store=new ConversationStore(file);store.save(state.conversations,state.runs);const restored=new ConversationStore(file).state;assert.deepEqual(restored,state);
+ const store=new ConversationStore(file);store.save(state.conversations,state.runs);const restored=new ConversationStore(file).state;assert.deepEqual(restored,{...state,profiles:[],libraryImported:false});
  const invalids=[
   {...state,conversations:[source,{...group,startedBy:{...group.startedBy!,runId:'child-run'}}]},
   {...state,conversations:[{...source,availableBots:[]},group]},
@@ -76,4 +76,25 @@ test('group provenance and source links persist; forged origins, rosters, and du
   {...state,runs:[{...origin,messages:[{...origin.messages[0],conversationId:'source'}]},child]},
  ];
  for(const invalid of invalids){writeFileSync(file,JSON.stringify(invalid));assert.throws(()=>new ConversationStore(file),/left unchanged/);}
+});
+
+test('library stores profile edits separately from immutable conversation identities and rejects invalid libraries',()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'tinkerfleet-profile-store-')),file=path.join(directory,'state.json');
+ try{
+ const original=customTeam()[0],savedRun=run('profile-run','profile-chat');savedRun.team=[original];
+ const chat={id:'profile-chat',title:'Original',participants:[original],createdAt:1,updatedAt:1,draft:'',currentRunId:savedRun.id};
+ writeFileSync(file,JSON.stringify({version:1,conversations:[chat],runs:[savedRun]}));const store=new ConversationStore(file);assert.equal(store.state.libraryImported,false);assert.equal(store.state.profiles[0].name,original.name);
+ const revised={...original,name:'Revised library identity'};store.save([chat],[savedRun],[revised],true);const restored=new ConversationStore(file).state;assert.equal(restored.libraryImported,true);assert.equal(restored.profiles[0].name,revised.name);assert.equal(restored.conversations[0].participants[0].name,original.name);
+ assert.throws(()=>store.save([chat],[savedRun],[revised,revised],true));
+ }finally{rmSync(directory,{recursive:true,force:true});}
+});
+
+test('oversized legacy library migration fails without silently discarding profiles or replacing saved history',()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'tinkerfleet-legacy-cap-')),file=path.join(directory,'state.json');
+ try{const chats=Array.from({length:33},(_,i)=>({...chat(`legacy-${i}`),currentRunId:null,participants:[{...customTeam()[1],id:`legacy-bot-${i}`}]}));const source=JSON.stringify({version:1,conversations:chats,runs:[]});writeFileSync(file,source);assert.throws(()=>new ConversationStore(file),/more than 32 bot profiles.*left unchanged/);assert.equal(readFileSync(file,'utf8'),source);}finally{rmSync(directory,{recursive:true,force:true});}
+});
+
+test('saved message citations retain safe inline links and discard unsafe URL authority',()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'tinkerfleet-citations-')),file=path.join(directory,'state.json');
+ try{const item=run();item.messages[0].text='Supported claim';item.messages[0].sources=[{url:'https://example.com/evidence',title:'Evidence',startIndex:0,endIndex:9},{url:'javascript:alert(1)',title:'Unsafe'}];const store=new ConversationStore(file);store.save([chat()],[item]);const sources=new ConversationStore(file).state.runs[0].messages[0].sources;assert.deepEqual(sources,[{url:'https://example.com/evidence',title:'Evidence',startIndex:0,endIndex:9}]);}finally{rmSync(directory,{recursive:true,force:true});}
 });

@@ -192,9 +192,9 @@ test('initial coordinator roster cannot be configured during an active run or on
 test('shutdown cancels live runs waiting on preflight before a late result can start the SDK',async()=>{
  const {NativeWorkspaceRunner}=await import('../src/server/native-runner.js');
  const originalProbe=NativeWorkspaceRunner.prototype.checkAvailability,originalSnapshot=NativeWorkspaceRunner.prototype.snapshot;
- let release!:()=>void,probeSeen!:()=>void;const entered=new Promise<void>(resolve=>{probeSeen=resolve;});
+ const releases:Array<()=>void>=[];let probeSeen!:()=>void;const release=()=>releases.forEach(resolve=>resolve());const entered=new Promise<void>(resolve=>{probeSeen=resolve;});
  let snapshots=0;
- NativeWorkspaceRunner.prototype.checkAvailability=async()=>{probeSeen();await new Promise<void>(resolve=>{release=resolve;});return {available:true};};
+ NativeWorkspaceRunner.prototype.checkAvailability=async()=>{probeSeen();await new Promise<void>(resolve=>{releases.push(resolve);});return {available:true};};
  NativeWorkspaceRunner.prototype.snapshot=async function(id){snapshots++;return originalSnapshot.call(this,id);};
  const port=45327,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',workspaceToolsEnabled:true});
  await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
@@ -240,21 +240,22 @@ test('chat-only live HTTP uses the SDK without workspace access and preserves ac
  const directory=await mkdtemp(path.join(tmpdir(),'tinkerfleet-chat-only-')),statePath=path.join(directory,'state.json');
  const probe=NativeWorkspaceRunner.prototype.checkAvailability,snapshot=NativeWorkspaceRunner.prototype.snapshot;let workspaceCalls=0;
  NativeWorkspaceRunner.prototype.checkAvailability=async()=>{workspaceCalls++;throw Error('Workspace forbidden');};NativeWorkspaceRunner.prototype.snapshot=async()=>{workspaceCalls++;throw Error('Workspace forbidden');};
- const model=new ScriptedModel([{output:[assistantMessage('An offline verified conversation reply.')],usage:new Usage({inputTokens:17,outputTokens:9,totalTokens:26})}]);
+ const citedMessage=assistantMessage('An offline verified conversation reply.');citedMessage.content[0].providerData={annotations:[{type:'url_citation',url:'https://example.com/info',title:'Example',start_index:3,end_index:10}]};
+ const model=new ScriptedModel([{output:[citedMessage],usage:new Usage({inputTokens:17,outputTokens:9,totalTokens:26})}]);
  const port=45329,base=`http://127.0.0.1:${port}`;let app=createApp({port,mode:'live',sdkModel:model,workspaceToolsEnabled:false,workspaceRoot:'/does-not-exist/tinkerfleet',statePath,sdkLimits:{maxModelCalls:1,maxOutputTokens:512}});
  await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
  try{
- assert.equal(app.state().liveReady,true);assert.equal(app.state().workspaceToolsEnabled,false);
+ assert.equal(app.state().liveReady,true);assert.equal(app.state().webSearchEnabled,true);assert.equal(app.state().workspaceToolsEnabled,false);
  const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
  const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
  const chat=await(await post('/api/conversations',{participants:[customTeam()[1]]})).json() as {id:string};
  const response=await post(`/api/conversations/${chat.id}/runs`,{prompt:'Explain addition'});assert.equal(response.status,201);const run=await response.json() as {id:string};
  for(let i=0;i<100&&app.state().runs[0].status==='running';i++)await delay(3);
  assert.equal(app.state().runs[0].status,'completed');assert.match(app.state().runs[0].messages.at(-1)!.text,/offline verified/);
- assert.deepEqual(app.state().runs[0].usage,{modelCalls:1,inputTokens:17,outputTokens:9,totalTokens:26});
+ assert.deepEqual(app.state().runs[0].usage,{modelCalls:1,inputTokens:17,outputTokens:9,totalTokens:26});assert.deepEqual(app.state().runs[0].messages.at(-1)!.sources,[{url:'https://example.com/info',title:'Example',startIndex:3,endIndex:10}]);
  assert.equal((await post(`/api/conversations/${chat.id}/runs/${run.id}/approval`,{approvalId:'forged',digest:'forged',approved:true})).status,409);
  await app.close();assert.equal(workspaceCalls,0);
- app=createApp({port,mode:'demo',statePath,workspaceToolsEnabled:false});assert.deepEqual(app.state().runs[0].usage,{modelCalls:1,inputTokens:17,outputTokens:9,totalTokens:26});
+ app=createApp({port,mode:'demo',statePath,workspaceToolsEnabled:false});assert.equal(app.state().webSearchEnabled,false);assert.deepEqual(app.state().runs[0].usage,{modelCalls:1,inputTokens:17,outputTokens:9,totalTokens:26});assert.deepEqual(app.state().runs[0].messages.at(-1)!.sources,[{url:'https://example.com/info',title:'Example',startIndex:3,endIndex:10}]);
  }finally{NativeWorkspaceRunner.prototype.checkAvailability=probe;NativeWorkspaceRunner.prototype.snapshot=snapshot;await app.close();await rm(directory,{recursive:true,force:true});}
 });
 
@@ -311,8 +312,75 @@ test('HTTP exact approvals bind scripted SDK actions to real local edits and tes
  const editDecision={approvalId:edit.id,digest:edit.digest,approved:true};assert.equal((await post(endpoint,editDecision)).status,202);
  await wait(()=>run().approvals.length===2&&run().status==='awaiting_approval');assert.equal(await readFile(path.join(root,'src/math.js'),'utf8'),after);assert.equal(run().artifacts.length,1);assert.equal(run().artifacts[0].simulated,false);assert.equal(run().output,'');
  assert.equal((await post(endpoint,editDecision)).status,409);assert.equal(run().artifacts.length,1);
- const command=run().approvals[1];assert.equal(command.action.kind,'command');assert.equal((await post(endpoint,{approvalId:command.id,digest:command.digest,approved:true})).status,202);
+ const command=run().approvals[1];assert.equal(command.action.kind,'command');if(command.action.kind!=='command')throw Error('Expected command');assert.ok(command.action.resolvedExecutable?.path.startsWith('/'));assert.ok(command.action.resolvedExecutable?.identity);assert.equal((await post(endpoint,{approvalId:command.id,digest:command.digest,approved:true})).status,202);
  await wait(()=>run().status==='completed');assert.match(run().output,/approved addition works/);assert.match(run().output,/exit code 0/);assert.equal(run().usage!.modelCalls,3);assert.equal(run().artifacts.length,1);assert.ok(run().approvals.every(a=>a.status==='approved'));
+ const {ConversationStore}=await import('../src/server/conversations.js');const saved=new ConversationStore(path.join(root,'history.json'));saved.save(app.state().conversations,app.state().runs);const restoredCommand=new ConversationStore(path.join(root,'history.json')).state.runs[0].approvals[1].action;assert.equal(restoredCommand.kind,'command');if(restoredCommand.kind==='command')assert.deepEqual(restoredCommand.resolvedExecutable,command.action.resolvedExecutable);
  assert.equal((await post(endpoint,{approvalId:command.id,digest:command.digest,approved:true})).status,409);
  }finally{await app.close();await rm(root,{recursive:true,force:true});}
+});
+
+test('coordinator creation persists a reusable bot and immediately uses it in a group without changing old identities',async()=>{
+ const {ScriptedModel,assistantMessage,functionCall,modelResponder}=await import('@openai/agents/testing');const {mkdtemp,realpath,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-library-'))),statePath=path.join(directory,'state.json'),port=45333,base=`http://127.0.0.1:${port}`;
+ const request={name:'Quill',purpose:'Explain evidence patiently and concisely.',role:'scout'};
+ let app:ReturnType<typeof createApp>;
+ const model=new ScriptedModel([[functionCall('create_agent',request,{callId:'create-quill'})],[functionCall('create_agent',request,{callId:'replay-quill'})],modelResponder(()=>[functionCall('start_group_conversation',{title:'Evidence discussion',brief:'Explain supplied evidence.',botIds:[app.state().profiles.find(p=>p.name==='Quill')!.id]},{callId:'quill-group'})]),[assistantMessage('Discussing supplied evidence.')],[assistantMessage('Quill is ready in your library.')],[assistantMessage('Hello from your saved Quill.')]]);
+ app=createApp({port,mode:'live',sdkModel:model,statePath,workspaceToolsEnabled:false});await new Promise<void>(r=>app.server.listen(port,'127.0.0.1',r));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const primary=await(await post('/api/conversations',{participants:[customTeam()[0]]})).json() as {id:string};assert.equal((await post(`/api/conversations/${primary.id}/runs`,{prompt:'Create a patient researcher and discuss evidence together.'})).status,201);
+ for(let i=0;i<200&&(app.state().runs.length<2||app.state().runs.some(r=>r.status==='running'));i++)await delay(5);
+ const bot=app.state().profiles.find(p=>p.name==='Quill')!;assert.ok(bot);assert.equal(app.state().profiles.filter(p=>p.name==='Quill').length,1);assert.equal(app.state().runs.filter(r=>r.messages.some(m=>m.createdAgentId===bot.id)).length,1);assert.ok(app.state().runs.every(r=>r.status==='completed'));assert.ok(app.state().conversations.find(c=>c.startedBy)!.participants.some(p=>p.id===bot.id));
+ const direct=await(await post('/api/conversations',{participants:[bot]})).json() as {id:string};assert.equal((await post(`/api/conversations/${direct.id}/runs`,{prompt:'Hello'})).status,201);for(let i=0;i<100&&app.state().runs.some(r=>r.status==='running');i++)await delay(3);
+ assert.equal((await post(`/api/profiles/${bot.id}`,{name:'Quill revised'})).status,200);assert.equal(app.state().conversations.find(c=>c.id===direct.id)!.participants[0].name,'Quill');
+ assert.equal((await post('/api/profiles/import',{profiles:[bot]})).status,200);assert.equal(app.state().profiles.find(p=>p.id===bot.id)!.name,'Quill revised');
+ await app.close();app=createApp({port,mode:'demo',statePath,workspaceToolsEnabled:false});assert.equal(app.state().profiles.find(p=>p.id===bot.id)!.name,'Quill revised');assert.equal(app.state().conversations.find(c=>c.id===direct.id)!.participants[0].name,'Quill');assert.ok(app.state().runs.some(r=>r.messages.some(m=>m.createdAgentId===bot.id)));
+ }finally{await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('first browser import upgrades provisional profiles once and failed bot creation rolls back every public change',async()=>{
+ const {ScriptedModel,assistantMessage,functionCall}=await import('@openai/agents/testing');const {ConversationStore}=await import('../src/server/conversations.js');
+ const {mkdtemp,realpath,writeFile,readFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-library-rollback-'))),statePath=path.join(directory,'state.json');
+ const old=customTeam()[0],now=Date.now();await writeFile(statePath,JSON.stringify({version:1,conversations:[{id:'old-chat',title:'Preserved',participants:[old],createdAt:now,updatedAt:now,draft:'',currentRunId:null}],runs:[]}));
+ const model=new ScriptedModel([[functionCall('create_agent',{name:'Unsaved bot',purpose:'Help explain evidence.',role:'scout'},{callId:'unsaved'})],[assistantMessage('Creation could not be saved.')]]);
+ const port=45334,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live',sdkModel:model,statePath,workspaceToolsEnabled:false});await new Promise<void>(r=>app.server.listen(port,'127.0.0.1',r));const originalSave=ConversationStore.prototype.save;let sawAtomic=false;
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const revised={...old,name:'Browser latest',color:'#1266aa'};assert.equal((await post('/api/profiles/import',{profiles:[revised]})).status,200);assert.equal(app.state().profiles[0].name,revised.name);assert.equal(app.state().conversations[0].participants[0].name,old.name);assert.equal((await post(`/api/profiles/${old.id}`,{role:'scout'})).status,400);assert.equal(app.state().profiles[0].role,'coordinator');
+ assert.equal((await post('/api/profiles/import',{profiles:[old]})).status,200);assert.equal(app.state().profiles[0].name,revised.name);
+ ConversationStore.prototype.save=function(chats,runs,profiles,imported){const created=profiles?.find(p=>p.name==='Unsaved bot');if(created){sawAtomic=chats.some(c=>c.availableBots?.some(p=>p.id===created.id))&&runs.some(r=>r.messages.some(m=>m.createdAgentId===created.id));throw Error('Simulated disk full');}return originalSave.call(this,chats,runs,profiles,imported);};
+ assert.equal((await post('/api/conversations/old-chat/runs',{prompt:'Create a researcher'})).status,201);for(let i=0;i<100&&app.state().runs[0].status==='running';i++)await delay(5);
+ assert.equal(sawAtomic,true);assert.ok(app.state().profiles.every(p=>p.name!=='Unsaved bot'));assert.ok(app.state().conversations.every(c=>!c.availableBots?.some(p=>p.name==='Unsaved bot')));assert.ok(app.state().runs.every(r=>r.messages.every(m=>!m.createdAgentId)));assert.doesNotMatch(await readFile(statePath,'utf8'),/Unsaved bot/);
+ }finally{ConversationStore.prototype.save=originalSave;await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('full library refresh retains historical group roster members and rolls back a failed start refresh',async()=>{
+ const {ConversationStore}=await import('../src/server/conversations.js');const {mkdtemp,realpath,writeFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-roster-cap-'))),statePath=path.join(directory,'state.json'),team=customTeam(),now=Date.now();
+ const roster=Array.from({length:32},(_,i)=>({...team[1],id:`old-${i}`})),library=Array.from({length:32},(_,i)=>({...team[1],id:`new-${i}`}));
+ const primary={id:'primary',title:'Primary',participants:[team[0]],availableBots:roster,createdAt:now,updatedAt:now,draft:'',currentRunId:'parent-run'};
+ const group={id:'historical-group',title:'Old group',participants:[team[0],roster[31]],createdAt:now,updatedAt:now,draft:'',currentRunId:null,startedBy:{conversationId:primary.id,runId:'parent-run',coordinatorId:team[0].id,brief:'Old brief'}};
+ const run={id:'parent-run',conversationId:primary.id,team:primary.participants,prompt:'Old prompt',mode:'demo',status:'completed',messages:[{id:'link',author:'coordinator',text:'Old group',conversationId:group.id,at:now}],events:[],approvals:[],artifacts:[],output:'',activeAgent:null,startedAt:now,endedAt:now};
+ await writeFile(statePath,JSON.stringify({version:1,libraryImported:true,profiles:library,conversations:[primary,group,{...primary,id:'refresh-chat',availableBots:[],currentRunId:null}],runs:[run]}));
+ const port=45335,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'demo',demoDelayMs:60_000,statePath});await new Promise<void>(r=>app.server.listen(port,'127.0.0.1',r));const original=ConversationStore.prototype.save;
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ assert.equal((await post('/api/conversations/primary/runs',{prompt:'Hello'})).status,201);assert.deepEqual(app.state().conversations.find(c=>c.id==='primary')!.availableBots!.map(p=>p.id),roster.map(p=>p.id));assert.equal(app.state().persistenceError,undefined);
+ ConversationStore.prototype.save=function(chats,runs,profiles,imported){if(chats.find(c=>c.id==='refresh-chat')?.availableBots?.length)throw Error('Simulated publish failure');return original.call(this,chats,runs,profiles,imported);};
+ assert.equal((await post('/api/conversations/refresh-chat/runs',{prompt:'Hello'})).status,503);assert.deepEqual(app.state().conversations.find(c=>c.id==='refresh-chat')!.availableBots,[]);
+ }finally{ConversationStore.prototype.save=original;await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('live workspace startup publishes readiness before any run without invoking a model',async()=>{
+ const {ScriptedModel}=await import('@openai/agents/testing');const {mkdtemp,realpath,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const root=await realpath(await mkdtemp(path.join(tmpdir(),'tinkerfleet-readiness-'))),model=new ScriptedModel([]);
+ const ready=createApp({port:45336,mode:'live',sdkModel:model,workspaceToolsEnabled:true,workspaceRoot:root});
+ const unavailable=createApp({port:45337,mode:'live',sdkModel:model,workspaceToolsEnabled:true,workspaceRoot:path.join(root,'missing')});
+ try{for(let i=0;i<100&&[ready,unavailable].some(app=>app.state().execution.reason==='Local workspace has not been checked yet.');i++)await delay(3);
+ assert.equal(ready.state().liveReady,true);assert.equal(ready.state().execution.available,true);assert.equal(unavailable.state().liveReady,false);assert.equal(unavailable.state().execution.available,false);assert.notEqual(unavailable.state().execution.reason,'Local workspace has not been checked yet.');assert.equal(ready.state().runs.length,0);assert.equal(model.calls.length,0);
+ }finally{await ready.close();await unavailable.close();await rm(root,{recursive:true,force:true});}
 });

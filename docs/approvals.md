@@ -21,7 +21,7 @@ message cannot stand in for a verified decision from this app's user interface.
 ## Binding and replay
 
 The server hashes a canonical JSON representation of the run and action, including
-the runner's action binding. Object
+the runner's action binding and, for commands, resolved executable identity. Object
 key order does not change this representation; a changed value does. The digest
 is a fingerprint used to bind state. It is not a password or a signature that
 makes a user trustworthy.
@@ -52,7 +52,10 @@ matches your request. Approval writes the change to the real selected file.
 It is not a disposable preview, and restart does not roll it back.
 
 For a command, inspect the executable, every argument, working directory, and
-purpose. A harmless-looking name is not enough: `node` can execute arbitrary
+purpose. Inspect the resolved executable path as well as its requested name.
+Changing the executable after review invalidates the proposal. If it explicitly
+runs a shell or interpreter, review the complete supplied script.
+A harmless-looking name is not enough: `node` can execute arbitrary
 JavaScript, including code loaded by an explicit test file. The process runs with
 your user permissions, and its working directory does not sandbox it.
 
