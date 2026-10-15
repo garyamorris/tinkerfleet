@@ -34,16 +34,16 @@ groups remain available after this workflow change.
 In the no-key demo, a request to fix the failing tests in tiny-project triggers
 a clearly scripted group creation. A simple greeting stays in the primary chat.
 That demonstrates the interaction without claiming live model judgment. There
-are no mentions, reply threads, autonomous background routines, or cross-chat
-memory in this version.
+are no mentions, reply threads, or autonomous background routines. Saved per-bot
+notes are separate from conversation history.
 
 ## Create reusable profiles
 
 Ask the primary Coordinator: **“Create a patient Python tutor called Ada.”**
 Its `create_agent` tool accepts a name and purpose/personality. Purpose
 covers both work focus and personality—for example, patient explanations with
-small exercises. A successful creation message offers **Talk**, and the profile
-also appears in the bot library. The Coordinator can use the new bot in a group
+small exercises. Creation immediately creates a direct chat. Its message offers **Open this bot’s
+chat**, and the profile also appears in the bot library. The Coordinator can use the new bot in a group
 immediately.
 
 Ordinary agents share the same enabled local and web tools. Scout, Maker, and
@@ -67,12 +67,30 @@ The no-key demo recognizes the exact Ada example and persists the profile using
 a scripted path. This verifies saving a bot, not live model behavior or a tutor's
 personality in a conversation.
 
+New profiles get a random avatar. **Randomize avatar** rerolls its appearance;
+existing profiles keep their appearance unless you change it. Saving a manually
+created persona opens its direct chat. **Talk to {name}** reuses an existing direct
+chat or creates one when needed.
+
+## Manage a bot’s memory
+
+Choose **Memory** beside a bot in the library. Its memory dialog lists saved
+notes with **Delete**, and provides **Add a memory** and **Save memory**. Each
+bot can hold 20 notes of up to 2,000 characters each, 8,000 characters total.
+Notes are saved on the local server and reused by the same bot across chats on
+its next turn. Editing its personality does not erase memory.
+
+The bot also has `remember`, `recall`, and `forget` tools. Memory is sent to the
+provider when the bot replies; do not put credentials in it. Old transcripts
+remain saved but are not automatically summarized or imported into notes.
+
 ## Continue a conversation
 
 Select a chat in the sidebar to see its messages, draft, and status. Drafts are
 saved locally in the browser and synchronized to the server. Submitting
 another task adds a new run to that conversation. Only bounded history from this
-chat supplies live context; another chat with the same bot is not included.
+chat supplies transcript context; another chat with the same bot is not included.
+Saved notes for that bot are included separately across its conversations.
 
 Workspace-enabled runs operate on the real selected folder. Approved edits and
 command effects persist there. Other chats using that folder can observe those

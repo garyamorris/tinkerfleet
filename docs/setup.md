@@ -13,7 +13,7 @@ Open http://localhost:4317. The no-key demo is scripted. It makes no model calls
 runs no commands, and edits no real files. Docker is not required.
 
 Start with Orbit, the primary Coordinator. Ask about the tiny-project fixture to
-see it create a agent group, then review the simulated approvals. A greeting
+see it create an agent group, then review the simulated approvals. A greeting
 stays in the primary chat. The six `npm run lesson:1` through `lesson:6` commands
 teach the building blocks without model calls.
 
@@ -100,15 +100,19 @@ history separation does not isolate the filesystem.
 
 `TINKERFLEET_REASONING_EFFORT=low` requests low reasoning effort from a compatible
 model. Accepted values are `none`, `minimal`, and `low`; unset leaves the model's
-default. Optional positive-integer settings can adjust these per-run limits:
+default. Optional settings adjust these per-run limits:
 
 | Setting | Default | Maximum |
 | --- | --- | --- |
-| `TINKERFLEET_MAX_MODEL_CALLS` | 12 | 64 |
+| `TINKERFLEET_MAX_TURNS` | 0 (no count cap) | 64 when finite |
+| `TINKERFLEET_MAX_MODEL_CALLS` | 0 (no count cap) | 64 when finite |
 | `TINKERFLEET_MAX_OUTPUT_TOKENS` | 2,048 per response | 16,384 |
 | `TINKERFLEET_MAX_TOTAL_TOKENS` | 64,000 reported tokens | 1,000,000 |
 | `TINKERFLEET_MAX_RUN_MS` | 120,000 ms | 600,000 ms |
 
+The two count limits accept `0` for unlimited counts or `1`–`64` for a finite
+cap. Output, token, and runtime settings must be positive. Unlimited counts do
+not remove token/runtime limits or the native command’s 15-second timeout.
 Invalid settings fail startup. A response crossing a reported token threshold
 has already been billed: a completed answer is retained, but subsequent calls
 and exhausted-budget function work are blocked. Primary and child runs have
@@ -124,7 +128,7 @@ rather than being silently altered. Trimming does not remove saved chat history.
 ## What persists and what leaves the machine
 
 Live requests can include prompts, persona instructions, bounded same-chat
-history, group briefs, and—with workspace tools enabled—file content and tool
+history, saved notes for the replying bot, group briefs, and—with workspace tools enabled—file content and tool
 output. SDK tracing is disabled, but inference still goes to OpenAI. Consult the
 [API data controls](https://platform.openai.com/docs/guides/your-data) for provider
 handling.
@@ -132,7 +136,13 @@ handling.
 Profiles are saved in the local server library, with migration from older browser
 preferences. Private conversation views, drafts, and results
 persist in `.tinkerfleet/conversations.json`; this directory is ignored by Git.
-It is not encrypted or a complete secret scrubber. Keep it out of source archives.
+Per-bot memory is stored separately at `.tinkerfleet/conversations.json.memories.json`
+(the configured state path plus `.memories.json`). It is injected on that bot’s
+next turn across chats. View, add, or delete notes using the library’s **Memory**
+control; `remember`, `recall`, and `forget` provide the model-side tools. Each bot
+has at most 20 notes, 2,000 characters per note and 8,000 total. There is no
+automatic transcript summary or import of old history.
+Neither store is encrypted or a complete secret scrubber. Keep both out of source archives.
 Restart keeps history but cancels unfinished work and denies pending approvals;
 raw SDK state and approval grants cannot resume. Real file changes are not undone.
 

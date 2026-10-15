@@ -1,10 +1,11 @@
 import {customTeam} from './personas.fixture.js';
-import type { Persona } from '../src/shared/types.js';
+import type { Persona, MemoryEntry } from '../src/shared/types.js';
 import assert from 'node:assert/strict';
 import {mkdtemp, realpath, readFile, writeFile, rm, mkdir, symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {NativeWorkspaceRunner} from '../src/server/native-runner.js';
+import {MemoryStore} from '../src/server/memory.js';
 import {RunnerError} from '../src/server/runner-policy.js';
 import test, { before, after } from 'node:test';
 import { Usage, OpenAIProvider } from '@openai/agents';
@@ -13,7 +14,7 @@ import { ScriptedModel, assistantMessage, functionCall, modelError, modelRespond
 import { ApprovalStore } from '../src/server/approval.js';
 import {
   createFleetAgents, createSdkAdapter, DEFAULT_SDK_LIMITS, redactSdkText,
-  type SdkAction, type SdkEvent, type SdkHarness, type SdkCreateAgentRequest,
+  type SdkAction, type SdkEvent, type SdkHarness, type SdkCreateAgentRequest, type SdkMemory,
 } from '../src/server/sdk.js';
 
 const originalFetch = globalThis.fetch;
@@ -1462,4 +1463,131 @@ test('cancelled hosted activity stops the model and cannot emit late tool or ans
   await entered;await adapter.cancel('cancel-web-stream');finish();assert.equal((await pending).status,'cancelled');
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(signal?.aborted,true);assert.equal(events.some(event=>event.type==='tool_finished'||event.type==='agent_message'),false);
+});
+
+
+function memoryHarness(initial:MemoryEntry[]=[]){
+  const entries=structuredClone(initial),calls:{kind:string;agentId:string;text?:string;id?:string}[]=[];
+  const value:SdkMemory={
+    list(agentId){calls.push({kind:'list',agentId});return structuredClone(entries.filter(entry=>entry.agentId===agentId));},
+    async remember(agentId,text){calls.push({kind:'remember',agentId,text});const existing=entries.find(entry=>entry.agentId===agentId&&entry.text===text);if(existing)return {...existing};const entry={id:`memory-${entries.length+1}`,agentId,text,createdAt:1,updatedAt:1};entries.push(entry);return {...entry};},
+    async forget(agentId,id){calls.push({kind:'forget',agentId,id});const index=entries.findIndex(entry=>entry.agentId===agentId&&entry.id===id);if(index<0)return false;entries.splice(index,1);return true;},
+  };
+  return {value,entries,calls};
+}
+const savedMemory=(agentId:string,text:string,id=`saved-${agentId}`):MemoryEntry=>({id,agentId,text,createdAt:1,updatedAt:1});
+
+test('default unlimited turns and model calls complete beyond both previous count cutoffs',async()=>{
+  assert.equal(DEFAULT_SDK_LIMITS.maxTurns,0);assert.equal(DEFAULT_SDK_LIMITS.maxModelCalls,0);
+  const model=new ScriptedModel([...Array.from({length:14},(_,index)=>[functionCall('list_files',{}, {callId:`unlimited-${index}`})]),[assistantMessage('All fourteen checks completed.')]]);
+  const done=await createSdkAdapter({harness:harness().value,model}).start({runId:'unlimited-direct',prompt:'Inspect repeatedly.',team:participants('coordinator')});
+  assert.equal(done.status,'completed',JSON.stringify(done));assert.equal(done.usage.modelCalls,15);assert.equal(done.output,'All fourteen checks completed.');model.assertComplete();
+});
+
+test('unlimited nested agent turns retain a shared run budget and return to primary',async()=>{
+  const model=new ScriptedModel([[functionCall('ask_nova',{input:'Inspect repeatedly.'},{callId:'unlimited-delegate'})],...Array.from({length:14},(_,index)=>[functionCall('list_files',{}, {callId:`nested-unlimited-${index}`})]),[assistantMessage('Nova completed fourteen checks.')],[assistantMessage('Primary received the result.')]]);
+  const done=await createSdkAdapter({harness:harness().value,model}).start({runId:'unlimited-nested',prompt:'Delegate.',team:[...participants('coordinator'),ordinary('nova')]});
+  assert.equal(done.status,'completed',JSON.stringify(done));assert.equal(done.usage.modelCalls,17);assert.equal(done.output,'Primary received the result.');model.assertComplete();
+});
+
+test('explicit finite turn limits fail with an actionable local diagnostic',async()=>{
+  const model=new ScriptedModel([[functionCall('list_files',{}, {callId:'finite-turn'})]]);
+  const done=await createSdkAdapter({harness:harness().value,model,limits:{maxTurns:1,maxModelCalls:0}}).start({runId:'finite-turns',prompt:'Inspect.',team:participants('coordinator')});
+  assert.equal(done.status,'error');assert.match(done.message!,/configured turn limit/);assert.match(done.message!,/MAX_TURNS=0/);assert.equal(done.usage.modelCalls,1);model.assertComplete();
+});
+
+test('unlimited runs remain cancellable after the old model-call cutoff',async()=>{
+  let entered!:()=>void,finish!:(value:ReturnType<typeof assistantMessage>[])=>void;
+  const waiting=new Promise<void>(resolve=>{entered=resolve;});
+  const model=new ScriptedModel([...Array.from({length:13},(_,index)=>[functionCall('list_files',{}, {callId:`cancel-unlimited-${index}`})]),modelResponder(()=>{entered();return new Promise(resolve=>{finish=resolve;});})]);
+  const events:SdkEvent[]=[];
+  const adapter=createSdkAdapter({harness:harness().value,model,onEvent:event=>events.push(event)});
+  const pending=adapter.start({runId:'cancel-unlimited',prompt:'Inspect.',team:participants('coordinator')});
+  await waiting;await adapter.cancel('cancel-unlimited');finish([assistantMessage('Too late.')]);
+  assert.equal((await pending).status,'cancelled');assert.equal(model.calls.length,14);await new Promise(resolve=>setImmediate(resolve));assert.equal(events.some(event=>event.type==='agent_message'),false);model.assertComplete();
+});
+
+test('memory tools use actual primary profile identity and survive a new conversation without workspace access',async()=>{
+  const memory=memoryHarness(),h=forbiddenHarness();
+  const team=[{...participants('coordinator')[0],id:'orbit-profile'}];
+  const model=new ScriptedModel([[functionCall('remember_memory',{text:'  Prefer short answers.\r\nUse examples.  '},{callId:'save-preference'})],[assistantMessage('Preference saved.')],[functionCall('recall_memory',{}, {callId:'recall-preference'})],[assistantMessage('I remember your preference.')],[functionCall('forget_memory',{id:'memory-1'},{callId:'forget-preference'})],[assistantMessage('Preference forgotten.')]]);
+  const adapter=createSdkAdapter({harness:h.value,model,memory:memory.value,workspaceToolsEnabled:false,webSearchEnabled:false});
+  assert.equal((await adapter.start({runId:'memory-first-chat',prompt:'Remember this.',team})).status,'completed');
+  assert.equal(memory.entries[0].text,'Prefer short answers.\nUse examples.');
+  assert.equal((await adapter.start({runId:'memory-other-chat',prompt:'Recall my preferences.',team})).status,'completed');
+  assert.match(model.calls[2].request.systemInstructions!,/Prefer short answers/);
+  assert.deepEqual(model.calls[0].request.tools.map(tool=>tool.name),['recall_memory','remember_memory','forget_memory']);
+  assert.equal((await adapter.start({runId:'memory-forget-chat',prompt:'Forget that.',team})).status,'completed');
+  assert.equal(memory.entries.length,0);assert.ok(memory.calls.every(call=>call.agentId==='orbit-profile'));assert.equal(h.calls.length,0);model.assertComplete();
+});
+
+test('group members preload only their own saved memories and cannot address another bot memory',async()=>{
+  const primary={...participants('coordinator')[0],id:'orbit-profile'},nova=ordinary('nova');
+  const memory=memoryHarness([savedMemory(primary.id,'PRIMARY_ONLY_MEMORY'),savedMemory(nova.id,'NOVA_ONLY_MEMORY')]);
+  const model=new ScriptedModel([[functionCall('ask_nova',{input:'Read your memories.'},{callId:'memory-delegate'})],[functionCall('recall_memory',{}, {callId:'nova-recall'})],[assistantMessage('I recalled my preference.')],[assistantMessage('Finished.')]]);
+  const done=await createSdkAdapter({harness:forbiddenHarness().value,model,memory:memory.value,workspaceToolsEnabled:false,webSearchEnabled:false}).start({runId:'group-memory',prompt:'Delegate memory recall.',team:[primary,nova]});
+  assert.equal(done.status,'completed',JSON.stringify(done));
+  assert.match(model.calls[0].request.systemInstructions!,/PRIMARY_ONLY_MEMORY/);assert.doesNotMatch(model.calls[0].request.systemInstructions!,/NOVA_ONLY_MEMORY/);
+  assert.match(model.calls[1].request.systemInstructions!,/NOVA_ONLY_MEMORY/);assert.doesNotMatch(model.calls[1].request.systemInstructions!,/PRIMARY_ONLY_MEMORY/);
+  assert.deepEqual(memory.calls.map(call=>call.agentId),['orbit-profile','nova','nova']);model.assertComplete();
+});
+
+test('memory rejects foreign preload records, excessive entries and unsafe saved text before inference',async()=>{
+  for(const entries of [[savedMemory('other','FOREIGN_PRIVATE_TEXT')],Array.from({length:21},(_,i)=>savedMemory('nova','entry',`entry-${i}`)),[savedMemory('nova','sk-proj-SYNTHETIC_TEST_CREDENTIAL_123456789')],Array.from({length:5},(_,i)=>savedMemory('nova','x'.repeat(2000),`long-${i}`))]){
+    const events:SdkEvent[]=[],memory=memoryHarness();memory.value.list=()=>entries;
+    const model=new ScriptedModel([]);
+    const done=await createSdkAdapter({harness:forbiddenHarness().value,model,memory:memory.value,workspaceToolsEnabled:false,onEvent:event=>events.push(event)}).start({runId:'invalid-memory',prompt:'Hello.',team:[ordinary('nova')]});
+    assert.equal(done.status,'error');assert.equal(model.calls.length,0);assert.doesNotMatch(JSON.stringify({done,events}),/FOREIGN_PRIVATE_TEXT|SYNTHETIC_TEST_CREDENTIAL/);
+  }
+});
+
+test('memory tools reject forged owner arguments and unsafe text before storage writes',async()=>{
+  for(const args of [{text:'Safe text',agentId:'other'},{text:'sk-proj-SYNTHETIC_TEST_CREDENTIAL_123456789'}]){
+    const memory=memoryHarness(),model=new ScriptedModel([[functionCall('remember_memory',args,{callId:'forged-memory'})]]);
+    const done=await createSdkAdapter({harness:forbiddenHarness().value,model,memory:memory.value,workspaceToolsEnabled:false}).start({runId:'forged-memory',prompt:'Remember.',team:[ordinary('nova')]});
+    assert.equal(done.status,'error');assert.equal(memory.calls.filter(call=>call.kind==='remember').length,0);assert.equal(memory.entries.length,0);model.assertComplete();
+  }
+});
+
+test('memory callback responses must match the owning bot and requested text',async()=>{
+  for(const result of [savedMemory('other','Requested text'),savedMemory('nova','Forged text')]){
+    const memory=memoryHarness();memory.value.remember=async()=>result;
+    const model=new ScriptedModel([[functionCall('remember_memory',{text:'Requested text'},{callId:'forged-memory-result'})]]);
+    const done=await createSdkAdapter({harness:forbiddenHarness().value,model,memory:memory.value,workspaceToolsEnabled:false}).start({runId:'memory-result',prompt:'Remember.',team:[ordinary('nova')]});
+    assert.equal(done.status,'error');assert.match(done.message!,/memory|memories/);assert.equal(model.calls.length,1);model.assertComplete();
+  }
+});
+
+test('cancellation during memory preload prevents model calls and late memory disclosure',async()=>{
+  let entered!:()=>void,finish!:(entries:MemoryEntry[])=>void;
+  const waiting=new Promise<void>(resolve=>{entered=resolve;}),memory=memoryHarness();
+  memory.value.list=()=>{entered();return new Promise(resolve=>{finish=resolve;});};
+  const model=new ScriptedModel([]),events:SdkEvent[]=[];
+  const adapter=createSdkAdapter({harness:forbiddenHarness().value,model,memory:memory.value,workspaceToolsEnabled:false,onEvent:event=>events.push(event)});
+  const pending=adapter.start({runId:'cancel-preload',prompt:'Hello.',team:[ordinary('nova')]});
+  await waiting;await adapter.cancel('cancel-preload');finish([savedMemory('nova','LATE_PRIVATE_MEMORY')]);
+  assert.equal((await pending).status,'cancelled');await new Promise(resolve=>setImmediate(resolve));assert.equal(model.calls.length,0);assert.doesNotMatch(JSON.stringify(events),/LATE_PRIVATE_MEMORY/);
+});
+
+
+test('SDK memory normalizes newline text before real persistent storage and reload',async(t)=>{
+  const directory=await mkdtemp(path.join(tmpdir(),'sdk-memory-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+  const statePath=path.join(directory,'memory.json'),store=new MemoryStore(statePath);
+  const memory:SdkMemory={list:id=>store.list(id),remember:async(id,text)=>store.remember(id,text),forget:async(id,entryId)=>store.forget(id,entryId)};
+  const model=new ScriptedModel([[functionCall('remember_memory',{text:' Use examples.\r\nKeep them short.\rPrefer clear words. '},{callId:'persistent-memory'})],[assistantMessage('Saved.')]]);
+  const done=await createSdkAdapter({harness:forbiddenHarness().value,model,memory,workspaceToolsEnabled:false}).start({runId:'persistent-memory',prompt:'Remember my preferences.',team:[ordinary('nova')]});
+  assert.equal(done.status,'completed',JSON.stringify(done));
+  assert.equal(new MemoryStore(statePath).list('nova')[0].text,'Use examples.\nKeep them short.\nPrefer clear words.');model.assertComplete();
+});
+
+test('cancellation during a memory write prevents late tool results and further inference',async()=>{
+  let entered!:()=>void,finish!:(entry:MemoryEntry)=>void;
+  const waiting=new Promise<void>(resolve=>{entered=resolve;}),memory=memoryHarness();
+  memory.value.remember=()=>{entered();return new Promise(resolve=>{finish=resolve;});};
+  const model=new ScriptedModel([[functionCall('remember_memory',{text:'Preference'},{callId:'cancelled-memory-write'})]]),events:SdkEvent[]=[];
+  const adapter=createSdkAdapter({harness:forbiddenHarness().value,model,memory:memory.value,workspaceToolsEnabled:false,onEvent:event=>events.push(event)});
+  const pending=adapter.start({runId:'cancel-memory-write',prompt:'Remember.',team:[ordinary('nova')]});
+  await waiting;await adapter.cancel('cancel-memory-write');finish(savedMemory('nova','Preference'));
+  assert.equal((await pending).status,'cancelled');await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(model.calls.length,1);assert.equal(events.some(event=>event.type==='tool_finished'||event.type==='agent_message'),false);model.assertComplete();
 });

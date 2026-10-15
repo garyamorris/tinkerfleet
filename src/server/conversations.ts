@@ -65,7 +65,8 @@ function normalize(input:unknown,restart:boolean):ConversationState {
   }
   for(const message of run.messages)if(message.replyToRunId){const recipient=runs.find(r=>r.id===message.replyToRunId);if(!recipient||recipient.sentBy?.runId!==run.id||recipient.sentBy.conversationId!==run.conversationId||message.author!==recipient.team?.[0]?.id)throw new Error('Invalid agent reply provenance.');}
   for(const message of run.messages)if(message.conversationId){const target=conversations.find(c=>c.id===message.conversationId);if(message.author!=='coordinator')throw new Error('Invalid conversation link.');
-   if(message.recipientRunId){const recipient=runs.find(r=>r.id===message.recipientRunId);if(!recipient||recipient.conversationId!==target?.id||recipient.sentBy?.runId!==run.id||recipient.sentBy.conversationId!==run.conversationId)throw new Error('Invalid recipient conversation link.');}
+   if(message.createdAgentId){const source=conversations.find(c=>c.id===run.conversationId),created=target?.participants[0];if(message.recipientRunId||message.replyToRunId||!source||source.startedBy||source.participants.length!==1||source.participants[0].role!=='coordinator'||!target||target.startedBy||target.participants.length!==1||!created||created.role==='coordinator'||created.id!==message.createdAgentId||!source.availableBots?.some(p=>canonicalJson(p)===canonicalJson(created)))throw new Error('Invalid created agent conversation link.');}
+   else if(message.recipientRunId){const recipient=runs.find(r=>r.id===message.recipientRunId);if(!recipient||recipient.conversationId!==target?.id||recipient.sentBy?.runId!==run.id||recipient.sentBy.conversationId!==run.conversationId)throw new Error('Invalid recipient conversation link.');}
    else if(target?.startedBy?.runId!==run.id||target.startedBy.conversationId!==run.conversationId)throw new Error('Invalid conversation link.');
   }
  }

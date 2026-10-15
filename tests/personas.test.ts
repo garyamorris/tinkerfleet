@@ -57,3 +57,10 @@ test('ordinary personalities share a role and are selected by unique IDs up to e
  const {validateParticipants,validateAvailableBots}=await import('../src/server/personas.js');const primary=customTeam()[0];const agents=Array.from({length:7},(_,i)=>({...customTeam()[1],id:`personality-${i}`,role:'agent' as const,name:`Personality ${i}`}));
  assert.equal(validateParticipants([primary,...agents]).length,8);assert.equal(validateAvailableBots(agents).length,7);assert.throws(()=>validateParticipants([primary,...agents,{...agents[0],id:'ninth'}]));assert.throws(()=>validateParticipants([agents[0],agents[0]]));assert.throws(()=>validateParticipants([{...agents[0],id:'coordinator'}]));assert.throws(()=>validateParticipants([primary,{...primary,id:'other-primary'}]));
 });
+
+test('new random appearances are valid, rerolls change the pair, and existing avatars are untouched',async()=>{
+ const {randomAppearance}=await import('../src/shared/appearance.js');const {validateParticipants}=await import('../src/server/personas.js');
+ const saved={color:'#1266aa',shape:'orbit' as const},original={...saved};let appearance=randomAppearance(saved);
+ for(let i=0;i<100;i++){assert.match(appearance.color,/^#[0-9a-f]{6}$/);assert.ok(['orbit','spark','pebble','gem'].includes(appearance.shape));assert.equal(validateParticipants([{...customTeam()[1],...appearance}]).length,1);const next=randomAppearance(appearance);assert.notDeepEqual(next,appearance);appearance=next;}
+ assert.deepEqual(saved,original);const uppercase={...appearance,color:appearance.color.toUpperCase()};const next=randomAppearance(uppercase);assert.ok(next.color!==appearance.color||next.shape!==appearance.shape);
+});

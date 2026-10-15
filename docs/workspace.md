@@ -31,7 +31,8 @@ does not implicitly interpret shell syntax. If a proposed command explicitly
 invokes `sh` or `bash -c`, its script is part of the exact action you must review.
 The process receives only `HOME`, `PATH`, `TMPDIR`, `LANG`, and configured
 `LC_ALL`/`LC_CTYPE`, not arbitrary server variables or inherited API keys.
-Runtime and output are bounded. These controls reduce accidental exposure; they do not isolate a hostile
+Each command has a 15-second timeout and bounded output. Disabling SDK turn or
+model-call count caps does not change that command timeout. These controls reduce accidental exposure; they do not isolate a hostile
 program or prevent it from accessing readable files on the host.
 
 ## File paths and command paths

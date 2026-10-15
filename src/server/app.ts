@@ -1,3 +1,5 @@
+import {MemoryStore,MemoryError} from './memory.js';
+import {randomAppearance} from '../shared/appearance.js';
 import {safeSources} from './sources.js';
 import {runtimeConfig,type RuntimeOptions} from './config.js';
 import type {Model} from '@openai/agents';
@@ -21,6 +23,7 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   const modelReady=()=>!!options.sdkModel||!!model&&!!process.env.OPENAI_API_KEY;
   const root=path.resolve(options.workspaceRoot??process.env.TINKERFLEET_WORKSPACE??'examples/tiny-project');
   const store=new ConversationStore(options.statePath,options.initialRuns);
+  const memory=new MemoryStore(options.statePath?`${options.statePath}.memories.json`:undefined);
   let profiles=store.state.profiles;
   let libraryImported=store.state.libraryImported;
   const sentMessages=new Map<string,Map<string,{conversationId:string;agentId:string}>>();
@@ -50,6 +53,7 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
       edit_file:['Editing a workspace file','File edit finished'],run_command:['Running a local command','Local command finished'],
       create_agent:['Creating an agent','Agent creation finished'],message_agent:['Sending a message to an agent','Agent message delivery finished'],
       start_group_conversation:['Starting a group conversation','Group setup finished'],
+      recall_memory:['Reading saved memories','Memories recalled'],remember_memory:['Saving a memory','Memory saved'],forget_memory:['Forgetting a memory','Memory forgotten'],
       web_search:['Searching the web','Web search finished'],web_open_page:['Opening a web page','Web page request finished'],web_find_in_page:['Finding text in a web page','Page search finished'],
     };
     if(tool&&labels[tool])return labels[tool][finished?1:0];
@@ -70,7 +74,7 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     touch(run);
     if(['run_completed','run_failed','run_cancelled'].includes(e.type))runner?.disposeRun(run.id);
   }
-  const sdk=createSdkAdapter({workspaceRoot:root,webSearchEnabled:mode==='live'&&config.webSearchEnabled,model:options.sdkModel??model??undefined,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort??undefined,limits:config.limits,liveEnabled:mode==='live',onEvent,startGroup,createAgent,messageAgent,harness:{
+  const sdk=createSdkAdapter({memory:{list:id=>memory.list(id),remember:async(id,text)=>memory.remember(id,text),forget:async(id,entryId)=>memory.forget(id,entryId)},workspaceRoot:root,webSearchEnabled:mode==='live'&&config.webSearchEnabled,model:options.sdkModel??model??undefined,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort??undefined,limits:config.limits,liveEnabled:mode==='live',onEvent,startGroup,createAgent,messageAgent,harness:{
     snapshot:id=>workspaceRunner().snapshot(id),readFile:(id,p)=>workspaceRunner().readFile(id,p),
     prepare:async(id,action)=>{const record=await workspaceRunner().prepare(id,action);if(action.kind==='edit')beforeCache.set(record.id,redactSdkText(await workspaceRunner().readFile(id,action.path).catch(()=>'')));return record;},
     decide:(id,approvalId,digest,approved)=>approvals.decide(id,approvalId,digest,approved),
@@ -91,7 +95,7 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     }
   }
   function persist(required=false){relayAgentReplies();for(const run of allRuns()){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Math.max(chat.updatedAt,run.startedAt,run.endedAt??0,...run.messages.map(m=>m.at),...run.events.map(e=>e.at));}try{store.save([...conversations.values()],allRuns(),profiles,libraryImported);persistenceError=undefined;}catch{persistenceError='Conversation history could not be saved. Check local storage before continuing.';if(required)throw new HttpError(503,persistenceError);}}
-  function state():AppState {return {webSearchEnabled:mode==='live'&&config.webSearchEnabled,profiles,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort,limits:config.limits,conversations:[...conversations.values()],...(persistenceError?{persistenceError}:{}),mode,model:mode==='live'?model:null,workspace:path.basename(root),workspaceRoot:root,execution,liveReady:mode==='live'&&modelReady()&&(!config.workspaceToolsEnabled||execution.available),runs:allRuns(),currentRunId,maxTurns:config.limits.maxTurns};}
+  function state():AppState {return {memories:memory.list(),webSearchEnabled:mode==='live'&&config.webSearchEnabled,profiles,workspaceToolsEnabled:config.workspaceToolsEnabled,reasoningEffort:config.reasoningEffort,limits:config.limits,conversations:[...conversations.values()],...(persistenceError?{persistenceError}:{}),mode,model:mode==='live'?model:null,workspace:path.basename(root),workspaceRoot:root,execution,liveReady:mode==='live'&&modelReady()&&(!config.workspaceToolsEnabled||execution.available),runs:allRuns(),currentRunId,maxTurns:config.limits.maxTurns};}
   function validTitle(value:unknown){if(typeof value!=='string'||!value.trim()||value.trim().length>80||/[\u0000-\u001f\u007f]/.test(value))throw new HttpError(400,'Enter a title of 1–80 characters.');return redactSdkText(value.trim());}
   function startRun(value:unknown,chat:Conversation,res?:ServerResponse,legacy=false,promptAuthor:AgentId|'user'='user',beforePublish?:(run:Run)=>void){
     if(typeof value!=='string'||!value.trim()||value.length>8000)throw new HttpError(400,'Enter a task of 1–8,000 characters.');
@@ -121,14 +125,17 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     const run=findRun(runId),chat=run?.conversationId?conversations.get(run.conversationId):undefined;
     if(closing||!run||run.status!=='running'||!chat||chat.startedBy||chat.participants.length!==1||chat.participants[0].role!=='coordinator')throw new Error('Only an active direct coordinator can create a bot.');
     if(Object.keys(request).some(key=>!['name','purpose'].includes(key)))throw new Error('Only name and personality are accepted.');
-    const candidate=validateParticipants([{...request,role:'agent',id:randomUUID(),color:'#567a75',shape:'spark'}])[0];
+    const candidate=validateParticipants([{...request,role:'agent',id:randomUUID(),...randomAppearance()}])[0];
     const key=canonicalJson({name:candidate.name,purpose:candidate.purpose,role:candidate.role});
     const cache=createdAgents.get(runId)??new Map<string,Persona>();const previous=cache.get(key);if(previous)return previous;
     if(cache.size>=3||profiles.length>=32||(chat.availableBots?.length??0)>=32)throw new Error('Bot creation limit reached.');
+    if(conversations.size>=CONVERSATION_LIMITS.conversations)throw new Error('Conversation limit reached.');
+    const now=Date.now(),direct:Conversation={id:randomUUID(),title:candidate.name,participants:[candidate],createdAt:now,updatedAt:now,draft:'',currentRunId:null};
+    conversations.set(direct.id,direct);
     const oldProfiles=profiles,oldRoster=chat.availableBots,oldUpdated=chat.updatedAt,oldImported=libraryImported;
     const messageId=randomUUID();libraryImported=true;profiles=validateProfiles([...profiles,candidate]);chat.availableBots=validateAvailableBots([...(chat.availableBots??[]),candidate]);
-    run.messages.push({id:messageId,author:'coordinator',createdAgentId:candidate.id,text:`Created ${candidate.name}: ${candidate.purpose}`,kind:'result',at:Date.now()});touch(run);
-    try{persist(true);}catch(error){profiles=oldProfiles;libraryImported=oldImported;chat.availableBots=oldRoster;chat.updatedAt=oldUpdated;run.messages=run.messages.filter(m=>m.id!==messageId);throw error;}
+    run.messages.push({id:messageId,author:'coordinator',createdAgentId:candidate.id,conversationId:direct.id,text:`Created ${candidate.name}: ${candidate.purpose}`,kind:'result',at:Date.now()});touch(run);
+    try{persist(true);}catch(error){conversations.delete(direct.id);profiles=oldProfiles;libraryImported=oldImported;chat.availableBots=oldRoster;chat.updatedAt=oldUpdated;run.messages=run.messages.filter(m=>m.id!==messageId);throw error;}
     cache.set(key,candidate);createdAgents.set(runId,cache);return candidate;
   }
   async function messageAgent(runId:string,request:{agentId:string;message:string}):Promise<{conversationId:string;agentId:string}>{
@@ -177,6 +184,20 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
     if(url.pathname==='/api/session'&&method==='GET'){security.check(req,false);json(res,200,security.bootstrap(res));return;}
     security.check(req);
     if(url.pathname==='/api/state'&&method==='GET'){persist();json(res,200,state());return;}
+    const memoryRoute=/^\/api\/memories(?:\/([a-zA-Z0-9_-]+))?$/.exec(url.pathname);
+    if(memoryRoute&&['GET','POST','DELETE'].includes(method)){
+      const body=method==='GET'?{agentId:url.searchParams.get('agentId')}:await readJson(req);
+      if(Object.keys(body).some(key=>!['agentId','text'].includes(key)))throw new HttpError(400,'Only a bot and memory text are accepted.');
+      const agentId=body.agentId;
+      if(typeof agentId!=='string'||!profiles.some(p=>p.id===agentId)&&![...conversations.values()].some(c=>c.participants.some(p=>p.id===agentId)))throw new HttpError(404,'Bot not found.');
+      try{
+        if(method==='GET'&&!memoryRoute[1])json(res,200,memory.list(agentId));
+        else if(method==='POST'&&!memoryRoute[1]){if(typeof body.text!=='string')throw new HttpError(400,'Enter a memory.');json(res,201,memory.remember(agentId,body.text));}
+        else if(method==='DELETE'&&memoryRoute[1]){if(!memory.forget(agentId,memoryRoute[1]))throw new HttpError(404,'Memory not found for this bot.');json(res,200,{ok:true});}
+        else throw new HttpError(400,'Choose a valid memory action.');
+      }catch(error){if(error instanceof HttpError)throw error;if(error instanceof MemoryError)throw new HttpError(['READ_FAILED','WRITE_FAILED'].includes(error.code)?503:error.code==='CAPACITY'?409:400,error.message);throw new HttpError(503,'Memory could not be updated. Existing memories were preserved.');}
+      return;
+    }
     if(url.pathname==='/api/profiles/import'&&method==='POST'){
       const body=await readJson(req);if(Object.keys(body).some(k=>k!=='profiles'))throw new HttpError(400,'Only profiles are accepted.');
       let incoming:Persona[];try{incoming=validateProfiles(body.profiles);}catch(error){throw new HttpError(400,(error as Error).message);}
@@ -190,7 +211,7 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
       const id=profileRoute[1],existing=profiles.find(p=>p.id===id);if(id&&!existing)throw new HttpError(404,'Bot not found.');
       const previous=profiles,previousImported=libraryImported;let profile:Persona|undefined;
       if(method==='DELETE'){if(!id)throw new HttpError(400,'Choose a bot.');profiles=profiles.filter(p=>p.id!==id);}
-      else{const body=await readJson(req);if(Object.keys(body).some(k=>!['name','purpose','role','color','shape'].includes(k)))throw new HttpError(400,'Only bot profile fields are accepted.');if(!existing&&body.role!==undefined&&!['agent','coordinator'].includes(String(body.role)))throw new HttpError(400,'New profiles are ordinary agents or a primary coordinator.');profile=validateParticipants([{role:'agent',...(existing??{}),...body,id:id??randomUUID()}])[0];if(existing?.role==='coordinator'&&profile.role!=='coordinator')throw new HttpError(400,'An existing coordinator must keep its coordinator role.');profiles=validateProfiles(id?profiles.map(p=>p.id===id?profile!:p):[...profiles,profile]);}
+      else{const body=await readJson(req);if(Object.keys(body).some(k=>!['name','purpose','role','color','shape'].includes(k)))throw new HttpError(400,'Only bot profile fields are accepted.');if(!existing&&body.role!==undefined&&!['agent','coordinator'].includes(String(body.role)))throw new HttpError(400,'New profiles are ordinary agents or a primary coordinator.');profile=validateParticipants([{role:'agent',...randomAppearance(),...(existing??{}),...body,id:id??randomUUID()}])[0];if(existing?.role==='coordinator'&&profile.role!=='coordinator')throw new HttpError(400,'An existing coordinator must keep its coordinator role.');profiles=validateProfiles(id?profiles.map(p=>p.id===id?profile!:p):[...profiles,profile]);}
       libraryImported=true;try{persist(true);}catch(e){profiles=previous;libraryImported=previousImported;throw e;}json(res,method==='DELETE'?200:id?200:201,profile??{ok:true});return;
     }
     if(url.pathname==='/api/conversations'&&method==='POST'){

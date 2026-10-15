@@ -112,3 +112,16 @@ test('direct agent delivery and replies persist by identity and reject forged so
  assert.throws(()=>store.save([{...source,availableBots:[]},recipient],[sourceRun,recipientRun]));
  }finally{rmSync(directory,{recursive:true,force:true});}
 });
+
+test('created agent links open only the matching direct conversation while old unlinked creation records remain readable',()=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'tinkerfleet-created-link-')),file=path.join(directory,'state.json');
+ try{
+ const primary=customTeam()[0],agent={...customTeam()[1],id:'new-agent',role:'agent' as const};const source:Conversation={...chat('source'),participants:[primary],availableBots:[agent],currentRunId:'creation-run'},direct:Conversation={...chat('direct'),participants:[agent],currentRunId:null};
+ const creation:Run={...run('creation-run',source.id),team:[primary],messages:[{id:'created',author:'coordinator',createdAgentId:agent.id,conversationId:direct.id,text:'Created the agent',at:2}]};
+ const store=new ConversationStore(file);store.save([source,direct],[creation],[],true);const restored=new ConversationStore(file).state;assert.equal(restored.runs[0].messages[0].conversationId,direct.id);assert.equal(restored.profiles.length,0,'Deleting a library profile must not break its historical link.');
+ const altered=(patch:Partial<typeof creation.messages[0]>):Run=>({...creation,messages:[{...creation.messages[0],...patch}]});
+ assert.throws(()=>store.save([source,direct],[altered({createdAgentId:'another-agent'})]));assert.throws(()=>store.save([source,direct],[altered({author:agent.id})]));assert.throws(()=>store.save([source,direct],[altered({recipientRunId:'forged'})]));assert.throws(()=>store.save([source,direct],[altered({conversationId:source.id})]));
+ assert.throws(()=>store.save([{...source,availableBots:[]},direct],[creation]));assert.throws(()=>store.save([source,{...direct,participants:[{...agent,purpose:'Different frozen identity'}]}],[creation]));
+ const legacy=altered({conversationId:undefined});store.save([source],[legacy]);assert.equal(new ConversationStore(file).state.runs[0].messages[0].createdAgentId,agent.id);
+ }finally{rmSync(directory,{recursive:true,force:true});}
+});

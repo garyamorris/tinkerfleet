@@ -15,14 +15,17 @@ See [the build handover](HANDOVER.txt) for verified checks and remaining integra
 
 ## A look inside
 
-![Live Markdown reply with command and web evidence](docs/screenshots/markdown-tools-live.jpg)
+![Bot memory panel in the no-key demo](docs/screenshots/bot-memory-desktop.png)
 
-[Tool activity](docs/screenshots/tool-activity-live.jpg) ·
-[Mobile view](docs/screenshots/mobile-markdown-tools.jpg) (390 px wide).
-These genuine live captures show a file read, an approved local command, and
-hosted web research with sources. The compact activity timeline includes elapsed
-time. Desktop images crop the main conversation region to exclude the private
-chat list. See [the handover](HANDOVER.txt) for verified results and limits.
+[Mobile memory view](docs/screenshots/bot-memory-mobile.png) (390 px wide).
+These genuine captures show the no-key demo with sample facts. Conversation
+replies are scripted; the bot profile, direct chat, and saved memory use real
+local persistence. Creating a bot provides a one-click link to its chat.
+
+Earlier live evidence: [Markdown reply](docs/screenshots/markdown-tools-live.jpg) ·
+[File, command, and web activity](docs/screenshots/tool-activity-live.jpg).
+Those desktop images crop out the private chat list. See
+[the handover](HANDOVER.txt) for verified results and limits.
 
 ## Try it without a key
 
@@ -115,7 +118,8 @@ The no-key demo remains scripted and never searches the web. See
 Tell the primary Coordinator: **“Create a patient Python tutor called Ada.”**
 It can create a reusable agent with a name and purpose covering its job,
 personality, and communication style. The saved bot appears in the library and
-its creation message offers **Talk**. You can talk to it directly, and the
+creation immediately creates its direct chat. Choose **Open this bot’s chat**
+on the creation message to visit it. You can talk to it directly, and the
 Coordinator can bring it into a group—even in the same run that created it.
 
 New bots are ordinary agents with a name and purpose/personality. The server
@@ -127,6 +131,18 @@ per run, each with a concise task brief.
 The no-key demo recognizes the exact Ada example and really saves a profile,
 but uses a clearly scripted response. It does not demonstrate live model
 selection or the tutor's personality in conversation.
+
+## Give a bot a memory
+
+Open **Memory** beside a bot in the library to view, add, or delete saved notes.
+The same bot reuses these notes across its chats on its next turn; it can also
+use `remember`, `recall`, and `forget` tools. Each bot can hold 20 notes, up to
+2,000 characters each and 8,000 characters total. Old chat history stays saved
+but is not automatically imported or summarized into memory.
+
+Notes are private local data and are sent to the model provider when that bot
+replies. Personality edits do not erase them. New profiles receive a random
+avatar; **Randomize avatar** lets you change it without changing capabilities.
 
 ## Bots, conversations, and runs
 
@@ -153,7 +169,8 @@ source chat's history. That group starts an independent run attributed to the
 Coordinator. The source and group are separate SDK runs with separate per-run
 budgets, so one user turn can consume two run budgets. Stopping the primary does
 not stop a group already created; stop that group explicitly. These limits are
-not an overall monetary cap. This is explicit delegation, not cross-chat memory.
+not an overall monetary cap. Delegation shares explicit briefs; per-bot saved
+notes are a separate memory mechanism.
 
 Creating a conversation captures its participant profiles. Library edits apply
 to new conversations, leaving existing chats and runs unchanged. The bot
@@ -199,6 +216,10 @@ still run a script. Commands receive a small environment whitelist without
 inherited server secrets and have time/output bounds. Approved file edits can
 also create new files and nested folders. Use a trusted practice folder and review each exact action. Docker is not
 part of the active application. See [setup](docs/setup.md) and [SECURITY.md](SECURITY.md).
+
+SDK turn and model-call counts are unlimited by default (`0`). Token and runtime
+budgets still apply, and a local command still has a 15-second timeout. See
+[run limits](docs/setup.md#keep-runs-small) before increasing exposure.
 
 ## Find your way around
 

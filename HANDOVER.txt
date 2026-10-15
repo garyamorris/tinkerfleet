@@ -8,7 +8,37 @@ participants. Legacy role fields are compatibility data, not capability gates.
 Approved local edits change real files; commands run with the user's permissions.
 The selected working directory is not a sandbox. Docker is not used.
 
-Current automated verification
+Current revision — automated and demo browser verification
+Per-bot memory is persisted separately in .tinkerfleet/conversations.json.memories.json
+and injected for the same bot on its next turn across chats. UI view/add/delete
+and remember/recall/forget tools share limits: 20 notes per bot, 2,000 characters
+each, 8,000 total. Old transcripts remain saved, without automatic import or
+summarization. Notes are sent to the provider when that bot replies.
+New bot creation immediately creates its direct chat. New profiles get random
+appearance, with a manual randomize control; existing appearance is preserved.
+SDK turn/model-call counts now default to 0 (unlimited counts), with optional
+finite caps 1–64. Token/runtime limits remain; native commands still time out
+after 15 seconds. This revision has no new paid verification call.
+- 219 of 219 tests passed; TypeScript and production build passed.
+- The focused offline SDK/memory-tool suite passed 90 tests; native execution
+  and existing boundary tests passed in the full suite.
+- In the no-key demo, the Coordinator created Nova. One click on the creation
+  card opened its direct chat without a chooser. The memory panel saved a note
+  in real persisted storage. Desktop and 390 × 844 mobile checks passed.
+  The conversation is scripted and the notes are sample facts; these checks do
+  not claim new live-model memory verification.
+- The live server restarted successfully and reported live readiness with
+  maxTurns=0 and maxModelCalls=0. Existing conversation/profile identities and
+  drafts were preserved. The new live memory store started empty; old transcripts
+  were not imported. No paid API call was made for this revision, and no
+  credentials were stored.
+- A final avatar-palette correction passed 11 focused tests, TypeScript, and
+  production build after the full 219-test check.
+- Genuine current demo captures: docs/screenshots/bot-memory-desktop.png and
+  docs/screenshots/bot-memory-mobile.png. These show sample facts and real local
+  memory storage, not a new live model reply.
+
+Previous automated verification
 - 185 of 185 tests passed; TypeScript and production build passed. A focused
   review check passed 21 tests. All six offline lessons previously passed.
 - Native integration covers temporary files, installed commands, executable
@@ -61,7 +91,8 @@ tests, production build, and browser verification; no functional code changed
 after the 185-test check. All user history was preserved.
 
 Context and limits
-Defaults: 12 model calls, 2,048 output tokens per response, 64,000 reported tokens
+Current defaults: no SDK turn or model-call count cap (0), 2,048 output tokens
+per response, 64,000 reported tokens
 per run, and 120 seconds. Recent history is bounded to 8,000 characters; long tool
 outputs to 4,000 with a notice. Complete tool pairs and exact action arguments
 are preserved. A finished answer crossing the usage threshold is retained while
@@ -91,7 +122,8 @@ approval. See README.md, docs/setup.md, and SECURITY.md.
 
 Persistence and privacy
 The local server stores profiles and conversation views in the Git-ignored
-.tinkerfleet/conversations.json. Keep it private. Restart preserves history but
+.tinkerfleet/conversations.json, with per-bot notes in its .memories.json companion.
+Keep both private. Restart preserves history but
 cancels unfinished runs and denies pending approvals. It does not undo file or
 command effects. Credentials do not belong in source, browser settings, or logs.
 

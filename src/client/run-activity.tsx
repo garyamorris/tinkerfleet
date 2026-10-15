@@ -1,6 +1,6 @@
 import React from 'react';
 import type {Run} from '../shared/types';
-const rawToolNames=new Set(['list_files','read_file','run_command','edit_file','web_search','web_open_page','web_find_in_page','start_group_conversation','create_agent','message_agent']);
+const rawToolNames=new Set(['list_files','read_file','run_command','edit_file','web_search','web_open_page','web_find_in_page','start_group_conversation','create_agent','message_agent','recall_memory','remember_memory','forget_memory']);
 function usefulDetail(kind:string,detail?:string){return detail&&!(kind==='tool'&&(rawToolNames.has(detail.trim())||/^ask_[A-Za-z0-9_-]+$/.test(detail.trim())))?detail:null;}
 export function RunActivity({run,nameFor}:{run:Run;nameFor:(id:string)=>string}){
   const events=run.events.filter(e=>e.kind==='tool'||e.kind==='delegation'||e.kind==='error');

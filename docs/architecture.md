@@ -57,7 +57,7 @@ tools; a personality does not grant additional authority.
 
 `create_agent` saves a name and purpose/personality in the local library. Up to
 three creations are allowed per run and the library holds 32 profiles. Created
-agents are available for direct chats and same-run coordination. Existing chat
+agents immediately get a direct conversation and are available for same-run coordination. Existing chat
 participants stay captured rather than being rewritten by library edits.
 
 `message_agent` sends a concise brief to an individual agent and receives its
@@ -178,10 +178,22 @@ long tool text is bounded to 4,000 characters with an explicit notice. The local
 or audit system. Writes are atomic; a corrupt store fails startup without being
 overwritten. New store files use mode 0600 and new state directories mode 0700.
 
-Model turns, tool work, output, and elapsed time are also bounded. These limits
+SDK turns and model-call counts have optional caps, disabled by default (`0`).
+Token, output, elapsed-time, and individual tool limits remain active. These limits
 do not guarantee a monetary budget. SDK tracing is disabled; live inference
 still transmits profile instructions, prompts, same-chat context, relevant file
 content, and tool results. Read [Setup and privacy](setup.md).
+
+## Per-bot memory
+
+The separate private `${statePath}.memories.json` store holds notes by bot ID.
+The default is `.tinkerfleet/conversations.json.memories.json`. Notes are injected
+on the same bot’s next turn across conversations, alongside bounded same-chat
+history. `remember`, `recall`, and `forget` expose this store to the bot; the
+library UI lets the user view, add, and delete notes. Limits are 20 entries per
+bot, 2,000 characters each and 8,000 total. Existing transcripts are retained,
+not automatically summarized or imported. Notes are provider input, not secrets
+or permission to bypass tool policies.
 
 ## Returning an individual agent's reply
 

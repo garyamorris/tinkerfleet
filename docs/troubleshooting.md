@@ -77,7 +77,7 @@ pending decisions.
 
 Creating a bot saves it in the server library and makes it available to the
 Coordinator. It does not change the participants of a chat already created. Use
-**Talk** on the creation message to start a direct chat, or ask the Coordinator
+**Open this bot’s chat** on the creation message to visit its new direct chat, or ask the Coordinator
 to include the bot in a new group. A group can contain the primary plus up to seven ordinary agents.
 
 Only a direct Coordinator can create bots. A run can create at most three, and
@@ -107,6 +107,21 @@ Recent context is shortened independently; stored history is preserved. Tool
 calls and results are kept together, and exact action arguments are not cut.
 See [setup](setup.md#keep-runs-small) for configurable limits. Raising a limit
 can increase cost; it does not guarantee task completion.
+
+## A bot does not remember an older conversation
+
+Transcript context remains scoped to its chat. Use the bot library’s **Memory**
+control to save a note for that same bot across chats, or ask it to remember one.
+Old transcripts are not imported automatically. Inspect the saved notes and
+limits: 20 per bot, 2,000 characters each, 8,000 total. Notes apply on its next
+turn and are sent to the provider.
+
+## A command times out despite unlimited turns
+
+`TINKERFLEET_MAX_TURNS=0` and `TINKERFLEET_MAX_MODEL_CALLS=0` disable only count
+caps. Token and run-time budgets remain, and native commands still have a
+15-second timeout. Unlimited turns do not make a long-running install or command
+finish. Inspect the reported result rather than assuming success.
 
 ## A command fails before its approval appears
 
