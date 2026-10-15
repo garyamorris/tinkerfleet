@@ -1,0 +1,7 @@
+{
+  "name": "tinkerfleet-tiny-project",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test" },
+  "description": "An intentionally broken, dependency-free practice project."
+}

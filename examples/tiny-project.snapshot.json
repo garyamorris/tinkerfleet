@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "README.md",
+      "content": "# Tiny project\n\nThis project deliberately subtracts when it should add. It has no dependencies.\n\n```sh\nnpm test\n```\n\nTwo tests should fail initially. Ask Tinkerfleet to read `sum.js`, propose the\nsmallest repair, and check it with `node --test`. In Demo mode the story and output\nare simulated. In Live mode an approved edit changes the run's in-memory snapshot;\nan approved command tests a copy of that snapshot in Docker. Neither mode writes\nthe repair back to this source directory. Review and apply the change yourself\nif you want to fix this example permanently.\n"
+    },
+    {
+      "path": "package.json",
+      "content": "{\n  \"name\": \"tinkerfleet-tiny-project\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" },\n  \"description\": \"An intentionally broken, dependency-free practice project.\"\n}\n"
+    },
+    {
+      "path": "sum.js",
+      "content": "/** Add two numbers. There is a deliberate bug for the Tinkerfleet exercise. */\nexport function sum(a, b) {\n  return a - b;\n}\n"
+    },
+    {
+      "path": "sum.test.js",
+      "content": "import assert from 'node:assert/strict';\nimport test from 'node:test';\nimport { sum } from './sum.js';\n\ntest('adds two positive numbers', () => assert.equal(sum(2, 3), 5));\ntest('adds a negative number', () => assert.equal(sum(4, -2), 2));\ntest('handles zero', () => assert.equal(sum(7, 0), 7));\n"
+    }
+  ]
+}

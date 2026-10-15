@@ -1,0 +1,58 @@
+Tinkerfleet build handover — 15 October 2026
+
+Scope
+Educational TypeScript multi-agent workspace: a no-key scripted demo, an
+OpenAI Agents SDK coordinator with Scout/Maker/Checker specialists, human
+approvals, a Docker runner implementation, six no-key lessons, and documentation.
+This handover covers Tinkerfleet only.
+
+Verified locally
+- Clean dependency installation with npm ci.
+- npm run check on macOS with Node.js 24.14: TypeScript checks and production
+  build passed; 47 tests total, 45 passed, 0 failed, and 2 Linux-only tests skipped.
+- All six no-key lessons passed.
+- SDK tests use a scripted model. Demo test output is simulated.
+- The real runner availability probe was blocked by unavailable Docker; no
+  host-shell fallback occurred.
+
+Browser verification
+- Genuine Chrome interaction checks at 1440 x 1000 desktop and 390 x 844 mobile.
+- Declining an approval performed no action. A fresh run displayed exact edit
+  and command approvals and completed with clearly simulated output.
+- Mobile Team, Workspace, Inspector, Changes, and Output views checked.
+- Lesson dialog has an accessible name, takes focus, closes with Escape, and
+  returns focus to its opener. Inspector tabs respond to arrow keys and End.
+- No browser console errors observed during these checks.
+- The production server also opened the interface successfully.
+- Stopping a pending run invalidated its approval. Avatar display-name changes
+  persisted after reload; the default name was restored after verification.
+- Actual captures: desktop welcome, edit approval, completed demo, lesson dialog,
+  mobile welcome, and mobile edit approval. See README.md for links.
+  Screenshots show the no-key demo only.
+
+Verification still required
+- Artifact download completion: browser automation stalled, so completion was
+  not verified.
+- Linux-only direct-directory capture tests on Linux.
+- Actual Docker execution, including macOS Docker Desktop confinement/cleanup.
+- Live OpenAI model integration. No live API calls or credentials were used.
+
+Run locally
+Install Node.js 24+ and npm, then run npm ci and npm run dev from this directory.
+Open http://localhost:4317. Demo mode needs neither an API key nor Docker.
+Dependency installation normally requires package-registry network access.
+For the built interface, run npm run build followed by npm start.
+
+Teaching and operating limits
+The demo is deterministic and does not answer arbitrary coding tasks. Its
+approvals advance a scripted scenario; they do not execute commands. The bundled
+practice project is deliberately broken, and its tests are separate from the
+repository suite. Approved live edits affect the run snapshot, not the source
+files. Runs and approvals disappear when the local server restarts.
+Read README.md, docs/setup.md, and SECURITY.md before opting into live mode.
+
+Publication status
+This handover does not establish a published repository or hosted deployment.
+Keep private environment files, dependencies, generated output, and local test
+artifacts out of a source distribution. The supplied .env.example documents
+placeholders only. Do not treat offline test results as live integration evidence.

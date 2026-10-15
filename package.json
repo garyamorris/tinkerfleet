@@ -1,0 +1,39 @@
+{
+  "name": "tinkerfleet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small multi-agent workspace, explained from the ground up.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --import tsx src/server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "node --import tsx src/server/index.ts --production",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
+    "lesson:1": "node --import tsx lessons/01-coordinator.ts",
+    "lesson:2": "node --import tsx lessons/02-specialists.ts",
+    "lesson:3": "node --import tsx lessons/03-tools.ts",
+    "lesson:4": "node --import tsx lessons/04-approvals.ts",
+    "lesson:5": "node --import tsx lessons/05-sandbox.ts",
+    "lesson:6": "node --import tsx lessons/06-workspace.ts"
+  },
+  "dependencies": {
+    "@openai/agents": "0.20.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  }
+}
