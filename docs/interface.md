@@ -93,6 +93,21 @@ depends on model support. This does not access a logged-in browser or automate
 forms. The demo never searches the web, and a source link alone is not proof that
 a claim is correct.
 
+## Read formatted replies and activity
+
+Assistant replies render headings, emphasis, lists, quotations, inline/fenced
+code, tables, and task lists. Tables can scroll horizontally and receive keyboard
+focus. Raw HTML stays inert, links allow HTTP(S) only, and images appear as text
+labels without fetching remote images. Code is displayed, not executed.
+
+Inline source citations remain clickable where their text positions match;
+otherwise the source list remains available. An expandable **Details** activity
+summary under each run shows recorded file, command, coordination, and web-tool
+events. While a run works, it shows the latest recorded activity; afterward it
+shows an activity count. Expand it for recent events, agent names, and elapsed
+time. A started event is not a completed result, and no search progress is
+invented when the provider has not supplied it.
+
 ## Review actions and results
 
 Read an edit or complete command before approving. The decision belongs to one
@@ -124,3 +139,16 @@ source primary conversation. It is visible to the primary on its next turn.
 Delivery does not automatically wake the primary model, recursively trigger
 other agents, or prove that requested file actions completed. Follow the
 recipient's actual status and results.
+
+## Verified Markdown and tool activity
+
+A combined live check read the practice file, ran exactly approved
+`codex --version` successfully, and searched official Agents SDK documentation
+with returned sources. The browser rendered the answer's heading, bullets, and
+code block, plus recorded listing, read, command, and search start/finish events.
+The [live reply](screenshots/markdown-tools-live.jpg),
+[activity timeline](screenshots/tool-activity-live.jpg), and
+[390 px mobile view](screenshots/mobile-markdown-tools.jpg) are genuine captures.
+Desktop crops exclude the private chat list. This verifies those observed paths;
+it does not imply every model or website supports all browsing actions.
+See [the handover](../HANDOVER.txt).

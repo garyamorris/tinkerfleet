@@ -40,6 +40,13 @@ The file tools accept relative paths rooted in the selected workspace. For
 example, `notes/plan.txt` names a file beneath that folder. This path policy does
 not make the process a sandbox.
 
+A command's `cwd` may be omitted, `.`, or a permitted existing relative
+subdirectory. When the model supplies the trusted selected workspace or one of
+its subdirectories as an absolute `cwd`, the SDK converts it to the corresponding
+relative path before preparing approval. Outside-workspace directories and
+traversal are rejected. Native path/symlink checks still apply. This normalization
+does not change the approved executable or argument list.
+
 Command arguments may contain an explicitly requested absolute path outside
 the workspace. A command acting on that path runs with the user's permissions;
 review its destination, executable, and arguments before approval. The app does

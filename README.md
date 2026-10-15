@@ -15,13 +15,14 @@ See [the build handover](HANDOVER.txt) for verified checks and remaining integra
 
 ## A look inside
 
-![Live primary-to-Ada conversation](docs/screenshots/individual-agents-live.jpg)
+![Live Markdown reply with command and web evidence](docs/screenshots/markdown-tools-live.jpg)
 
-[Mobile view](docs/screenshots/mobile-individual-agents.jpg), captured at 390 px
-wide. These genuine live captures show the primary messaging Ada and Ada's real
-reply, with Primary and Agent labels. The desktop image is cropped to the main
-conversation region to exclude the private chat list. Hosted web search was not
-used in these checks.
+[Tool activity](docs/screenshots/tool-activity-live.jpg) ·
+[Mobile view](docs/screenshots/mobile-markdown-tools.jpg) (390 px wide).
+These genuine live captures show a file read, an approved local command, and
+hosted web research with sources. The compact activity timeline includes elapsed
+time. Desktop images crop the main conversation region to exclude the private
+chat list. See [the handover](HANDOVER.txt) for verified results and limits.
 
 ## Try it without a key
 
@@ -78,6 +79,11 @@ Follow one task from the interface to the boundary:
 
 Start with the demo and lessons before the larger SDK and runner modules. Compare
 the same approval concept across a lesson, its tests, and the browser interface.
+
+Replies use readable Markdown, including code blocks and tables. Expand a run's
+**Details** activity summary to follow recorded file, command, agent, and web-tool
+steps. Activity reports what the app observed; a started tool is not a completed
+result.
 
 ## One primary, individual agents
 

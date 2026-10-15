@@ -6,7 +6,7 @@ import {MessageText,MessageSources,type CitationSource} from '../src/client/cita
 const render=(text:string,sources:CitationSource[])=>renderToStaticMarkup(React.createElement('div',null,React.createElement(MessageText,{text,sources}),React.createElement(MessageSources,{sources})));
 test('offline fixture places clickable citation beside its supported claim',()=>{
   const html=render('First claim. Second claim.',[{url:'https://example.com/one',title:'Fixture source',startIndex:0,endIndex:12}]);
-  assert.match(html,/First claim\.<a class="inline-citation"/);
+  assert.match(html,/First claim\.<a [^>]*class="inline-citation"/);
   assert.match(html,/>\[1\]<\/a> Second claim\./);
   assert.match(html,/target="_blank" rel="noopener noreferrer"/);
   assert.match(html,/Sources for this reply/);

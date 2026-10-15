@@ -8,13 +8,13 @@ participants. Legacy role fields are compatibility data, not capability gates.
 Approved local edits change real files; commands run with the user's permissions.
 The selected working directory is not a sandbox. Docker is not used.
 
-Current verification
-- 173 of 173 tests passed; TypeScript and production build passed. All six offline
-  lessons passed, including equal tool access for named ordinary agents.
-- Native integration exercised real temporary files, installed commands, virtual
-  environment invocation, approval binding, and replay rejection.
-- A subsequent wording-only SDK check passed all 71 tests.
-- Hosted search and citation handling have offline integration coverage only.
+Current automated verification
+- 185 of 185 tests passed; TypeScript and production build passed. A focused
+  review check passed 21 tests. All six offline lessons previously passed.
+- Native integration covers temporary files, installed commands, executable
+  identity, approval/replay behavior, and trusted in-workspace cwd normalization.
+- Hosted streaming events, citation handling, and Markdown have offline tests
+  in addition to the combined real-provider check below.
 
 Actual live checks
 - Before the personality-only overhaul, Orbit created live-check.txt containing
@@ -30,10 +30,35 @@ Actual live checks
   git --version and codex --version after two exact approvals. Both exited 0:
   “git version 2.54.0 (Apple Git-157)” and “codex-cli 0.162.1”. Usage: 3 model
   calls, 3,563 input tokens, 106 output tokens, 3,669 total.
-- Combined controlled verification: 10 calls, 16,224 input tokens, 393 output
-  tokens, 16,617 total. This excludes additional user-initiated calls and is not
-  an account-wide total or billing receipt. The checks used gpt-5.6-luna with
-  low reasoning and web search disabled; they do not validate live hosted search.
+
+Diagnostic and corrected live check
+An earlier controlled primary attempt failed before approval because the model
+supplied the selected root as an absolute cwd. That attempt used one call and
+5,740 tokens and did not execute the command. The SDK now normalizes trusted
+in-workspace cwd values before approval while rejecting outside/traversal paths.
+
+The combined post-fix live run succeeded:
+- Read the actual sum.js file.
+- Executed exactly approved codex --version: codex-cli 0.162.1, exit code 0,
+  with cleanup confirmed.
+- Performed real hosted web search for official Agents SDK documentation and
+  returned source links.
+- Rendered a Markdown heading, bullet list, and code block in the browser DOM.
+- Recorded real listing, file-read, local-command, and web-search events with
+  their finish events.
+Usage: 4 model calls, 31,779 input tokens, 340 output tokens, 32,119 total. The
+30,000-token test threshold was observed after the completed final response;
+the answer was retained, the app status was completed, and no extra calls ran.
+
+Cumulative controlled verification: 15 calls, 54,476 tokens, including the failed
+diagnostic attempt. This excludes user-initiated calls and additional web-tool
+charges; it is not an account total or billing receipt. Genuine screenshots of the combined live run are now available:
+docs/screenshots/markdown-tools-live.jpg, tool-activity-live.jpg, and
+mobile-markdown-tools.jpg. Desktop crops exclude the private chat list; mobile
+is 390 px wide. The activity timeline shows file/command/web steps with elapsed
+time. A final UI-only duplicate-label cleanup passed typecheck, five renderer
+tests, production build, and browser verification; no functional code changed
+after the 185-test check. All user history was preserved.
 
 Context and limits
 Defaults: 12 model calls, 2,048 output tokens per response, 64,000 reported tokens
@@ -43,7 +68,7 @@ are preserved. A finished answer crossing the usage threshold is retained while
 further calls and exhausted-budget function work are blocked. Parent and child
 runs have separate budgets and stop controls; there is no overall monetary cap.
 
-Final restart and browser verification
+Previous restart and browser verification
 The main app restarted successfully and reported live readiness with hosted web
 and native tools enabled. Runtime limits were 12 calls, 64,000 tokens, 2,048
 output tokens per response, and 120 seconds. Existing conversations, runs, and
@@ -51,10 +76,11 @@ profiles were preserved; private counts and history are not included here.
 Genuine screenshots show the live primary message to Ada and Ada's reply:
 docs/screenshots/individual-agents-live.jpg is cropped to the main conversation
 region to exclude the private chat list; mobile-individual-agents.jpg is 390 px
-wide. No tests or restart checks remain pending. git diff --check passed.
+wide. That revision completed its checks; git diff --check passed at that point.
 
 Remaining limits
-Hosted web search has not been provider-verified.
+The live search check establishes the tested official-documentation lookup, not
+access to every website, authenticated pages, or all model-dependent web actions.
 Artifact download completion remains unverified. No CI result is claimed.
 
 Run locally

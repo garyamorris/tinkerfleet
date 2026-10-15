@@ -12,15 +12,21 @@ export {redactSdkText} from './safety.js';
  * the local browser and bind run IDs to that session before calling this module.
  */
 import { createHash, timingSafeEqual } from 'node:crypto';
+import path from 'node:path';
+import {RunnerError} from './runner-policy.js';
+import {ApprovalError} from './approval.js';
 import {
   Agent,
   OpenAIProvider,
   Runner,
+  Usage,
+  ToolCallError,
   setSensitiveDataLoggingEnabled,
   setTracingDisabled,
   tool,
   webSearchTool,
   type Model,
+  type ModelResponse,
   type RunConfig,
   type RunState,
   type RunToolApprovalItem,
@@ -133,6 +139,8 @@ export interface SdkAdapterOptions {
   workspaceRoot?: string;
   /** Hosted public web search; defaults on for live adapters, independently of workspace tools. */
   webSearchEnabled?: boolean;
+  /** Internally consume Responses streams for safe hosted-tool activity; live provider default is true. */
+  streamWebActivity?: boolean;
   reasoningEffort?: SdkReasoningEffort;
   /** Trusted server callback: create and start one child group from registered bot IDs. */
   startGroup?: (runId: string, request: SdkStartGroupRequest) => Promise<SdkStartedGroup>;
@@ -157,9 +165,9 @@ export interface SdkAdapter {
 }
 
 const commandSchema = z.object({
-  executable: z.string().min(1).max(512),
-  args: z.array(z.string().max(4_096)).max(32),
-  cwd: z.string().max(512).nullable(),
+  executable: z.string().min(1).max(512).describe('Installed executable name or absolute executable path only; put all command arguments in args.'),
+  args: z.array(z.string().max(4_096)).max(32).describe('Exact argument array, without the executable. Arguments are passed literally; no implicit shell.'),
+  cwd: z.string().max(512).nullable().describe('Use null or "." for the selected workspace. Otherwise use a permitted existing directory relative to that workspace, such as "src". Do not use an outside directory, traversal, hidden paths, or symlinks.'),
 }).strict();
 const editSchema = z.object({ path: z.string().min(1).max(512), content: z.string().max(32_000) }).strict();
 const groupSchema = z.object({
@@ -318,6 +326,52 @@ function safeModelFailure(error: unknown): unknown {
   else if (name === 'APIConnectionError' || name === 'APIConnectionTimeoutError' || (typeof code === 'string' && ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENETUNREACH', 'ENOTFOUND', 'EAI_AGAIN'].includes(code))) message = 'The model request could not connect or timed out. No automatic retry was attempted.';
   return message ? new SafeSdkError(message) : error;
 }
+/** Fixed diagnostic wording only; never forward runner paths, arguments, output, or arbitrary errors. */
+function safeExecutionFailure(error: unknown): string | undefined {
+  const seen=new Set<unknown>();
+  for(let depth=0;depth<8&&error&&!seen.has(error);depth++) {
+    seen.add(error);
+    if(error instanceof SafeSdkError || error instanceof ContextBudgetError)return error.message;
+    if((error instanceof Error && error.name === 'InvalidToolInputError') || error instanceof z.ZodError)return 'The agent supplied malformed tool arguments. Ask it to retry with an executable, an argument array, and cwd set to null or a permitted workspace-relative directory.';
+    if(error instanceof RunnerError || error instanceof ApprovalError) {
+      const messages:Record<string,string>={
+        UNSAFE_PATH:'The proposed file path or command directory is not permitted. Use cwd null or "." for the selected workspace, or an existing permitted relative subdirectory; hidden paths, traversal, and symlinks are not allowed.',
+        UNSAFE_WORKSPACE:'The selected workspace is unavailable or not permitted. Choose a real project directory in the workspace settings.',
+        EXECUTABLE_NOT_FOUND:'The requested executable was not found on the server’s PATH or is not executable. Use its installed absolute path or correct the server PATH, then request the command again.',
+        INVALID_COMMAND:'The proposed command is invalid. Supply only the installed executable name or absolute executable path, put its arguments in args, and use a permitted cwd.',
+        INVALID_ACTION:'The proposed tool action is malformed. Ask the agent to submit a new command or edit with the required fields.',
+        INVALID_FILE:'The proposed file is excluded or is not a supported text file. Use a permitted source or text file in the selected workspace.',
+        SECRET_CONTENT:'Credential-like content was blocked from a file or command. Remove secrets from the proposed action and review the sensitive data locally.',
+        STALE_APPROVAL:'The workspace changed after the action was proposed. Request a fresh action and review its new approval.',
+        EXECUTABLE_CHANGED:'The executable changed after the action was proposed. Request the command again and review a fresh approval.',
+        SNAPSHOT_LIMIT:'The selected workspace or proposed edit exceeds the local file or snapshot limits. Select a smaller project or reduce the proposed edit.',
+        RUN_BUSY:'Another local action is executing. Wait for it to finish, then request this action again.',
+        RUN_CLOSED:'This run is closed. Send a follow-up message to start a new run.',
+        EXECUTION_BLOCKED:'A previous local process did not confirm cleanup. Review local processes before restarting the server.',
+        CAPACITY:'The local runner has reached its active-run or approval capacity. Finish or cancel pending work before trying again.',
+        NOT_APPROVED:'This exact action does not have an unused approval. Request a fresh action and approve it before execution.',
+        NOT_PENDING:'This approval has already been decided or expired. Request a fresh action for review.',
+        ACTION_MISMATCH:'The approval does not match this exact run and action. Request a fresh action for review.',
+        UNKNOWN_APPROVAL:'This approval is unavailable, possibly after a server restart. Request a fresh action for review.',
+        UNKNOWN_ACTION:'This prepared action is no longer available. Request a fresh action for review.',
+      };
+      return Object.hasOwn(messages,error.code)?messages[error.code]:undefined;
+    }
+    if(error instanceof ToolCallError){error=error.error;continue;}
+    return undefined;
+  }
+  return undefined;
+}
+function normalizeCommandCwd(cwd: string | null, workspaceRoot?: string): string | undefined {
+  if(!cwd)return undefined;
+  if(!path.isAbsolute(cwd))return cwd;
+  const reject=()=>new SafeSdkError('The proposed command directory is outside the permitted workspace or uses traversal. Use cwd null or ".", or a permitted existing subdirectory of the selected workspace.');
+  if(!workspaceRoot||!path.isAbsolute(workspaceRoot)||cwd.split(path.sep).includes('..'))throw reject();
+  const relative=path.relative(workspaceRoot,cwd);
+  if(path.isAbsolute(relative)||relative==='..'||relative.startsWith(`..${path.sep}`))throw reject();
+  // The native policy still checks relative hidden/excluded paths and actual directories/symlinks.
+  return relative||'.';
+}
 function requireSafeText(text: string): void {
   if (redactSdkText(text) !== text) throw new SafeSdkError('Credential-like content was blocked. Review it locally.');
 }
@@ -332,11 +386,13 @@ function sameDigest(a: string, b: string): boolean {
   return /^[a-f0-9]{64}$/i.test(a) && /^[a-f0-9]{64}$/i.test(b) &&
     timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
 }
-function parseAction(name: string, argumentsJson: string): SdkAction {
-  const input: unknown = JSON.parse(argumentsJson);
+function parseAction(name: string, argumentsJson: string, workspaceRoot?: string): SdkAction {
+  let input: unknown;
+  try { input=JSON.parse(argumentsJson); } catch { throw new SafeSdkError('The agent supplied malformed tool arguments. Ask it to submit a valid command or edit request.'); }
   if (name === 'run_command') {
     const value = commandSchema.parse(input);
-    return { kind: 'command', executable: value.executable, args: value.args, ...(value.cwd ? { cwd: value.cwd } : {}) };
+    const cwd=normalizeCommandCwd(value.cwd,workspaceRoot);
+    return { kind: 'command', executable: value.executable, args: value.args, ...(cwd ? { cwd } : {}) };
   }
   if (name === 'edit_file') return { kind: 'edit', ...editSchema.parse(input) };
   throw new SafeSdkError('An unsupported tool requested approval.');
@@ -395,6 +451,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
   const injectedModel = typeof modelOption === 'object' && modelOption !== null;
   const liveEnabled = options.liveEnabled ?? process.env.TINKERFLEET_MODE === 'live';
   const webSearchEnabled = options.webSearchEnabled ?? liveEnabled;
+  const streamWebActivity = options.streamWebActivity ?? !injectedModel;
   const runs = new Map<string, PrivateRun>();
   const runner = new Runner(safeConfig(limits.maxOutputTokens, reasoningEffort));
   // Lazy provider construction: disabled/live-unconfigured mode never accesses credentials.
@@ -437,7 +494,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
   const fail = (run: PrivateRun, error: unknown): SdkStatus => {
     const cancelled = run.controller.signal.aborted && run.view.status === 'cancelled';
     if (cancelled) return clone(run.view);
-    const message = error instanceof SafeSdkError || error instanceof ContextBudgetError ? error.message : 'The SDK run could not finish. Check the model configuration and runner locally; no raw error details were exposed.';
+    const message = safeExecutionFailure(error) ?? 'The SDK run could not finish. Check the model configuration and runner locally; no raw error details were exposed.';
     run.busy = false;
     run.view.status = 'error';
     run.view.message = message;
@@ -462,18 +519,56 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
       return provider.getModel(modelOption as string);
     };
     return {
-      async getResponse(request) {
-        const outgoing = trimModelRequest(request, {maxInputChars:limits.maxInputChars}).request;
+      async getResponse(incoming) {
+        const outgoing = trimModelRequest(incoming, {maxInputChars:limits.maxInputChars}).request;
         checkBudget();
         const model = await resolveModel();
         assertActive(run);
-        const response = await model.getResponse({ ...outgoing, ...(webSearchEnabled ? { modelSettings: { ...outgoing.modelSettings, providerData: { ...outgoing.modelSettings.providerData, include: ['web_search_call.action.sources'] } } } : {}), signal: run.controller.signal }).catch(error => { throw safeModelFailure(error); });
+        const request = { ...outgoing, ...(webSearchEnabled ? { modelSettings: { ...outgoing.modelSettings, providerData: { ...outgoing.modelSettings.providerData, include: ['web_search_call.action.sources'] } } } : {}), signal: run.controller.signal };
+        const startedWebCalls=new Set<string>(),finishedWebCalls=new Set<string>();
+        const readResponse=async():Promise<ModelResponse>=>{
+          if(!webSearchEnabled||!streamWebActivity||!role)return model.getResponse(request);
+          let completed:ModelResponse|undefined;
+          for await(const event of model.getStreamedResponse(request)) {
+            assertActive(run);
+            if(event.type==='response_done') {
+              if(completed)throw new SafeSdkError('The model returned more than one final response. No further action was taken.');
+              completed={responseId:event.response.id,requestId:event.response.requestId,output:event.response.output,usage:new Usage(event.response.usage),providerData:event.response.providerData};
+            } else if(event.type==='model') {
+              // Inspect only allowlisted lifecycle fields. Raw provider text/reasoning is never emitted.
+              const raw=event.event as {type?:unknown;item_id?:unknown}|null;
+              if(!raw||typeof raw.item_id!=='string'||!raw.item_id||raw.item_id.length>256)continue;
+              if(raw.type==='response.web_search_call.in_progress'||raw.type==='response.web_search_call.searching') {
+                if(!startedWebCalls.has(raw.item_id)&&!finishedWebCalls.has(raw.item_id)) {
+                  startedWebCalls.add(raw.item_id);emit(run,{type:'tool_started',agent:role,tool:'web_search'});
+                }
+              } else if(raw.type==='response.web_search_call.completed'&&!finishedWebCalls.has(raw.item_id)) {
+                finishedWebCalls.add(raw.item_id);emit(run,{type:'tool_finished',agent:role,tool:'web_search'});
+              }
+            }
+          }
+          if(!completed)throw new SafeSdkError('The model stream ended before a final response arrived. No further action was taken.');
+          return completed;
+        };
+        const response = await readResponse().catch(error => { throw safeModelFailure(error); });
         assertActive(run);
         run.view.usage.inputTokens += response.usage.inputTokens;
         run.view.usage.outputTokens += response.usage.outputTokens;
         run.view.usage.totalTokens += response.usage.totalTokens;
-        if (webSearchEnabled && role) run.sourceMessages.set(role, responseSources(response.output));
+        if (webSearchEnabled && role) {
+          run.sourceMessages.set(role, responseSources(response.output));
+          // Fallback for providers without streamed lifecycle details. Never fabricate a start.
+          for (const item of response.output) {
+            if (item.type === 'hosted_tool_call' && item.name === 'web_search_call' && item.status === 'completed' && !(item.id && finishedWebCalls.has(item.id))) {
+              const action=item.providerData?.action?.type;
+              const tool=action==='open_page'?'web_open_page':action==='find_in_page'?'web_find_in_page':'web_search';
+              emit(run,{type:'tool_finished',agent:role,tool});
+            }
+          }
+        }
         emit(run, { type: 'usage', usage: clone(run.view.usage) });
+        // Reject malformed approval-bound requests before SDK recovery can make another model call.
+        for(const item of response.output)if(item.type==='function_call'&&(item.name==='run_command'||item.name==='edit_file'))parseAction(item.name,item.arguments,options.workspaceRoot);
         if (run.view.usage.totalTokens >= limits.maxTotalTokens && response.output.some(item => item.type === 'function_call')) throw new SafeSdkError('This Tinkerfleet run reached its local token budget before starting more work. Send a follow-up message to continue with a fresh run budget, or raise TINKERFLEET_MAX_TOTAL_TOKENS. This is not an API quota error.');
         return response;
       },
@@ -512,7 +607,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
     const mutationTools = workspaceToolsEnabled ? [
       tool({ name: 'run_command', description: 'Request an installed host command with separate executable and argv, without an implicit shell. It runs from the selected local workspace with host-user permissions, has real effects, and always pauses for human approval.',
         parameters: commandSchema, needsApproval: true, errorFunction: null,
-        execute: async (args, _context, details) => executeGrant(run, 'run_command', parseAction('run_command', JSON.stringify(args)), details?.toolCall?.callId),
+        execute: async (args, _context, details) => executeGrant(run, 'run_command', parseAction('run_command', JSON.stringify(args), options.workspaceRoot), details?.toolCall?.callId),
       }),
       tool({ name: 'edit_file', description: 'Request a complete text file edit in the selected local workspace. The edit has real effects and always pauses for human approval.',
         parameters: editSchema, needsApproval: true, errorFunction: null,
@@ -640,7 +735,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
           const callId = item.rawItem.callId;
           const existing = [...run.pending.values()].find(p => p.callId === callId);
           if (existing) continue;
-          const action = parseAction(item.name, item.arguments);
+          const action = parseAction(item.name, item.arguments, options.workspaceRoot);
           requireSafeText(JSON.stringify(action));
           const prepared = await withAbort(options.harness.prepare(run.view.runId, clone(action)), run.controller.signal);
           assertActive(run);
@@ -734,7 +829,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
       if (!run || run.busy || run.view.status !== 'awaiting_approval' || !run.state) throw new SafeSdkError('Run is not awaiting a decision.');
       const pending = run.pending.get(approvalId);
       if (!pending || typeof approved !== 'boolean' || !sameDigest(digest, pending.view.digest)) throw new SafeSdkError('Approval is stale, mismatched, or already used.');
-      if (pending.item.name !== pending.view.tool || digestCall(pending.view.tool, parseAction(pending.item.name, pending.item.arguments ?? '')) !== pending.callDigest) {
+      if (pending.item.name !== pending.view.tool || digestCall(pending.view.tool, parseAction(pending.item.name, pending.item.arguments ?? '', options.workspaceRoot)) !== pending.callDigest) {
         return fail(run, new SafeSdkError('Tool arguments changed after approval was requested.'));
       }
       // Atomic single-process consume before the first await; a failed resume is never replayed.

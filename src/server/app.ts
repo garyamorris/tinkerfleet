@@ -44,11 +44,23 @@ export function createApp(options:RuntimeOptions&{sdkModel?:Model;port:number;mo
   let executionProbe=0;
   async function checkExecution(){if(!runner)return;const version=++executionProbe;try{const availability=await runner.checkAvailability();if(!closing&&version===executionProbe)execution={available:availability.available,reason:availability.reason??'Ready'};return availability;}catch{const unavailable={available:false,reason:'The selected local workspace could not be checked.'};if(!closing&&version===executionProbe)execution=unavailable;return unavailable;}}
   const participantId=(persona?:Persona)=>persona?.role==='coordinator'?'coordinator':persona?.id??'coordinator';
+  function toolActivity(tool:string|undefined,finished:boolean):string{
+    const labels:Record<string,[string,string]>={
+      list_files:['Listing workspace files','File listing finished'],read_file:['Reading a workspace file','File read finished'],
+      edit_file:['Editing a workspace file','File edit finished'],run_command:['Running a local command','Local command finished'],
+      create_agent:['Creating an agent','Agent creation finished'],message_agent:['Sending a message to an agent','Agent message delivery finished'],
+      start_group_conversation:['Starting a group conversation','Group setup finished'],
+      web_search:['Searching the web','Web search finished'],web_open_page:['Opening a web page','Web page request finished'],web_find_in_page:['Finding text in a web page','Page search finished'],
+    };
+    if(tool&&labels[tool])return labels[tool][finished?1:0];
+    if(tool?.startsWith('ask_'))return finished?'Agent consultation finished':'Consulting another agent';
+    return finished?'Tool operation finished':'Using a tool';
+  }
   function onEvent(e:SdkEvent){
     const run=liveRuns.get(e.runId);if(!run)return;const agent=e.agent??run.activeAgent??participantId(run.team?.[0]);const displayName=run.team?.find(persona=>participantId(persona)===agent)?.name??e.agent??'Coordinator';
     if(e.type==='usage'){if(e.usage)run.usage={...e.usage};return;}
     if(e.type==='agent_message'){if(e.message)run.messages.push({id:randomUUID(),at:Date.parse(e.at),author:agent,text:redactSdkText(e.message),...(e.sources?.length?{sources:safeSources(e.sources,redactSdkText(e.message))}:{}),kind:'result'});touch(run);return;}
-    const labels:Record<string,string>={run_started:'Run started',agent_started:`${displayName} started`,agent_finished:`${displayName} returned`,tool_started:e.tool??'Tool started',tool_finished:`${e.tool??'Tool'} finished`,approval_requested:'Your approval is needed',approval_resolved:e.approved?'Action approved':'Action declined',run_completed:'Run complete',run_failed:'Run could not finish',run_cancelled:'Run stopped'};
+    const labels:Record<string,string>={run_started:'Run started',agent_started:`${displayName} started`,agent_finished:`${displayName} returned`,tool_started:toolActivity(e.tool,false),tool_finished:toolActivity(e.tool,true),approval_requested:'Your approval is needed',approval_resolved:e.approved?'Action approved':'Action declined',run_completed:'Run complete',run_failed:'Run could not finish',run_cancelled:'Run stopped'};
     run.events.push({id:randomUUID(),at:Date.parse(e.at),agent,kind:e.type.startsWith('approval')?'approval':e.type.startsWith('tool')?'tool':e.type.startsWith('agent')?'delegation':e.type==='run_failed'?'error':'result',title:labels[e.type]??e.type,detail:e.message??e.tool});
     if(e.type==='agent_started')run.activeAgent=agent;
     if(e.type==='approval_requested'&&e.approval){const p=e.approval;const bound=approvals.get(p.approvalId)?.action;const action=p.action.kind==='command'&&bound&&typeof bound==='object'&&'resolvedExecutable' in bound?{...p.action,resolvedExecutable:bound.resolvedExecutable as {path:string;identity:string}|null}:p.action;run.status='awaiting_approval';run.approvals.push({id:p.approvalId,digest:p.digest,agent,title:p.action.kind==='edit'?`Update ${p.action.path}`:`Run ${p.action.executable}`,description:'Review this exact action. It changes actual local files or runs a local command in the selected folder. Commands run with your user permissions.',action,status:'pending',before:beforeCache.get(p.approvalId)});}

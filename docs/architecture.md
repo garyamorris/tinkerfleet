@@ -19,7 +19,9 @@ scenario, while a simple greeting stays in the primary chat.
 
 ## 1. The browser is a view
 
-The React UI has a named-chat sidebar and a conversation canvas. Bot profiles,
+The React UI has a named-chat sidebar and a conversation canvas. Assistant
+Markdown is rendered without executable HTML or remote image loading; citation
+links and recorded activity remain separate evidence-bearing UI elements. Bot profiles,
 participants, approvals, and Details belong to the selected chat and run.
 It asks the server to start, inspect, stop, or decide a run. It does not hold an
 OpenAI key, execute tool implementations, choose an executable outside server

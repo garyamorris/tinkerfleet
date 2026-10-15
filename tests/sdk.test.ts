@@ -1,10 +1,11 @@
 import {customTeam} from './personas.fixture.js';
 import type { Persona } from '../src/shared/types.js';
 import assert from 'node:assert/strict';
-import {mkdtemp, realpath, readFile, writeFile, rm} from 'node:fs/promises';
+import {mkdtemp, realpath, readFile, writeFile, rm, mkdir, symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {NativeWorkspaceRunner} from '../src/server/native-runner.js';
+import {RunnerError} from '../src/server/runner-policy.js';
 import test, { before, after } from 'node:test';
 import { Usage, OpenAIProvider } from '@openai/agents';
 import OpenAI from 'openai';
@@ -1333,4 +1334,132 @@ test('large roster is listed once with bounded summaries and full personality st
   assert.equal(instructions.split('UNIQUE_PURPOSE_0:').length-1,1);assert.ok(instructions.length<16_000);
   const direct=createFleetAgents({model:'offline',team:[bots[0]],workspaceToolsEnabled:false});
   assert.ok(String(direct[bots[0].id].instructions).includes(bots[0].purpose));
+});
+
+test('absolute selected workspace and child cwd normalize identically for approval and execution', async t => {
+  const h=await nativeCoordinatorHarness(t);
+  await mkdir(path.join(h.root,'src'));
+  for(const [index,cwd] of [null,'.',h.root,path.join(h.root,'src')].entries()) {
+    const expected=index===3?'src':cwd===null?undefined:'.';
+    const args=['-e','console.log(process.cwd());console.log(JSON.stringify(process.argv.slice(1)))','literal argument','../literal-argument'];
+    const model=new ScriptedModel([[functionCall('run_command',{executable:process.execPath,args,cwd},{callId:`cwd-${index}`})],[assistantMessage('The command completed.')]]);
+    const adapter=createSdkAdapter({harness:h.value,model,workspaceToolsEnabled:true,workspaceRoot:h.root,webSearchEnabled:false});
+    const paused=await adapter.start({runId:`normalized-cwd-${index}`,prompt:'Check this command.',team:participants('coordinator')});
+    assert.equal(paused.status,'awaiting_approval',JSON.stringify(paused));
+    const approval=paused.pendingApprovals[0];
+    assert.deepEqual(approval.action,{kind:'command',executable:process.execPath,args,...(expected?{cwd:expected}:{})});
+    assert.equal(h.approvals.get(approval.approvalId)?.status,'pending');
+    const done=await adapter.resume({runId:paused.runId,approvalId:approval.approvalId,digest:approval.digest,approved:true});
+    assert.equal(done.status,'completed',JSON.stringify(done));
+    assert.equal(h.approvals.get(approval.approvalId)?.status,'consumed');
+    assert.ok(JSON.stringify(model.calls[1].request.input).includes(index===3?path.join(h.root,'src'):h.root));
+    assert.match(JSON.stringify(model.calls[1].request.input),/literal argument/);
+    model.assertComplete();
+  }
+});
+
+test('cwd normalization never permits outside, traversal, hidden or symlink directories', async t => {
+  const h=await nativeCoordinatorHarness(t);
+  await mkdir(path.join(h.root,'src'));await mkdir(path.join(h.root,'.hidden'));await symlink(path.join(h.root,'src'),path.join(h.root,'linked'));
+  const candidates=[`${h.root}-outside`,`${h.root}/src/../src`,path.join(h.root,'.hidden'),path.join(h.root,'linked'),'../outside','missing'];
+  for(const [index,cwd] of candidates.entries()) {
+    const events:SdkEvent[]=[];
+    const model=new ScriptedModel([[functionCall('run_command',{executable:process.execPath,args:['--version'],cwd},{callId:`blocked-cwd-${index}`})]]);
+    const done=await createSdkAdapter({harness:h.value,model,workspaceToolsEnabled:true,workspaceRoot:h.root,webSearchEnabled:false,onEvent:event=>events.push(event)}).start({runId:`blocked-cwd-${index}`,prompt:'Check version.',team:participants('coordinator')});
+    assert.equal(done.status,'error');assert.equal(done.pendingApprovals.length,0);
+    assert.match(done.message!,/directory|workspace/);assert.doesNotMatch(done.message!,/raw error details/);
+    assert.equal(events.some(event=>event.type==='approval_requested'||event.type==='tool_started'),false);
+    assert.ok(!JSON.stringify(events).includes(h.root));
+    model.assertComplete();
+  }
+});
+
+test('known runner preparation errors have actionable fixed diagnostics and never expose raw details', async () => {
+  for(const [code,expected] of [
+    ['EXECUTABLE_NOT_FOUND',/server’s PATH/],['UNSAFE_PATH',/cwd null/],['INVALID_COMMAND',/arguments in args/],
+    ['STALE_APPROVAL',/workspace changed/],['SNAPSHOT_LIMIT',/snapshot limits/],['UNKNOWN_PRIVATE_CODE',/could not finish/],
+  ] as const) {
+    const h=harness(),events:SdkEvent[]=[];
+    h.value.prepare=async()=>{throw new RunnerError(code,'RAW_PRIVATE_FAILURE /private/secret-path sk-SyntheticNeverExpose123456');};
+    const model=new ScriptedModel([[functionCall('run_command',command,{callId:'runner-diagnostic'})]]);
+    const done=await createSdkAdapter({harness:h.value,model,onEvent:event=>events.push(event)}).start({runId:`diagnostic-${code}`,prompt:'Run.',team:participants('coordinator')});
+    assert.equal(done.status,'error');assert.match(done.message!,expected);
+    assert.doesNotMatch(JSON.stringify({done,events}),/RAW_PRIVATE_FAILURE|secret-path|SyntheticNeverExpose/);
+    assert.equal(h.executed.length,0);
+  }
+});
+
+test('malformed model command arguments fail with a safe corrective message before approval', async () => {
+  for(const args of ['{invalid json',JSON.stringify({executable:'node',args:'--version',cwd:null}),JSON.stringify({executable:'node',args:['--version']})]) {
+    const h=harness(),model=new ScriptedModel([[functionCall('run_command',args,{callId:'malformed-command'})]]);
+    const done=await createSdkAdapter({harness:h.value,model}).start({runId:'malformed-command',prompt:'Check version.',team:participants('coordinator')});
+    assert.equal(done.status,'error');assert.match(done.message!,/malformed tool arguments/);
+    assert.equal(done.pendingApprovals.length,0);assert.equal(h.executed.length,0);
+  }
+});
+
+test('local tool activity uses real lifecycle hooks and hosted activity waits for observed completion', async () => {
+  const h=harness(),events:SdkEvent[]=[];
+  const model=new ScriptedModel([
+    [functionCall('list_files',{}, {callId:'activity-list'})],
+    [functionCall('read_file',{path:'PRIVATE_PATH_ONLY_IN_REQUEST.txt'},{callId:'activity-read'})],
+    {output:[{type:'hosted_tool_call',id:'observed-web',name:'web_search_call',status:'completed',providerData:{action:{type:'open_page',url:'https://example.com/private-query'}}},assistantMessage('Finished.')],usage:new Usage()},
+  ]);
+  const done=await createSdkAdapter({harness:h.value,model,webSearchEnabled:true,onEvent:event=>events.push(event)}).start({runId:'tool-activity',prompt:'Inspect and research.',team:participants('coordinator')});
+  assert.equal(done.status,'completed',JSON.stringify(done));
+  assert.deepEqual(events.filter(event=>event.type==='tool_started'||event.type==='tool_finished').map(({type,tool})=>({type,tool})),[
+    {type:'tool_started',tool:'list_files'},{type:'tool_finished',tool:'list_files'},
+    {type:'tool_started',tool:'read_file'},{type:'tool_finished',tool:'read_file'},
+    {type:'tool_finished',tool:'web_open_page'},
+  ]);
+  assert.doesNotMatch(JSON.stringify(events),/PRIVATE_PATH_ONLY_IN_REQUEST|private-query/);
+  model.assertComplete();
+});
+
+test('real Responses streaming emits observed search activity before final answer without raw content', async () => {
+  const events:SdkEvent[]=[];let seenSearch!:()=>void,finish!:()=>void,transportCalls=0;
+  const searchStarted=new Promise<void>(resolve=>{seenSearch=resolve;});
+  const encoder=new TextEncoder();
+  const encode=(event:Record<string,unknown>)=>encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  const client=new OpenAI({apiKey:'offline-test-placeholder',maxRetries:0,fetch:async(_url,init)=>{
+    transportCalls++;assert.equal(JSON.parse(String(init?.body)).stream,true);
+    return new Response(new ReadableStream<Uint8Array>({start(controller){
+      controller.enqueue(encode({type:'response.web_search_call.in_progress',item_id:'ws_activity',output_index:0,sequence_number:1}));
+      controller.enqueue(encode({type:'response.web_search_call.searching',item_id:'ws_activity',output_index:0,sequence_number:2}));
+      controller.enqueue(encode({type:'response.reasoning_summary_text.delta',item_id:'reasoning_private',delta:'HIDDEN_REASONING_SHOULD_NOT_LEAK',sequence_number:3}));
+      finish=()=>{
+        controller.enqueue(encode({type:'response.web_search_call.completed',item_id:'ws_activity',output_index:0,sequence_number:4}));
+        controller.enqueue(encode({type:'response.completed',sequence_number:5,response:{id:'resp_stream',object:'response',created_at:1,status:'completed',model:'offline-test-model',output:[
+          {type:'web_search_call',id:'ws_activity',status:'completed',action:{type:'search',query:'PRIVATE_QUERY_NOT_FOR_UI'}},
+          {type:'message',id:'msg_stream',role:'assistant',status:'completed',content:[{type:'output_text',text:'Facts.',annotations:[citation('https://example.com/cited',0,6)]}]},
+        ],usage:{input_tokens:10,output_tokens:5,total_tokens:15}}}));controller.close();
+      };
+    }}),{status:200,headers:{'Content-Type':'text/event-stream'}});
+  }});
+  const provider=new OpenAIProvider({useResponses:true,openAIClient:client});
+  const adapter=createSdkAdapter({harness:forbiddenHarness().value,model:await provider.getModel('offline-test-model'),workspaceToolsEnabled:false,webSearchEnabled:true,streamWebActivity:true,onEvent:event=>{events.push(event);if(event.type==='tool_started'&&event.tool==='web_search')seenSearch();}});
+  const pending=adapter.start({runId:'streamed-web-activity',prompt:'Find public facts.',team:participants('coordinator')});
+  await searchStarted;
+  assert.equal(adapter.getStatus('streamed-web-activity')?.status,'running');
+  assert.equal(events.some(event=>event.type==='agent_message'),false);
+  finish();const done=await pending;
+  assert.equal(done.status,'completed',JSON.stringify(done));assert.equal(done.output,'Facts.');assert.equal(done.usage.totalTokens,15);assert.equal(transportCalls,1);
+  assert.deepEqual(events.filter(event=>event.tool==='web_search').map(event=>event.type),['tool_started','tool_finished']);
+  assert.equal(events.find(event=>event.type==='agent_message')?.sources?.[0].url,'https://example.com/cited');
+  assert.doesNotMatch(JSON.stringify({events,done}),/HIDDEN_REASONING|PRIVATE_QUERY/);
+  await provider.close();
+});
+
+test('cancelled hosted activity stops the model and cannot emit late tool or answer events', async () => {
+  let started!:()=>void,finish!:()=>void;
+  const entered=new Promise<void>(resolve=>{started=resolve;}),unblock=new Promise<void>(resolve=>{finish=resolve;});
+  const events:SdkEvent[]=[];let signal:AbortSignal|undefined;
+  const adapter=createSdkAdapter({harness:forbiddenHarness().value,workspaceToolsEnabled:false,webSearchEnabled:true,streamWebActivity:true,model:{
+    getResponse:async()=>{throw Error('Nonstream call is forbidden.');},
+    async *getStreamedResponse(request){signal=request.signal;yield {type:'model' as const,event:{type:'response.web_search_call.in_progress',item_id:'cancelled-web'}};started();await unblock;yield {type:'model' as const,event:{type:'response.web_search_call.completed',item_id:'cancelled-web'}};},
+  },onEvent:event=>events.push(event)});
+  const pending=adapter.start({runId:'cancel-web-stream',prompt:'Search.',team:participants('coordinator')});
+  await entered;await adapter.cancel('cancel-web-stream');finish();assert.equal((await pending).status,'cancelled');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(signal?.aborted,true);assert.equal(events.some(event=>event.type==='tool_finished'||event.type==='agent_message'),false);
 });

@@ -107,3 +107,24 @@ Recent context is shortened independently; stored history is preserved. Tool
 calls and results are kept together, and exact action arguments are not cut.
 See [setup](setup.md#keep-runs-small) for configurable limits. Raising a limit
 can increase cost; it does not guarantee task completion.
+
+## A command fails before its approval appears
+
+Check the reported validation error. The command's working directory must be the
+selected workspace or a permitted existing subdirectory. The SDK normalizes a
+trusted in-workspace absolute `cwd` to a relative path; outside directories and
+traversal remain rejected. This is separate from command arguments, which may
+contain an explicitly requested absolute target. Ask for a corrected proposal;
+do not assume the failed command ran.
+
+## Formatting or activity looks different from the reply text
+
+Markdown code is only displayed. Raw HTML is inert, unsafe links are rejected,
+and images are shown as text labels without remote downloads. Source annotations
+that cannot be placed reliably in formatted text remain in the source list.
+Run activity reflects actual recorded events: no event means no claimed progress,
+and a start event alone is not evidence of completion.
+
+The trusted-cwd correction was verified in a live run that reached approval and
+completed `codex --version` with exit code 0. Outside-workspace `cwd` values remain
+rejected; explicit absolute command arguments are a separate policy.
