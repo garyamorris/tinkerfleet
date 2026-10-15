@@ -1,5 +1,5 @@
-import {validateTeam,validateParticipants} from './personas.js';
-import {ConversationStore,CONVERSATION_LIMITS,conversationHistory,defaultParticipants} from './conversations.js';
+import {validateParticipants,validateAvailableBots} from './personas.js';
+import {ConversationStore,CONVERSATION_LIMITS,conversationHistory,defaultParticipants,selectCoordinatorGroup} from './conversations.js';
 import {createServer,type IncomingMessage,type ServerResponse} from 'node:http';
 import {randomUUID} from 'node:crypto';
 import {existsSync,constants} from 'node:fs';
@@ -7,9 +7,10 @@ import {readFileSync,openSync,fstatSync,closeSync} from 'node:fs';
 import path from 'node:path';
 import {DemoEngine} from './demo.js';
 import {createSecurity,HttpError,json,readJson} from './http.js';
+import {canonicalJson} from './approval.js';
 import {ApprovalStore} from './approval.js';
 import {SafeContainerRunner} from './runner.js';
-import {createSdkAdapter,redactSdkText,type SdkEvent,type SdkStatus} from './sdk.js';
+import {createSdkAdapter,redactSdkText,type SdkEvent,type SdkStatus,type SdkStartGroupRequest,type SdkStartedGroup} from './sdk.js';
 import type {AppState,Run,AgentId,Action,Conversation,Persona} from '../shared/types.js';
 
 export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot?:string;production?:boolean;demoDelayMs?:number;statePath?:string;initialRuns?:Run[];serve?:(req:IncomingMessage,res:ServerResponse)=>void|Promise<void>}){
@@ -18,10 +19,11 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
   const root=options.workspaceRoot??process.env.TINKERFLEET_WORKSPACE??path.resolve('examples/tiny-project');
   const store=new ConversationStore(options.statePath,options.initialRuns);
   const conversations=new Map(store.state.conversations.map(chat=>[chat.id,chat]));
-  const demo=new DemoEngine(options.demoDelayMs);
+  const demo=new DemoEngine(options.demoDelayMs,startGroup);
   const liveRuns=new Map<string,Run>();
   for(const run of store.state.runs)(run.mode==='demo'?demo.runs:liveRuns).set(run.id,run);
   const legacyRunIds=new Set<string>();
+  const groupRequests=new Map<string,string>();
   const approvals=new ApprovalStore();
   const snapshotPath=process.env.TINKERFLEET_SNAPSHOT;
   function readManifest(file:string){const fd=openSync(path.resolve(file),constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);try{const stat=fstatSync(fd);if(!stat.isFile()||stat.size>3*1024*1024)throw new Error('Snapshot manifest must be a regular JSON file under 3 MiB.');return JSON.parse(readFileSync(fd,'utf8'));}finally{closeSync(fd);}}
@@ -48,7 +50,7 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
     touch(run);
     if(['run_completed','run_failed','run_cancelled'].includes(e.type))runner.disposeRun(run.id);
   }
-  const sdk=createSdkAdapter({model:model??undefined,liveEnabled:mode==='live',onEvent,harness:{
+  const sdk=createSdkAdapter({model:model??undefined,liveEnabled:mode==='live',onEvent,startGroup,harness:{
     snapshot:id=>runner.snapshot(id),readFile:(id,p)=>runner.readFile(id,p),
     prepare:async(id,action)=>{const record=await runner.prepare(id,action);if(action.kind==='edit')beforeCache.set(record.id,redactSdkText(await runner.readFile(id,action.path).catch(()=>'')));return record;},
     decide:(id,approvalId,digest,approved)=>approvals.decide(id,approvalId,digest,approved),
@@ -62,27 +64,54 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
   function persist(required=false){for(const run of allRuns()){const chat=run.conversationId?conversations.get(run.conversationId):undefined;if(chat)chat.updatedAt=Math.max(chat.updatedAt,run.startedAt,run.endedAt??0,...run.messages.map(m=>m.at),...run.events.map(e=>e.at));}try{store.save([...conversations.values()],allRuns());persistenceError=undefined;}catch{persistenceError='Conversation history could not be saved. Check local storage before continuing.';if(required)throw new HttpError(503,persistenceError);}}
   function state():AppState {return {conversations:[...conversations.values()],...(persistenceError?{persistenceError}:{}),mode,model:mode==='live'?model:null,workspace:path.basename(root),docker,liveReady:mode==='live'&&!!model&&!!process.env.OPENAI_API_KEY&&docker.available,runs:allRuns(),currentRunId,maxTurns:8};}
   function validTitle(value:unknown){if(typeof value!=='string'||!value.trim()||value.trim().length>80||/[\u0000-\u001f\u007f]/.test(value))throw new HttpError(400,'Enter a title of 1–80 characters.');return redactSdkText(value.trim());}
-  async function startRun(value:unknown,chat:Conversation,res:ServerResponse,legacy=false){
+  function startRun(value:unknown,chat:Conversation,res?:ServerResponse,legacy=false,promptAuthor:AgentId|'user'='user',beforePublish?:(run:Run)=>void){
     if(typeof value!=='string'||!value.trim()||value.length>8000)throw new HttpError(400,'Enter a task of 1–8,000 characters.');
     if(starting.has(chat.id)||allRuns().some(run=>run.conversationId===chat.id&&['running','awaiting_approval'].includes(run.status)))throw new HttpError(409,'Finish or stop this conversation’s current run first.');
     if(allRuns().length>=CONVERSATION_LIMITS.runs)throw new HttpError(409,'Saved run limit reached. Existing history was preserved.');
-    persist(true);starting.add(chat.id);
+    if(!beforePublish)persist(true);starting.add(chat.id);
     try{
       const prompt=redactSdkText(value.trim()),team=validateParticipants(chat.participants),history=conversationHistory(chat.id,allRuns());
-      const run:Run=mode==='demo'?demo.start(prompt,team):{id:randomUUID(),prompt,team,mode,status:'running',startedAt:Date.now(),activeAgent:team.find(p=>p.role==='coordinator')?.role??team[0].role,messages:[{id:randomUUID(),author:'user',text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};
+      const run:Run=mode==='demo'?demo.start(prompt,team,{availableBots:chat.availableBots,promptAuthor}):{id:randomUUID(),prompt,team,mode,status:'running',startedAt:Date.now(),activeAgent:team.find(p=>p.role==='coordinator')?.role??team[0].role,messages:[{id:randomUUID(),author:promptAuthor,text:prompt,at:Date.now()}],events:[],approvals:[],artifacts:[],output:''};
       run.conversationId=chat.id;if(mode==='live')liveRuns.set(run.id,run);if(legacy)legacyRunIds.add(run.id);
       currentRunId=run.id;chat.currentRunId=run.id;chat.draft='';touch(run);
-      try{persist(true);}catch(e){if(mode==='demo')demo.cancel(run.id);else{run.status='cancelled';run.activeAgent=null;}throw e;}
-      json(res,201,run);if(mode==='demo')return;
+      try{beforePublish?.(run);persist(true);}catch(e){if(mode==='demo')demo.cancel(run.id);else{run.status='cancelled';run.activeAgent=null;}throw e;}
+      if(res)json(res,201,run);if(mode==='demo')return run;
       const id=run.id;
       void(async()=>{
         const availability=await runner.checkAvailability();docker={available:availability.available,reason:availability.reason??'Ready'};
-        if(run.status==='cancelled')return;
+        if(closing||run.status==='cancelled')return;
         if(!docker.available||!model||!process.env.OPENAI_API_KEY){onEvent({runId:id,type:'run_failed',at:new Date().toISOString(),message:'Live mode needs local Docker with the prepared image, an explicit model, and a server-side API key. Nothing has been sent to a model.'});persist();return;}
-        await runner.snapshot(id);if((run.status as string)==='cancelled')return;
-        sync(await sdk.start({runId:id,prompt,team,history}));persist();
+        await runner.snapshot(id);if(closing||(run.status as string)==='cancelled')return;
+        sync(await sdk.start({runId:id,prompt,team,history,availableBots:chat.availableBots}));persist();
       })().catch(()=>{if(run.status!=='cancelled')onEvent({runId:id,type:'run_failed',at:new Date().toISOString(),message:'The run failed safely. Review local configuration before starting another run.'});persist();});
+      return run;
     }finally{starting.delete(chat.id);}
+  }
+  async function startGroup(runId:string,request:SdkStartGroupRequest):Promise<SdkStartedGroup>{
+    if(closing)throw new Error('The server is shutting down.');
+    const sourceRun=findRun(runId),source=sourceRun?.conversationId?conversations.get(sourceRun.conversationId):undefined;
+    if(!sourceRun||!source)throw new Error('Source conversation not found.');
+    const selected=selectCoordinatorGroup(source,sourceRun,request);
+    const requestKey=canonicalJson(selected);
+    const existing=[...conversations.values()].find(chat=>chat.startedBy?.runId===runId);
+    if(existing){if(groupRequests.get(runId)!==requestKey)throw new Error('This coordinator run already started a different group.');return {conversationId:existing.id,title:existing.title};}
+    if(conversations.size>=CONVERSATION_LIMITS.conversations||allRuns().length>=CONVERSATION_LIMITS.runs)throw new Error('Conversation or run limit reached.');
+    // All validation and publication below are synchronous: cancellation cannot interleave a creation.
+    const now=Date.now(),group:Conversation={id:randomUUID(),title:selected.title,participants:selected.participants,createdAt:now,updatedAt:now,draft:'',currentRunId:null,startedBy:{conversationId:source.id,runId,coordinatorId:source.participants[0].id,brief:selected.brief}};
+    const previousCurrent=currentRunId;conversations.set(group.id,group);
+    let child:Run|undefined,linkId:string|undefined;
+    try{
+      child=startRun(selected.brief,group,undefined,false,'coordinator',run=>{
+        child=run;linkId=randomUUID();sourceRun.messages.push({id:linkId,author:'coordinator',text:`Started ${group.title} with ${group.participants.slice(1).map(p=>p.name).join(', ')}.`,conversationId:group.id,kind:'delegation',at:Date.now()});touch(sourceRun);
+      });
+      // The child and source link have been persisted in the same atomic replacement.
+      groupRequests.set(runId,requestKey);return {conversationId:group.id,title:group.title};
+    }catch(error){
+      child??=group.currentRunId?findRun(group.currentRunId):undefined;
+      if(child){if(child.mode==='demo'){demo.cancel(child.id);demo.runs.delete(child.id);}else{child.status='cancelled';runner.disposeRun(child.id);liveRuns.delete(child.id);}}
+      if(linkId)sourceRun.messages=sourceRun.messages.filter(message=>message.id!==linkId);
+      conversations.delete(group.id);currentRunId=previousCurrent;persist();throw error;
+    }
   }
   async function api(req:IncomingMessage,res:ServerResponse,url:URL){
     const method=req.method??'GET';
@@ -92,11 +121,14 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
     if(url.pathname==='/api/state'&&method==='GET'){persist();json(res,200,state());return;}
     if(url.pathname==='/api/conversations'&&method==='POST'){
       const body=await readJson(req);
-      if(Object.keys(body).some(key=>!['title','participants'].includes(key)))throw new HttpError(400,'Only title and participants are accepted.');
+      if(Object.keys(body).some(key=>!['title','participants','availableBots'].includes(key)))throw new HttpError(400,'Only title, one participant, and an optional coordinator roster are accepted.');
       let participants:Persona[];try{participants=validateParticipants(body.participants);}catch(e){throw new HttpError(400,(e as Error).message);}
+      if(participants.length!==1)throw new HttpError(400,'Start a direct conversation. Only a coordinator can bring bots into a group.');
+      let availableBots:Persona[]|undefined;
+      if(body.availableBots!==undefined){if(participants[0].role!=='coordinator')throw new HttpError(400,'Only a direct coordinator can have an available-bot roster.');try{availableBots=validateAvailableBots(body.availableBots);}catch(e){throw new HttpError(400,(e as Error).message);}if(availableBots.some(bot=>bot.id===participants[0].id))throw new HttpError(400,'Coordinator and specialist IDs must differ.');}
       const title=validTitle(body.title??'New chat');
       if(conversations.size>=CONVERSATION_LIMITS.conversations)throw new HttpError(409,'Conversation limit reached. Existing history was preserved.');
-      const now=Date.now(),chat:Conversation={id:randomUUID(),title,participants,createdAt:now,updatedAt:now,draft:'',currentRunId:null};
+      const now=Date.now(),chat:Conversation={id:randomUUID(),title,participants,...(availableBots?{availableBots}:{}),createdAt:now,updatedAt:now,draft:'',currentRunId:null};
       conversations.set(chat.id,chat);try{persist(true);}catch(e){conversations.delete(chat.id);throw e;}json(res,201,chat);return;
     }
     const conversationRoute=/^\/api\/conversations\/([a-zA-Z0-9_-]+)(?:\/(runs))?$/.exec(url.pathname);
@@ -104,18 +136,26 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
       const chat=conversations.get(conversationRoute[1]);if(!chat)throw new HttpError(404,'Conversation not found.');
       const body=await readJson(req);
       if(conversationRoute[2]){if(Object.keys(body).some(key=>key!=='prompt'))throw new HttpError(400,'Only a prompt is accepted; participants belong to this conversation.');await startRun(body.prompt,chat,res);return;}
-      if(Object.keys(body).some(key=>!['title','draft'].includes(key)))throw new HttpError(400,'Only title and draft can be updated.');
+      if(Object.keys(body).some(key=>!['title','draft','availableBots'].includes(key)))throw new HttpError(400,'Only title, draft, and an initial coordinator roster can be updated.');
       const title=body.title===undefined?chat.title:validTitle(body.title);
       if(body.draft!==undefined&&(typeof body.draft!=='string'||body.draft.length>8000))throw new HttpError(400,'Drafts allow up to 8,000 characters.');
-      const previous={...chat};chat.title=title;if(typeof body.draft==='string')chat.draft=redactSdkText(body.draft);chat.updatedAt=Date.now();
-      try{persist(true);}catch(e){Object.assign(chat,previous);throw e;}json(res,200,chat);return;
+      let availableBots=chat.availableBots;
+      if(body.availableBots!==undefined){
+        if(chat.participants.length!==1||chat.participants[0].role!=='coordinator'||chat.startedBy)throw new HttpError(400,'Only a direct coordinator can have an available-bot roster.');
+        if(starting.has(chat.id)||allRuns().some(run=>run.conversationId===chat.id&&['running','awaiting_approval'].includes(run.status)))throw new HttpError(409,'Finish or stop this conversation before initializing its roster.');
+        try{availableBots=validateAvailableBots(body.availableBots);}catch(e){throw new HttpError(400,(e as Error).message);}
+        if(availableBots.some(bot=>bot.id===chat.participants[0].id))throw new HttpError(400,'Coordinator and specialist IDs must differ.');
+        if(chat.availableBots!==undefined&&canonicalJson(chat.availableBots)!==canonicalJson(availableBots))throw new HttpError(409,'This conversation’s roster is already saved. Start a new conversation to choose a different roster.');
+      }
+      const previous={...chat};chat.title=title;if(typeof body.draft==='string')chat.draft=redactSdkText(body.draft);if(availableBots!==undefined)chat.availableBots=availableBots;chat.updatedAt=Date.now();
+      try{persist(true);}catch(e){Object.assign(chat,previous);if(previous.availableBots===undefined)delete chat.availableBots;throw e;}json(res,200,chat);return;
     }
     if(url.pathname==='/api/runs'&&method==='POST'){
       // Compatibility route: a legacy request receives its own chat, never another chat's context.
-      const body=await readJson(req);let team:Persona[]|undefined;try{team=validateTeam(body.team);}catch(e){throw new HttpError(400,(e as Error).message);}
+      const body=await readJson(req);let team:Persona[];try{team=body.team===undefined?defaultParticipants().slice(0,1):validateParticipants(body.team);}catch(e){throw new HttpError(400,(e as Error).message);}if(team.length!==1)throw new HttpError(400,'Only a coordinator can create a group; legacy starts also require one bot.');
       if(starting.has('legacy')||[...legacyRunIds].some(id=>{const run=findRun(id);return run&&['running','awaiting_approval'].includes(run.status);}))throw new HttpError(409,'Finish or stop the current legacy run before starting another.');
       if(conversations.size>=CONVERSATION_LIMITS.conversations)throw new HttpError(409,'Conversation limit reached.');
-      const now=Date.now(),chat:Conversation={id:randomUUID(),title:typeof body.prompt==='string'?redactSdkText(body.prompt.trim()).slice(0,80)||'New chat':'New chat',participants:team??defaultParticipants(),createdAt:now,updatedAt:now,draft:'',currentRunId:null};
+      const now=Date.now(),chat:Conversation={id:randomUUID(),title:typeof body.prompt==='string'?redactSdkText(body.prompt.trim()).slice(0,80)||'New chat':'New chat',participants:team,createdAt:now,updatedAt:now,draft:'',currentRunId:null};
       starting.add('legacy');conversations.set(chat.id,chat);try{await startRun(body.prompt,chat,res,true);}catch(e){if(!chat.currentRunId)conversations.delete(chat.id);throw e;}finally{starting.delete('legacy');}return;
     }
     const scoped=/^\/api\/conversations\/([a-zA-Z0-9_-]+)\/runs\/([a-zA-Z0-9_-]+)\/(approval|stop)$/.exec(url.pathname);
@@ -139,5 +179,5 @@ export function createApp(options:{port:number;mode?:'demo'|'live';workspaceRoot
   const server=createServer(async(req,res)=>{security.headers(res,!!options.production);try{const url=new URL(req.url??'/',`http://127.0.0.1:${options.port}`);security.check(req,false,url.pathname==='/');if(url.pathname.startsWith('/api/'))await api(req,res,url);else if(options.serve)await options.serve(req,res);else throw new HttpError(404,'Asset not found.');}catch(e){if(res.headersSent){res.end();return;}json(res,e instanceof HttpError?e.status:400,{error:e instanceof HttpError?e.message:'The request could not be completed safely.'});}});
   server.requestTimeout=15_000;server.headersTimeout=10_000;server.keepAliveTimeout=5_000;
   persist(true);const saveTimer=setInterval(()=>persist(),250);saveTimer.unref();
-  return {server,state,async close(){closing=true;clearInterval(saveTimer);try{for(const id of demo.runs.keys())demo.cancel(id);await Promise.all([...liveRuns.keys()].map(id=>sdk.cancel(id)));for(const id of liveRuns.keys())runner.disposeRun(id);const cleanup=await runner.shutdown();persist(true);return cleanup;}finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}}};
+  return {server,state,async close(){closing=true;clearInterval(saveTimer);for(const run of liveRuns.values())if(['running','awaiting_approval'].includes(run.status)){run.status='cancelled';run.activeAgent=null;run.endedAt=Date.now();for(const approval of run.approvals)if(approval.status==='pending')approval.status='denied';touch(run);}try{for(const id of demo.runs.keys())demo.cancel(id);await Promise.all([...liveRuns.keys()].map(id=>sdk.cancel(id)));for(const id of liveRuns.keys())runner.disposeRun(id);const cleanup=await runner.shutdown();persist(true);return cleanup;}finally{await new Promise<void>(resolve=>server.close(()=>resolve()));}}};
 }

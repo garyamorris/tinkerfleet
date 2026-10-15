@@ -47,3 +47,38 @@ test('a selected group works without introducing a coordinator or an absent scou
   assert.ok(r.events.every(e=>['maker','checker'].includes(e.agent)));
  }finally{demo.dispose();}
 });
+
+test('primary demo starts a specialist group from its roster without inventing direct-chat participants',async()=>{
+ const {customTeam}=await import('./personas.fixture.js');const team=customTeam();const requests:{runId:string;botIds:string[];brief:string}[]=[];
+ const demo=new DemoEngine(1,async(runId,request)=>{requests.push({runId,...request});return {conversationId:'child-group',title:request.title};});
+ try{
+  const parent=demo.start('Help me fix the failing tests in tiny-project.',team.filter(p=>p.role==='coordinator'),{availableBots:team.filter(p=>p.role!=='coordinator')});
+  await until(()=>parent.status==='completed');assert.equal(requests.length,1);assert.equal(requests[0].runId,parent.id);
+  assert.deepEqual(requests[0].botIds,team.filter(p=>p.role!=='coordinator').map(p=>p.id));
+  assert.ok(parent.messages.every(m=>m.author==='user'||m.author==='coordinator'));assert.equal(parent.approvals.length,0);
+  const group=demo.start(requests[0].brief,team,{promptAuthor:'coordinator'});
+  await until(()=>group.status==='awaiting_approval');assert.equal(group.messages[0].author,'coordinator');assert.equal(requests.length,1);
+  assert.equal(parent.status,'completed');assert.equal(parent.artifacts.length,0);
+ }finally{demo.dispose();}
+});
+
+test('primary greetings and explicit direct-only requests do not start a group',async()=>{
+ const {customTeam}=await import('./personas.fixture.js');const team=customTeam();let created=0;
+ const demo=new DemoEngine(1,async()=>{created++;return {conversationId:'unexpected',title:'Unexpected'};});
+ try{for(const prompt of ['Hello','Explain the test; do not start a group.']){
+  const run=demo.start(prompt,team.filter(p=>p.role==='coordinator'),{availableBots:team.filter(p=>p.role!=='coordinator')});
+  await until(()=>run.status==='completed');assert.equal(run.approvals.length,0);
+ }assert.equal(created,0);}finally{demo.dispose();}
+});
+
+test('stopping a primary demo before its decision cannot create a group',async()=>{
+ const {customTeam}=await import('./personas.fixture.js');const team=customTeam();let created=0;
+ const demo=new DemoEngine(2,async()=>{created++;return {conversationId:'unexpected',title:'Unexpected'};});
+ try{const run=demo.start('Fix the tests',team.filter(p=>p.role==='coordinator'),{availableBots:team.filter(p=>p.role!=='coordinator')});demo.cancel(run.id);await delay(15);assert.equal(created,0);assert.equal(run.status,'cancelled');}finally{demo.dispose();}
+});
+
+test('group creation failure does not claim success or request an action in the primary chat',async()=>{
+ const {customTeam}=await import('./personas.fixture.js');const team=customTeam();
+ const demo=new DemoEngine(1,async()=>{throw new Error('private failure detail');});
+ try{const run=demo.start('Fix the tests',team.filter(p=>p.role==='coordinator'),{availableBots:team.filter(p=>p.role!=='coordinator')});await until(()=>run.status==='failed');assert.equal(run.approvals.length,0);assert.doesNotMatch(JSON.stringify(run),/private failure detail/);}finally{demo.dispose();}
+});

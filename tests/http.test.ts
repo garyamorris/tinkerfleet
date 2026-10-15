@@ -19,7 +19,7 @@ test('local API authenticates same-origin sessions and exact single-use approval
  assert.equal((await fetch(origin+'/api/runs',{method:'POST',headers:{...auth,'X-Tinkerfleet-CSRF':'bad'},body:'{"prompt":"Fix"}'})).status,403);
  assert.equal((await fetch(origin+'/api/runs',{method:'POST',headers:{...auth,'Content-Type':'text/plain'},body:'Fix'})).status,415);
  assert.equal((await fetch(origin+'/api/runs',{method:'POST',headers:auth,body:JSON.stringify({prompt:'x'.repeat(40000)})})).status,413);
- const results=await Promise.all([1,2].map(()=>fetch(origin+'/api/runs',{method:'POST',headers:auth,body:'{"prompt":"Fix the tiny project"}'})));assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);
+ const results=await Promise.all([1,2].map(()=>fetch(origin+'/api/runs',{method:'POST',headers:auth,body:JSON.stringify({prompt:'Fix the tiny project',team:customTeam().slice(2,3)})})));assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);
  const run=await results.find(r=>r.status===201)!.json() as {id:string};
  let state:any;for(let i=0;i<30;i++){state=await (await fetch(origin+'/api/state',{headers:auth})).json();if(state.runs[0].approvals.length)break;await delay(5);}
  const a=state.runs[0].approvals[0];const url=origin+`/api/runs/${run.id}/approval`;
@@ -66,7 +66,7 @@ test('HTTP validates profiles and retains historical team assignments',async()=>
  const start=(team:unknown)=>fetch(base+'/api/runs',{method:'POST',headers,body:JSON.stringify({prompt:'Custom fixture',team})});
  for(const team of [[],null,customTeam().slice(0,3),customTeam().map(p=>({...p,role:'maker'})),customTeam().map(p=>({...p,purpose:'sk-'+ 'a'.repeat(40)}))])assert.equal((await start(team)).status,400);
  assert.equal(app.state().runs.length,0);
- const team=customTeam(),response=await start(team);assert.equal(response.status,201);const first=await response.json() as {id:string;team:unknown};assert.deepEqual(first.team,team);
+ const team=customTeam().slice(0,1),response=await start(team);assert.equal(response.status,201);const first=await response.json() as {id:string;team:unknown};assert.deepEqual(first.team,team);
  await fetch(base+`/api/runs/${first.id}/stop`,{method:'POST',headers,body:'{}'});
  team[0].name='New Captain';assert.equal((await start(team)).status,201);
  const state=await (await fetch(base+'/api/state',{headers})).json() as {runs:{team:{name:string}[]}[]};
@@ -136,4 +136,99 @@ test('a history save failure during shutdown still closes the local listener',as
  ConversationStore.prototype.save=function(){throw new Error('Simulated storage failure');};
  await assert.rejects(app.close(),/could not be saved/);assert.equal(app.server.listening,false);
  }finally{ConversationStore.prototype.save=original;if(app.server.listening)await app.close();}
+});
+
+test('clients open direct chats; only a coordinator creates a linked group with brief-only context',async()=>{
+ const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');const directory=await mkdtemp(path.join(tmpdir(),'tinkerfleet-primary-http-'));
+ const port=45325,base=`http://127.0.0.1:${port}`,statePath=path.join(directory,'state.json');let app=createApp({port,mode:'demo',demoDelayMs:2,statePath});let headers:Record<string,string>={};
+ const listen=()=>new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ const auth=async()=>{const response=await fetch(base+'/api/session');const {csrf}=await response.json() as {csrf:string};headers={Cookie:response.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)});
+ const state=async()=>await(await fetch(base+'/api/state',{headers})).json() as import('../src/shared/types.js').AppState;
+ try{
+ await listen();await auth();const profiles=customTeam();
+ assert.equal((await post('/api/conversations',{participants:profiles})).status,400);assert.equal((await post('/api/runs',{prompt:'Bypass',team:profiles})).status,400);
+ assert.equal((await post('/api/conversations',{participants:[profiles[1]],availableBots:profiles.slice(2)})).status,400);
+ assert.equal((await post('/api/conversations',{participants:[profiles[0]],availableBots:[profiles[0]]})).status,400);
+ assert.equal((await post('/api/conversations',{participants:[profiles[0]],startedBy:{runId:'forged'}})).status,400);
+ const response=await post('/api/conversations',{title:'Private primary',participants:[profiles[0]]});assert.equal(response.status,201);const source=await response.json() as {id:string};
+ const prefix=`/api/conversations/${source.id}`;
+ const privateResponse=await post(prefix+'/runs',{prompt:'Hello PRIVATE_HISTORY_SENTINEL'});assert.equal(privateResponse.status,201);
+ let snapshot=await state();for(let i=0;i<100&&snapshot.runs[0].status==='running';i++){await delay(3);snapshot=await state();}assert.equal(snapshot.conversations.length,1);
+ assert.equal(snapshot.conversations[0].availableBots,undefined);
+ const oldRunId=snapshot.runs[0].id;
+ assert.equal((await post(prefix,{availableBots:profiles.slice(1)})).status,200);
+ assert.equal((await post(prefix,{availableBots:profiles.slice(1)})).status,200);
+ assert.equal((await post(prefix,{availableBots:[profiles[1]]})).status,409);
+ assert.match((await state()).runs.find(r=>r.id===oldRunId)!.messages[0].text,/PRIVATE_HISTORY_SENTINEL/);
+ const sourceResponse=await post(prefix+'/runs',{prompt:'Please fix the failing tests'});assert.equal(sourceResponse.status,201);const sourceRun=await sourceResponse.json() as {id:string};
+ for(let i=0;i<100&&!snapshot.conversations.some(c=>c.startedBy);i++){await delay(3);snapshot=await state();}
+ const group=snapshot.conversations.find(c=>c.startedBy)!;assert.ok(group);assert.equal(group.startedBy!.conversationId,source.id);assert.equal(group.startedBy!.runId,sourceRun.id);assert.equal(group.startedBy!.coordinatorId,profiles[0].id);assert.equal(group.availableBots,undefined);
+ assert.deepEqual(group.participants.map(p=>p.id),profiles.map(p=>p.id));
+ const child=snapshot.runs.find(r=>r.conversationId===group.id)!;assert.equal(child.messages[0].author,'coordinator');assert.equal(child.messages[0].text,group.startedBy!.brief);assert.doesNotMatch(JSON.stringify(child),/PRIVATE_HISTORY_SENTINEL/);
+ const parent=snapshot.runs.find(r=>r.id===sourceRun.id)!;assert.equal(parent.messages.filter(m=>m.conversationId===group.id).length,1);
+ assert.equal((await post(prefix+'/start-group',{title:'Forged',brief:'No',botIds:[profiles[1].id]})).status,404);
+ await delay(15);snapshot=await state();assert.equal(snapshot.conversations.filter(c=>c.startedBy?.runId===sourceRun.id).length,1);assert.equal(snapshot.conversations.filter(c=>c.startedBy?.conversationId===group.id).length,0);
+ await app.close();app=createApp({port,mode:'demo',statePath});await listen();await auth();snapshot=await state();assert.equal(snapshot.conversations.find(c=>c.id===group.id)!.startedBy!.runId,sourceRun.id);assert.ok(snapshot.runs.find(r=>r.id===sourceRun.id)!.messages.some(m=>m.conversationId===group.id));
+ }finally{if(app.server.listening)await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+
+test('initial coordinator roster cannot be configured during an active run or on specialist chats',async()=>{
+ const port=45326,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'demo',demoDelayMs:60_000});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const response=await fetch(base+'/api/session'),{csrf}=await response.json() as {csrf:string};const headers={Cookie:response.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)}),profiles=customTeam();
+ const created=await post('/api/conversations',{participants:[profiles[0]]}),source=await created.json() as {id:string};const prefix=`/api/conversations/${source.id}`;
+ const runResponse=await post(prefix+'/runs',{prompt:'Hello'}),run=await runResponse.json() as {id:string};
+ assert.equal((await post(prefix,{availableBots:profiles.slice(1)})).status,409);assert.equal(app.state().conversations[0].availableBots,undefined);
+ await post(prefix+`/runs/${run.id}/stop`,{});assert.equal((await post(prefix,{availableBots:profiles.slice(1)})).status,200);
+ const specialistResponse=await post('/api/conversations',{participants:[profiles[1]]}),specialist=await specialistResponse.json() as {id:string};assert.equal((await post(`/api/conversations/${specialist.id}`,{availableBots:[profiles[2]]})).status,400);
+ }finally{await app.close();}
+});
+
+
+test('shutdown cancels live runs waiting on preflight before a late result can start the SDK',async()=>{
+ const {SafeContainerRunner}=await import('../src/server/runner.js');
+ const originalProbe=SafeContainerRunner.prototype.checkAvailability,originalSnapshot=SafeContainerRunner.prototype.snapshot;
+ let release!:()=>void,probeSeen!:()=>void;const entered=new Promise<void>(resolve=>{probeSeen=resolve;});
+ let snapshots=0;
+ SafeContainerRunner.prototype.checkAvailability=async()=>{probeSeen();await new Promise<void>(resolve=>{release=resolve;});return {available:true,image:'sha256:'+ 'a'.repeat(64)};};
+ SafeContainerRunner.prototype.snapshot=async function(id){snapshots++;return originalSnapshot.call(this,id);};
+ const port=45327,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'live'});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const response=await fetch(base+'/api/runs',{method:'POST',headers,body:JSON.stringify({prompt:'Inspect fixture'})});assert.equal(response.status,201);await entered;
+ const shutdown=app.close();assert.equal(app.state().runs[0].status,'cancelled');assert.equal(app.state().runs[0].activeAgent,null);assert.ok(app.state().runs[0].endedAt);
+ release();await shutdown;await delay(5);
+ assert.equal(snapshots,0);assert.equal(app.state().runs[0].status,'cancelled');assert.equal(app.server.listening,false);
+ assert.ok(!app.state().runs[0].events.some(e=>e.title==='Run started'));
+ }finally{release?.();SafeContainerRunner.prototype.checkAvailability=originalProbe;SafeContainerRunner.prototype.snapshot=originalSnapshot;if(app.server.listening)await app.close();}
+});
+
+
+test('failed group publication cannot leave a durable child without its source link',async()=>{
+ const {ConversationStore}=await import('../src/server/conversations.js');const {mkdtemp,readFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
+ const directory=await mkdtemp(path.join(tmpdir(),'tinkerfleet-atomic-group-')),statePath=path.join(directory,'state.json');
+ const original=ConversationStore.prototype.save;let diskFailed=false,groupWrites=0,stagedTogether=false;
+ const port=45328,base=`http://127.0.0.1:${port}`,app=createApp({port,mode:'demo',demoDelayMs:2,statePath});
+ await new Promise<void>(resolve=>app.server.listen(port,'127.0.0.1',resolve));
+ try{
+ const session=await fetch(base+'/api/session'),{csrf}=await session.json() as {csrf:string};const headers={Cookie:session.headers.get('set-cookie')!.split(';')[0],Origin:base,'X-Tinkerfleet-CSRF':csrf,'Content-Type':'application/json'};
+ const post=(url:string,body:unknown)=>fetch(base+url,{method:'POST',headers,body:JSON.stringify(body)}),profiles=customTeam();
+ const response=await post('/api/conversations',{participants:[profiles[0]],availableBots:profiles.slice(1)}),source=await response.json() as {id:string};
+ ConversationStore.prototype.save=function(chats,runs){
+  const group=chats.find(c=>c.startedBy);
+  if(group){groupWrites++;stagedTogether=!!runs.find(r=>r.conversationId===group.id)&&!!runs.find(r=>r.id===group.startedBy!.runId)?.messages.some(m=>m.conversationId===group.id);diskFailed=true;}
+  if(diskFailed)throw new Error('Simulated disk full, including rollback');
+  return original.call(this,chats,runs);
+ };
+ assert.equal((await post(`/api/conversations/${source.id}/runs`,{prompt:'Fix failing tests with a team'})).status,201);
+ for(let i=0;i<100&&app.state().runs[0].status==='running';i++)await delay(3);
+ assert.equal(app.state().runs[0].status,'failed');assert.equal(groupWrites,1);assert.equal(stagedTogether,true);
+ assert.equal(app.state().conversations.length,1);assert.equal(app.state().runs.length,1);assert.ok(app.state().runs[0].messages.every(m=>!m.conversationId));
+ const saved=JSON.parse(await readFile(statePath,'utf8'));assert.equal(saved.conversations.length,1);assert.equal(saved.runs.length,1);assert.ok(saved.runs[0].messages.every((m:{conversationId?:string})=>!m.conversationId));
+ }finally{ConversationStore.prototype.save=original;await app.close();await rm(directory,{recursive:true,force:true});}
 });

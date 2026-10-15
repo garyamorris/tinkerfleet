@@ -106,3 +106,12 @@ process can access its private state directory and that the store is within its
 limits. A corrupt store stops startup rather than silently replacing history.
 Preserve a private backup before attempting repair; do not publish its contents.
 The store is limited to 100 conversations, 200 runs, and 8 MiB of serialized data.
+
+## An older primary chat has no specialist roster
+
+Older direct Coordinator chats may predate the available-bot roster. The app can
+initialize that roster once while the chat is idle. The captured roster is then
+fixed; changing the bot library does not replace it. Create a new direct
+Coordinator conversation when you need a different set of available specialists.
+Existing group histories stay accessible, but user conversation creation remains
+direct-only.

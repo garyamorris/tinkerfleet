@@ -44,3 +44,36 @@ test('corrupt, oversized, linked, or cross-owned saved histories fail closed wit
  for(const contents of [JSON.stringify({version:1,conversations:[chat()],runs:[unbound]}),JSON.stringify({version:1,conversations:[chat()],runs:[foreignTeam]}),'{broken',JSON.stringify({version:1,conversations:[chat()],runs:[run('run-a','foreign')]}),' '.repeat(CONVERSATION_LIMITS.bytes+1)]){writeFileSync(file,contents);assert.throws(()=>new ConversationStore(file),/left unchanged/);assert.equal(readFileSync(file,'utf8'),contents);}
  const alias=path.join(directory,'alias.json');symlinkSync(file,alias);assert.throws(()=>new ConversationStore(alias),/left unchanged/);
 });
+
+test('coordinator group selection is confined to a frozen specialist roster and active direct source',async()=>{
+ const {validateAvailableBots}=await import('../src/server/personas.js');const {selectCoordinatorGroup}=await import('../src/server/conversations.js');
+ const profiles=customTeam(),alternate={...profiles[1],id:'alternate-scout',name:'Alternative'};
+ const source:Conversation={...chat('source'),participants:[profiles[0]],availableBots:validateAvailableBots([...profiles.slice(1),alternate]),currentRunId:'origin-run'};
+ const origin:Run={...run('origin-run','source'),team:[profiles[0]],status:'running'};
+ const request={title:'Focused group',brief:'Share only this task.',botIds:[profiles[1].id,profiles[2].id]};
+ const selected=selectCoordinatorGroup(source,origin,request);assert.deepEqual(selected.participants.map(p=>p.role),['coordinator','scout','maker']);assert.ok(Object.isFrozen(selected.participants));
+ for(const invalid of [{...request,botIds:[]},{...request,botIds:['unlisted']},{...request,botIds:[profiles[1].id,profiles[1].id]},{...request,botIds:[profiles[1].id,alternate.id]},{...request,botIds:[profiles[0].id]},{...request,title:'x'.repeat(81)},{...request,brief:'x'.repeat(8001)}])assert.throws(()=>selectCoordinatorGroup(source,origin,invalid));
+ assert.throws(()=>selectCoordinatorGroup(source,{...origin,status:'cancelled'},request));assert.throws(()=>selectCoordinatorGroup({...source,participants:[profiles[1]]},origin,request));
+ const secret='sk-'+ 'a'.repeat(40);assert.equal(selectCoordinatorGroup(source,origin,{...request,brief:secret}).brief,'[REDACTED]');
+ assert.throws(()=>validateAvailableBots([profiles[0]]));assert.throws(()=>validateAvailableBots([profiles[1],profiles[1]]));assert.throws(()=>validateAvailableBots(Array.from({length:33},(_,i)=>({...profiles[1],id:`bot-${i}`}))));
+ assert.equal(validateAvailableBots([profiles[1],alternate]).length,2);
+});
+
+test('group provenance and source links persist; forged origins, rosters, and duplicate creations are rejected',t=>{
+ const directory=mkdtempSync(path.join(tmpdir(),'tinkerfleet-group-state-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));const file=path.join(directory,'state.json');
+ const profiles=customTeam(),brief='Only a task brief.';
+ const source:Conversation={...chat('source'),participants:[profiles[0]],availableBots:profiles.slice(1),currentRunId:'origin-run'};
+ const origin:Run={...run('origin-run','source'),team:[profiles[0]],messages:[{id:'source-message',author:'coordinator',text:'Started group',conversationId:'child',at:2}]};
+ const group:Conversation={...chat('child'),participants:profiles,startedBy:{conversationId:'source',runId:'origin-run',coordinatorId:profiles[0].id,brief},currentRunId:'child-run'};
+ const child:Run={...run('child-run','child'),team:profiles,prompt:brief,messages:[{id:'brief',author:'coordinator',text:brief,at:2}]};
+ const state={version:1 as const,conversations:[source,group],runs:[origin,child]};
+ const store=new ConversationStore(file);store.save(state.conversations,state.runs);const restored=new ConversationStore(file).state;assert.deepEqual(restored,state);
+ const invalids=[
+  {...state,conversations:[source,{...group,startedBy:{...group.startedBy!,runId:'child-run'}}]},
+  {...state,conversations:[{...source,availableBots:[]},group]},
+  {...state,conversations:[source,{...group,availableBots:profiles.slice(1)}]},
+  {...state,conversations:[source,group,{...group,id:'duplicate-child',currentRunId:null}]},
+  {...state,runs:[{...origin,messages:[{...origin.messages[0],conversationId:'source'}]},child]},
+ ];
+ for(const invalid of invalids){writeFileSync(file,JSON.stringify(invalid));assert.throws(()=>new ConversationStore(file),/left unchanged/);}
+});

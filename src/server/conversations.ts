@@ -3,7 +3,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {canonicalJson} from './approval.js';
-import {validateParticipants} from './personas.js';
+import {validateParticipants,validateAvailableBots} from './personas.js';
 import {redactSdkText} from './safety.js';
 import type {Conversation,Message,Persona,Run} from '../shared/types.js';
 
@@ -12,7 +12,7 @@ const id=z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),time=z.number().finite().non
 const text=(max:number)=>z.string().max(max).transform(redactSdkText);
 const role=z.enum(['coordinator','scout','maker','checker']);
 const participants=z.unknown().transform(value=>validateParticipants(value));
-const message=z.object({id,author:z.enum(['user','coordinator','scout','maker','checker']),text:text(256000),at:time,kind:z.enum(['text','delegation','result']).optional()});
+const message=z.object({id,conversationId:id.optional(),author:z.enum(['user','coordinator','scout','maker','checker']),text:text(256000),at:time,kind:z.enum(['text','delegation','result']).optional()});
 const action=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('edit'),path:text(512),content:text(256000)}),
  z.object({kind:z.literal('command'),executable:z.enum(['node','npm','ls','cat']),args:z.array(text(4096)).max(32),cwd:text(512).optional()}),
@@ -21,7 +21,7 @@ const runSchema=z.object({id,conversationId:id.optional(),team:participants.opti
  messages:z.array(message).max(1024),events:z.array(z.object({id,at:time,agent:role,kind:z.enum(['message','delegation','tool','approval','result','error']),title:text(4096),detail:text(256000).optional()})).max(2048),
  approvals:z.array(z.object({id,digest:z.string().max(128),agent:role,title:text(4096),description:text(4096),action,status:z.enum(['pending','approved','denied']),before:text(256000).optional()})).max(256),
  artifacts:z.array(z.object({path:text(512),before:text(256000),after:text(256000),simulated:z.boolean()})).max(256),output:text(256000),activeAgent:role.nullable(),startedAt:time,endedAt:time.optional()});
-const conversationSchema=z.object({id,title:text(80).refine(v=>!!v.trim()),participants,createdAt:time,updatedAt:time,draft:text(8000),currentRunId:id.nullable()});
+const conversationSchema=z.object({id,availableBots:z.unknown().transform(value=>validateAvailableBots(value)).optional(),startedBy:z.object({conversationId:id,runId:id,coordinatorId:id,brief:text(8000)}).optional(),title:text(80).refine(v=>!!v.trim()),participants,createdAt:time,updatedAt:time,draft:text(8000),currentRunId:id.nullable()});
 export interface ConversationState {version:1;conversations:Conversation[];runs:Run[]}
 export function defaultParticipants():Persona[]{return validateParticipants(['coordinator','scout','maker','checker'].map(role=>({id:`default-${role}`,role,name:role[0].toUpperCase()+role.slice(1),purpose:`Follow the ${role} role in the coding workflow.`,color:'#567a75',shape:'orbit'})));}
 
@@ -44,7 +44,21 @@ function normalize(input:unknown,restart:boolean):ConversationState {
    for(const approval of run.approvals)if(approval.status==='pending'||(active&&approval.status==='approved'))approval.status='denied';
   }
  }
- for(const chat of conversations)if(chat.currentRunId&&!runs.some(run=>run.id===chat.currentRunId&&run.conversationId===chat.id))throw new Error('Conversation references a foreign run.');
+ const origins=new Set<string>();
+ for(const chat of conversations){
+  if(chat.currentRunId&&!runs.some(run=>run.id===chat.currentRunId&&run.conversationId===chat.id))throw new Error('Conversation references a foreign run.');
+  if(chat.availableBots!==undefined&&(chat.participants.length!==1||chat.participants[0].role!=='coordinator'||chat.startedBy))throw new Error('Only direct coordinators have a specialist roster.');
+  if(chat.availableBots?.some(bot=>bot.id===chat.participants[0].id))throw new Error('Roster identity conflicts with the coordinator.');
+  if(chat.startedBy){
+   const origin=chat.startedBy,source=conversations.find(c=>c.id===origin.conversationId),sourceRun=runs.find(r=>r.id===origin.runId);
+   if(!source||source.startedBy||source.participants.length!==1||source.participants[0].role!=='coordinator'||source.participants[0].id!==origin.coordinatorId||sourceRun?.conversationId!==source.id||origins.has(origin.runId)||chat.id===source.id)throw new Error('Invalid group provenance.');
+   origins.add(origin.runId);
+   if(chat.participants.length<2||chat.participants[0].role!=='coordinator'||canonicalJson(chat.participants[0])!==canonicalJson(source.participants[0]))throw new Error('Group coordinator does not match its source.');
+   for(const bot of chat.participants.slice(1))if(!source.availableBots?.some(candidate=>canonicalJson(candidate)===canonicalJson(bot)))throw new Error('Group specialist is not in its source roster.');
+  }
+ }
+ for(const run of runs)for(const message of run.messages)if(message.conversationId){const target=conversations.find(c=>c.id===message.conversationId);if(message.author!=='coordinator'||target?.startedBy?.runId!==run.id||target.startedBy.conversationId!==run.conversationId)throw new Error('Invalid conversation link.');}
+
  return {version:1,conversations,runs};
 }
 
@@ -81,4 +95,16 @@ export class ConversationStore {
   try{fd=openSync(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);writeFileSync(fd,serialized);fsyncSync(fd);closeSync(fd);fd=undefined;renameSync(temporary,this.statePath);this.lastSaved=serialized;}
   finally{if(fd!==undefined)closeSync(fd);try{unlinkSync(temporary);}catch{}}
  }
+}
+
+
+export function selectCoordinatorGroup(source:Conversation,run:Run,input:unknown):{title:string;brief:string;participants:Persona[]}{
+ if(source.startedBy||source.participants.length!==1||source.participants[0].role!=='coordinator'||run.conversationId!==source.id||run.status!=='running'||canonicalJson(run.team)!==canonicalJson(source.participants))throw new Error('Only an active direct coordinator can start a group.');
+ const request=z.object({title:z.string().trim().min(1).max(80).refine(value=>!/[\u0000-\u001f\u007f]/.test(value)),brief:z.string().trim().min(1).max(8000),botIds:z.array(id).min(1).max(3)}).strict().parse(input);
+ if(new Set(request.botIds).size!==request.botIds.length)throw new Error('Select distinct available specialists.');
+ const selected=request.botIds.map(id=>{const bot=source.availableBots?.find(p=>p.id===id);if(!bot)throw new Error('Requested specialist is not available.');return bot;});
+ const participants=validateParticipants([source.participants[0],...selected]);
+ const title=redactSdkText(request.title),brief=redactSdkText(request.brief);
+ if(title.length>80||brief.length>8000)throw new Error('Redacted group metadata exceeds its limit.');
+ return {title,brief,participants};
 }

@@ -29,3 +29,11 @@ export function validateParticipants(input:unknown):Persona[] {
  });
  return Object.freeze(team) as unknown as Persona[];
 }
+
+/** A direct coordinator's frozen roster may contain alternatives for the same specialist role. */
+export function validateAvailableBots(input:unknown):Persona[]{
+ if(!Array.isArray(input)||input.length>32)throw new Error('Choose up to 32 available specialist bots.');
+ const ids=new Set<string>();
+ const profiles=input.map(value=>{const profile=validateParticipants([value])[0];if(profile.role==='coordinator'||ids.has(profile.id))throw new Error('Available bots must be specialists with unique IDs.');ids.add(profile.id);return profile;});
+ return Object.freeze(profiles) as unknown as Persona[];
+}

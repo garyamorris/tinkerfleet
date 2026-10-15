@@ -15,14 +15,15 @@ See [the build handover](HANDOVER.txt) for verified checks and remaining integra
 
 ## A look inside
 
-![Named conversations in Tinkerfleet](docs/screenshots/desktop-conversations.jpg)
+![Primary conversation with a Coordinator-created group](docs/screenshots/primary-conversation.jpg)
 
-Actual no-key demo captures: [group conversation](docs/screenshots/group-conversation.jpg),
-[new conversation](docs/screenshots/new-conversation.jpg),
-[mobile conversations](docs/screenshots/mobile-conversations.jpg), and
-[mobile approval](docs/screenshots/mobile-approval.jpg).
-The mobile checks used a 390 × 844 viewport. Demo completion and output are
-simulated; these screenshots do not show live model or Docker execution.
+Actual no-key demo captures: [Coordinator-created group](docs/screenshots/coordinator-group.jpg),
+[talk to a bot](docs/screenshots/talk-to-bot.jpg),
+[mobile primary chat](docs/screenshots/mobile-primary.jpg), and
+[mobile group](docs/screenshots/mobile-coordinator-group.jpg).
+Desktop captures used a 1291 × 770 viewport at 2× screenshot scale; mobile
+captures used 390 × 844. Results are simulated; these captures do not show live
+model or Docker execution.
 
 ## Try it without a key
 
@@ -38,11 +39,13 @@ scripted teaching simulation. It makes **no model calls**, spends **no API token
 and does **not run Docker commands**. An approval in the demo advances the scripted
 example; its test output is explicitly simulated, not evidence of execution.
 
-Create a direct conversation with one bot, or a group with the roles you need.
-Try the tiny-project walkthrough, inspect an edit proposal, deny it once, then
-start again and approve it. Open **Details** to inspect activity, output, and
-changes for the selected conversation. The demo follows a scripted scenario
-adapted to its participants; it does not answer arbitrary tasks.
+Tell the primary Coordinator what you want to accomplish. For the demo, ask it
+to fix the failing tests in tiny-project: the scripted Coordinator starts a group
+for that known fixture. A simple greeting stays in the primary conversation.
+Visit the created group to review the edit and command proposals. Deny one to
+see that branch, or approve each exact action to finish the simulated walkthrough.
+You can also visit individual bots directly. There is no manual group-start
+chooser; the Coordinator selects specialists and creates the group.
 
 The included [practice project](examples/tiny-project) contains a deliberate
 addition bug. Its own tests fail until you fix it; this is separate from the
@@ -91,11 +94,12 @@ Scout, Maker, and Checker are their default profile names and SDK role identitie
 Builder and Reviewer both have approval-gated edit and command tools; their
 instructions give them different focuses.
 
-In live mode, a direct chat invokes the selected SDK agent. A group that includes
-a Coordinator lets it delegate only to the selected specialists via
-`agent.asTool(...)`. A group without a Coordinator invokes its selected agents
-sequentially with a shared budget. The coordinator is optional; no unselected bot
-is silently added. Tools, validation, approvals, and execution remain server-owned.
+In live mode, a direct chat invokes the selected SDK agent. Only a direct
+Coordinator has `start_group_conversation`: it can choose one to three
+specialists from its captured roster and start one group per run. The group
+includes that Coordinator and delegates only to its selected specialists through
+`agent.asTool(...)`. Groups cannot create more groups. Tools, validation,
+approvals, and execution remain server-owned.
 
 ## Bots, conversations, and runs
 
@@ -106,8 +110,9 @@ is silently added. Tools, validation, approvals, and execution remain server-own
 | **Run** | One submitted task within a conversation, with its own approvals, results, and file snapshot |
 
 Create multiple independent conversations with the same bot when you want
-separate topics. Groups contain two to four selected bots, one per
-role: Coordinator, Researcher (`scout`), Builder (`maker`), Reviewer (`checker`).
+separate topics. New groups are Coordinator-created: the Coordinator plus one
+to three specialists with distinct roles—Researcher (`scout`), Builder (`maker`),
+and Reviewer (`checker`). Existing groups and histories remain accessible.
 A persona's purpose guides its live SDK instructions within its fixed role; it
 cannot add tools or bypass approvals. Appearance remains cosmetic. Demo mode
 stays scripted regardless of a profile's purpose.
@@ -117,6 +122,13 @@ active chat. Local conversation history survives server restart, but unfinished
 work is cancelled and its pending approvals are denied. Each new run receives a
 fresh workspace snapshot, even when continuing the same chat. Conversation
 history supplies context, not a shared filesystem or durable execution authority.
+
+The Coordinator shares a bounded task brief with a new group, not the private
+source chat's history. That group starts an independent run attributed to the
+Coordinator. The source and group are separate SDK runs with separate per-run
+budgets, so one user turn can consume two run budgets. Stopping the primary does
+not stop a group already created; stop that group explicitly. These limits are
+not an overall monetary cap. This is explicit delegation, not cross-chat memory.
 
 Creating a conversation captures its participant profiles. Library edits apply
 to new conversations, leaving existing chats and runs unchanged. Profile

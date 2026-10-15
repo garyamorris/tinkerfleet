@@ -27,8 +27,11 @@ Construct the real fleet factory and inspect the coordinator's name,
 instructions, tools, and absence of handoffs. Configuration is not execution:
 creating an SDK `Agent` does not make an API request.
 
-The coordinator owns the task and exposes three named delegation tools. It can
-assemble the specialists' findings instead of turning the conversation over to
+This lesson inspects the full-fleet factory, where the coordinator exposes three
+named delegation tools. In the browser workflow, start by speaking to the primary
+Coordinator; it may create a group with selected specialists. A direct
+Coordinator's group-creation tool and a group's specialist tools serve different
+steps. The coordinator owns the task and can assemble the specialists' findings instead of turning the conversation over to
 whichever role answered last.
 
 **Exercise:** find the sentence that says the coordinator retains responsibility.

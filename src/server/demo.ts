@@ -1,4 +1,4 @@
-import {validateParticipants} from './personas.js';
+import {validateParticipants,validateAvailableBots} from './personas.js';
 import {randomUUID,createHash} from 'node:crypto';
 import type {Persona,Run,AgentId,Action,FleetEvent} from '../shared/types.js';
 import {initialSource,fixedSource} from '../shared/types.js';
@@ -7,13 +7,20 @@ import {initialSource,fixedSource} from '../shared/types.js';
 export class DemoEngine {
   readonly runs = new Map<string,Run>();
   private timers = new Map<string,ReturnType<typeof setTimeout>>();
-  constructor(private delayMs=650) {}
+  constructor(private delayMs=650, private startGroup?:(runId:string,request:{title:string;brief:string;botIds:string[]})=>Promise<{conversationId:string;title:string}>) {}
 
-  start(prompt:string,team?:Persona[]):Run {
+  start(prompt:string,team?:Persona[],options:{availableBots?:Persona[];promptAuthor?:AgentId|'user'}={}):Run {
     const runTeam=team===undefined?undefined:validateParticipants(team);
     const run:Run={...(runTeam?{team:runTeam}:{}),id:randomUUID(),prompt,status:'running',mode:'demo',messages:[],events:[],approvals:[],artifacts:[],output:'',activeAgent:null,startedAt:Date.now()};
+    const availableBots=options.availableBots===undefined?undefined:validateAvailableBots(options.availableBots);
     this.runs.set(run.id,run);
-    this.message(run,'user',prompt);
+    this.message(run,options.promptAuthor??'user',prompt);
+    if(runTeam?.length===1&&runTeam[0].role==='coordinator'&&availableBots!==undefined){
+      run.activeAgent='coordinator';
+      this.message(run,'coordinator','I’m your primary bot. We can work through a request here, and I can bring specialists together when a shared conversation would help.');
+      this.later(run,()=>{void this.coordinate(run,availableBots);});
+      return run;
+    }
     const names=this.names(run);
     if(this.has(run,'coordinator')){
       run.activeAgent='coordinator';
@@ -26,6 +33,33 @@ export class DemoEngine {
     }
     this.later(run,()=>this.inspect(run));
     return run;
+  }
+
+
+  /** This is a visible teaching script, not a model deciding how to collaborate. */
+  private async coordinate(run:Run,availableBots:Persona[]){
+    const asksForTeam=/\b(fix|build|implement|debug|test|tests|review|collaborate|team|group)\b/i.test(run.prompt);
+    const staysDirect=/\b(?:do not|don't|without|no)\b[^.!?]{0,45}\b(?:group|team|specialists?|collaborat\w*)\b/i.test(run.prompt);
+    const selected=(['scout','maker','checker'] as const).flatMap(role=>{const bot=availableBots.find(p=>p.role===role);return bot?[bot]:[];});
+    if(!asksForTeam||staysDirect||selected.length===0||!this.startGroup){
+      this.message(run,'coordinator',selected.length
+        ?'We can keep this conversation between us. In the no-key demo, ask me to fix the failing tests in tiny-project to see me bring specialists into a shared conversation.'
+        :'We can keep planning here. Add a specialist to your bot library and start a new conversation with me to try the coordinated demo.','result');
+      run.status='completed';run.activeAgent=null;run.endedAt=Date.now();
+      this.event(run,'coordinator','result','Primary conversation complete','Scripted response · no specialist contacted');return;
+    }
+    this.message(run,'coordinator',`For this scripted example, I’ll bring ${selected.map(p=>p.name).join(', ')} into a shared conversation to investigate tiny-project. I’ll share a short task brief; this private conversation stays here.`,'delegation');
+    try{
+      await this.startGroup(run.id,{title:'Tiny-project repair',brief:'Investigate the failing addition tests in tiny-project. Inspect the fixture, propose the smallest fix, and verify it. Ask for approval before any edit or command.',botIds:selected.map(p=>p.id)});
+      if(run.status!=='running')return;
+      run.status='completed';run.activeAgent=null;run.endedAt=Date.now();
+      this.event(run,'coordinator','delegation','Started a shared conversation','Selected specialist IDs · task brief only · scripted demo');
+    }catch{
+      if(run.status!=='running')return;
+      run.status='failed';run.activeAgent=null;run.endedAt=Date.now();
+      this.message(run,'coordinator','I could not start that shared conversation. No edit or command was approved here. Check the workspace status and try again.');
+      this.event(run,'coordinator','error','Shared conversation could not start','The request failed safely.');
+    }
   }
 
   private roles(run:Run):AgentId[]{return run.team?.map(p=>p.role)??['coordinator','scout','maker','checker'];}

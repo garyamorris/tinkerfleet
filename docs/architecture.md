@@ -14,7 +14,8 @@ Live: browser → local HTTP server → selected direct agent or group orchestra
 The demo is an interaction example, not a fake provider placed behind the live
 SDK. It lets you learn the interface and approval vocabulary without a key,
 Docker, model latency, or API spending. Prompts in demo do not produce general
-intelligence: every run follows the tiny-project teaching scenario.
+intelligence: the known tiny-project request follows a scripted delegation
+scenario, while a simple greeting stays in the primary chat.
 
 ## 1. The browser is a view
 
@@ -26,8 +27,10 @@ policy, or decide whether an SDK tool requires approval.
 
 Each browser profile contains a name, purpose, role assignment, color, and avatar
 shape. The profile library stays in browser storage. Creating a conversation
-captures its selected profiles: one bot for a direct chat, or a subset of up to
-four roles for a group. The server validates and freezes participants. Each run
+captures its selected profile. A direct Coordinator also captures a bounded
+available-bot roster. The user-facing API creates only single-bot conversations;
+a Coordinator tool creates groups with the Coordinator and selected specialists.
+The server validates and freezes participants. Each run
 also captures its team, so later library edits do not change existing chats or
 runs. Multiple conversations may independently use the same reusable bot.
 
@@ -44,24 +47,45 @@ for an unrelated website to drive the local API. These controls do not establish
 an identity boundary against another user or malicious process on the same host.
 Do not expose this server through a tunnel, port forward, or public reverse proxy.
 
-## 2. Participants select the orchestration
+## 2. The Coordinator creates a group when needed
 
-A direct chat invokes its one selected SDK agent. In a group with a Coordinator,
-the Coordinator can call only the selected specialists through
-`agent.asTool(...)`. In a group without a Coordinator, the selected agents run
-sequentially under a shared budget. No unselected specialist or hidden
-Coordinator is inserted.
+The primary interaction is a direct Coordinator conversation. In live mode,
+that agent receives `start_group_conversation` and can select specialist IDs from
+its captured `availableBots` roster. The server accepts one to three specialists
+with unique capability roles and at most one new group per source run. The
+Coordinator is included in the resulting group. Its roster holds at most 32
+specialist profiles; alternative profiles for a role are allowed, but a created
+group cannot select duplicate roles. The tool accepts a title of 1–80 characters,
+a brief of 1–8,000 characters, and one to three bot IDs.
 
-Agents-as-tools return to their caller; this is different from an autonomous
-handoff or a proactive message between bots. See the
-[SDK agents guide](https://openai.github.io/openai-agents-js/guides/agents/).
-The current app does not implement mentions, reply threads, routines, or
-background bot collaboration.
+An older direct Coordinator chat with no stored roster may initialize it once
+while idle. Identical retries are allowed; replacing an existing roster is
+rejected. This preserves old chats without silently changing their collaborator
+choices later.
 
-A role's capability comes from the server's tools. A Researcher without a write
-tool cannot gain one by requesting it in a purpose or message. The model receives
-bounded history from this conversation only, not other chats with the same bot.
-That context separation does not create a separate account or machine.
+The group starts its own independent run attributed to the Coordinator. Source
+and child have separate SDK run budgets: one user turn can consume two budgets.
+Stopping the source run does not stop an already-created child. The operator must
+stop the group explicitly. Per-run limits are not an overall monetary cap. It
+receives an explicit, bounded task brief rather than the source conversation's
+private history. Its Coordinator can delegate only to selected specialists via
+`agent.asTool(...)`. Child groups cannot create further groups: the group-start
+tool exists only on a direct Coordinator. Direct specialist chats do not get it.
+The ordinary user conversation endpoint cannot bypass this flow to create groups.
+
+Users can visit the resulting group or talk with individual bots directly.
+Existing group histories remain accessible; they do not authorize new arbitrary
+group creation. Each direct chat invokes its chosen SDK agent. The server sends
+bounded history from that chat only, not every chat with the same bot.
+
+The demo mirrors the visible interaction with a deterministic tiny-project
+request-to-group scenario; a trivial greeting stays with the primary bot. It
+does not pretend the script made a live model decision.
+
+Agents-as-tools return to their caller; they are not unrestricted autonomous
+handoffs. See the [SDK agents guide](https://openai.github.io/openai-agents-js/guides/agents/).
+The app does not implement mentions, reply threads, routines, or unattended bot
+collaboration. A custom purpose cannot create tools or bypass role permissions.
 
 ## 3. Tools cross a trust boundary
 

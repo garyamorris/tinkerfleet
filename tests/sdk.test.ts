@@ -521,3 +521,137 @@ test('oversized final peer message fails closed before publishing its text or co
   assert.ok(!JSON.stringify({ done, events }).includes(oversized));
   model.assertComplete();
 });
+
+const groupRequest = () => ({ title: 'Focused repair', brief: 'Inspect the sum function and propose a focused repair.', botIds: participants('scout', 'maker').map(bot => bot.id) });
+
+test('only a private coordinator with a server roster and callback can create a group', async () => {
+  const availableBots = participants('scout', 'maker', 'checker');
+  const cases = [
+    { team: participants('coordinator'), availableBots, callback: true, exposed: true },
+    { team: participants('coordinator'), availableBots, callback: false, exposed: false },
+    { team: participants('coordinator'), availableBots: undefined, callback: true, exposed: false },
+    { team: participants('maker'), availableBots, callback: true, exposed: false },
+    { team: participants('coordinator', 'scout'), availableBots, callback: true, exposed: false },
+    { team: undefined, availableBots, callback: true, exposed: false },
+  ];
+  for (const [index, config] of cases.entries()) {
+    const model = new ScriptedModel([[assistantMessage('Advice.')]]);
+    let groups = 0;
+    const adapter = createSdkAdapter({ harness: harness().value, model, startGroup: config.callback ? async () => { groups += 1; return { conversationId: 'child', title: 'Child' }; } : undefined });
+    const done = await adapter.start({ runId: `group-exposure-${index}`, prompt: 'Advise.', team: config.team, availableBots: config.availableBots });
+    assert.equal(done.status, 'completed');
+    assert.equal(model.calls[0].request.tools.some(tool => tool.name === 'start_group_conversation'), config.exposed);
+    if (config.exposed) assert.deepEqual(model.calls[0].request.tools.map(tool => tool.name), ['start_group_conversation']);
+    assert.equal(groups, 0);
+    model.assertComplete();
+  }
+});
+
+test('private coordinator starts a selected group using a detached server roster without invoking absent bots', async () => {
+  const events: SdkEvent[] = [], availableBots = participants('scout', 'maker', 'checker');
+  const request = groupRequest(), received: unknown[] = [];
+  const model = new ScriptedModel([
+    [functionCall('start_group_conversation', request, { callId: 'create-selected-group' })],
+    [assistantMessage('I started Focused repair. Open the group to follow their work.')],
+  ]);
+  const adapter = createSdkAdapter({ harness: harness().value, model, onEvent: event => events.push(event), startGroup: async (runId, input) => {
+    received.push({ runId, input });
+    return { conversationId: 'created-group', title: input.title };
+  } });
+  const pending = adapter.start({ runId: 'primary-coordinator', prompt: 'Please arrange a repair.', team: participants('coordinator'), availableBots });
+  availableBots[0].id = 'changed-after-start';
+  const done = await pending;
+  assert.equal(done.status, 'completed');
+  assert.deepEqual(received, [{ runId: 'primary-coordinator', input: request }]);
+  assert.match(model.calls[0].request.systemInstructions!, /speaking privately with the user/);
+  assert.match(model.calls[0].request.systemInstructions!, /self-contained brief/);
+  assert.doesNotMatch(model.calls[0].request.systemInstructions!, /changed-after-start/);
+  assert.match(JSON.stringify(model.calls[1].request.input), /created-group/);
+  assert.ok(model.calls.every(call => call.request.tools.every(tool => tool.name === 'start_group_conversation')));
+  assert.ok(events.every(event => !event.agent || event.agent === 'Coordinator'));
+  assert.equal(done.pendingApprovals.length, 0);
+  model.assertComplete();
+});
+
+test('group selections reject foreign IDs, duplicates, repeated roles, and injected context before callback', async () => {
+  const availableBots = participants('scout', 'maker');
+  availableBots.push({ ...availableBots[0], id: 'alternate-scout', name: 'Alternate Scout' });
+  const invalidRequests = [
+    { ...groupRequest(), botIds: ['unknown-bot'] },
+    { ...groupRequest(), botIds: [availableBots[0].id, availableBots[0].id] },
+    { ...groupRequest(), botIds: [availableBots[0].id, 'alternate-scout'] },
+    { ...groupRequest(), botIds: [] },
+    { ...groupRequest(), history: [{ text: 'Untrusted replacement history.' }] },
+    { ...groupRequest(), title: 'x'.repeat(81) },
+    { ...groupRequest(), brief: 'x'.repeat(8_001) },
+  ];
+  for (const [index, request] of invalidRequests.entries()) {
+    let groups = 0;
+    const model = new ScriptedModel([[functionCall('start_group_conversation', request, { callId: `invalid-${index}` })]]);
+    const adapter = createSdkAdapter({ harness: harness().value, model, startGroup: async () => { groups += 1; return { conversationId: 'must-not-exist', title: 'Invalid' }; } });
+    const done = await adapter.start({ runId: `invalid-group-${index}`, prompt: 'Arrange work.', team: participants('coordinator'), availableBots });
+    assert.equal(done.status, 'error');
+    assert.equal(groups, 0);
+    model.assertComplete();
+  }
+});
+
+test('a repeated exact group request returns cached metadata; a second group request is blocked', async () => {
+  const request = groupRequest();
+  let groups = 0;
+  const model = new ScriptedModel([
+    [functionCall('start_group_conversation', request, { callId: 'first-group' })],
+    [functionCall('start_group_conversation', request, { callId: 'same-group' })],
+    [functionCall('start_group_conversation', { ...request, title: 'Another group' }, { callId: 'second-group' })],
+  ]);
+  const adapter = createSdkAdapter({ harness: harness().value, model, startGroup: async () => { groups += 1; return { conversationId: 'one-group', title: request.title }; } });
+  const done = await adapter.start({ runId: 'one-group-per-turn', prompt: 'Arrange repair.', team: participants('coordinator'), availableBots: participants('scout', 'maker') });
+  assert.equal(done.status, 'error');
+  assert.ok(done.message); // SDK wraps tool failures; no raw error or tool state leaks.
+  assert.equal(groups, 1);
+  assert.equal((JSON.stringify(model.calls[2].request.input).match(/one-group/g) ?? []).length, 2);
+  model.assertComplete();
+});
+
+test('cancelling before a late model group request prevents the server callback', async () => {
+  let reply!: (output: ReturnType<typeof functionCall>[]) => void;
+  let started!: () => void;
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  const model = new ScriptedModel([modelResponder(() => { started(); return new Promise(resolve => { reply = resolve; }); })]);
+  let groups = 0;
+  const adapter = createSdkAdapter({ harness: harness().value, model, startGroup: async () => { groups += 1; return { conversationId: 'never-created', title: 'No' }; } });
+  const pending = adapter.start({ runId: 'cancel-before-group', prompt: 'Arrange repair.', team: participants('coordinator'), availableBots: participants('scout', 'maker') });
+  await ready;
+  await adapter.cancel('cancel-before-group');
+  reply([functionCall('start_group_conversation', groupRequest(), { callId: 'late-group' })]);
+  assert.equal((await pending).status, 'cancelled');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(groups, 0);
+  model.assertComplete();
+});
+
+test('cancelling during group callback prevents late completion or further model calls', async () => {
+  let finish!: (value: { conversationId: string; title: string }) => void;
+  let started!: () => void;
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  const model = new ScriptedModel([[functionCall('start_group_conversation', groupRequest(), { callId: 'pending-group' })]]);
+  const events: SdkEvent[] = [];
+  const adapter = createSdkAdapter({ harness: harness().value, model, onEvent: event => events.push(event), startGroup: async () => { started(); return new Promise(resolve => { finish = resolve; }); } });
+  const pending = adapter.start({ runId: 'cancel-during-group', prompt: 'Arrange repair.', team: participants('coordinator'), availableBots: participants('scout', 'maker') });
+  await ready;
+  await adapter.cancel('cancel-during-group');
+  finish({ conversationId: 'server-may-have-created', title: 'Repair' });
+  assert.equal((await pending).status, 'cancelled');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(!events.some(event => event.type === 'run_completed' || event.type === 'agent_message'));
+  assert.equal(model.calls.length, 1);
+  model.assertComplete();
+});
+
+test('invalid available bot rosters fail before model requests', async () => {
+  const model = new ScriptedModel([]), adapter = createSdkAdapter({ harness: harness().value, model });
+  for (const availableBots of [participants('coordinator'), [participants('scout')[0], participants('scout')[0]], Array.from({ length: 33 }, (_, index) => ({ ...participants('scout')[0], id: `scout-${index}` }))]) {
+    await assert.rejects(adapter.start({ runId: 'invalid-roster', prompt: 'Hello.', team: participants('coordinator'), availableBots }));
+  }
+  model.assertComplete();
+});

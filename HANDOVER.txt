@@ -5,35 +5,38 @@ Educational TypeScript multi-agent workspace with a no-key scripted demo,
 reusable bot personas, named direct/group chats, OpenAI Agents SDK integration,
 exact-action approvals, a Docker runner, and six no-key lessons. A conversation
 captures its participants, and each run keeps its team and fresh file snapshot.
-Profile edits affect new conversations. Coordinator is optional in groups.
+Profile edits affect new conversations. Start by speaking to the primary
+Coordinator; it may select specialists and create a shared group. Users can
+visit direct bot conversations and Coordinator-created groups. New user-created
+conversations are single-bot only; existing group history is preserved.
 
-Verified locally
-- npm run check passed: 76 tests total, 74 passed, 0 failed, and 2 Linux-only
-  tests skipped. TypeScript checks and the production build passed.
-- All six no-key lessons previously passed and remain unchanged.
-- SDK tests use scripted models; browser demo results remain simulated.
+Verification status
+- Final npm run check passed: 93 tests total, 91 passed, 0 failed, and 2
+  Linux-only tests skipped. TypeScript checks and the production build passed.
+- Regression coverage includes cancellation during shutdown preflight and atomic
+  publication of a child group plus its source link when saving fails.
+- No live API calls or paid model checks were performed. SDK tests use scripted
+  models; the demo is a labeled deterministic simulation.
 
 Confirmed browser checks
-- All four prior runs migrated into four separate conversations. A previously
-  pending run was stopped and its approval invalidated.
-- Direct Quill/Scout and Maker conversations operated as distinct simultaneous
-  chats, with their own busy states and approvals.
-- Conversation renaming worked. Different drafts stayed with their chats when
-  switching and after browser reload.
-- At 390 x 844, the document width and viewport width were both 390 pixels:
-  no horizontal overflow. The chat drawer showed independent statuses/drafts.
-- Approving a direct Maker chat's edit completed that run while a separate
-  Maker + Checker group's command remained pending. The group's command was
-  then approved separately. The group had no Coordinator or Scout participant.
-- Genuine captures document desktop conversations, the selected group, new-chat
-  controls, the mobile chat drawer, and a mobile approval. See README.md.
-- After a server restart, all seven chats retained their titles, correct message
-  authors, and both distinct drafts. The active direct chat stayed selected; the
-  imported interrupted run remained stopped.
-- A second message in a direct chat added another chronological run to that
-  same conversation.
-- Group Changes showed only that group's sum.js demo artifact. Switching to the
-  direct Quill chat showed no changes, confirming artifacts stayed chat-scoped.
+- All eight existing conversations were preserved. The primary Orbit chat kept
+  its messages while initializing its previously absent specialist roster.
+- The fixture request caused Orbit to create a separate linked Tiny-project
+  repair group with Scout, Maker, and Checker. The primary remained selected.
+- The group showed Started by Orbit and Original conversation navigation. Its
+  initial brief was authored by the Coordinator.
+- A direct Quill chat completed while the group waited for command approval.
+  Both the group's edit and command approvals subsequently completed.
+- Ten conversations were present after these checks, including the original eight.
+- At 390 x 844, there was no horizontal overflow and approval controls were fully
+  visible. Genuine primary/group/direct-picker captures are linked in README.md.
+- After the final server restart, browser reload restored all ten conversations
+  (the original eight plus the Coordinator-created group and new Quill direct
+  chat), the existing Maker draft, and completed group history.
+- The source invitation, Started by Orbit provenance, and Original conversation
+  backlink survived. Both navigation directions were tested after restart.
+- Final desktop captures used a 1291 x 770 viewport at 2x screenshot scale;
+  mobile captures used 390 x 844.
 
 Remaining verification
 - Artifact download completion is unverified. A bounded 10-second click attempt
@@ -52,11 +55,15 @@ Dependency installation normally needs package-registry network access.
 For the built interface, run npm run build followed by npm start.
 
 Teaching and operating limits
-The demo always follows the tiny-project story; custom purposes do not create
+The demo has a scripted tiny-project delegation path; greetings stay in the
+primary chat. Custom purposes do not create
 model intelligence. In live mode, purpose text reaches the assigned SDK agent's
 instructions but never grants tools or bypasses approvals. The profile library
 is stored in this browser, not synced or encrypted as a secret store. Private
 conversation history and drafts persist in .tinkerfleet/conversations.json.
+The source primary and a created group have separate per-run budgets. One user
+turn can consume two budgets. Stopping the primary does not stop an already-created
+group; stop the group explicitly. These limits are not an overall monetary cap.
 Restart cancels unfinished work and denies pending approvals; raw SDK state,
 grants, and working file snapshots are not restored.
 The practice project is deliberately broken. Its tests are separate from this

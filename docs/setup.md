@@ -143,7 +143,10 @@ account. They do not sync between browsers, and clearing site data removes them.
 Keep credentials and private data out of names and purposes. The server rejects
 some credential-like input; those checks cannot detect every sensitive value.
 Selected profile text becomes part of live model instructions when live mode is
-explicitly enabled.
+explicitly enabled. A direct Coordinator also receives its captured specialist
+roster so it can choose collaborators. When it creates a group, an explicit task
+brief is shared with that group; the source chat's private history is not copied.
+The brief should contain only what collaborators need for the task.
 
 The server saves conversation views under `.tinkerfleet/`, which is ignored by
 Git. Those views may include sensitive prompts, drafts, messages, and artifact

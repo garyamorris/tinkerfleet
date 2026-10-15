@@ -5,28 +5,38 @@ A **bot persona** is a reusable identity and purpose within a fixed role. A
 a draft. A **run** is one submitted task in that chat, with its own approvals,
 activity, output, artifacts, and working file snapshot.
 
-## Choose a direct or group chat
+## Start with the primary bot
 
-Choose **New chat** in the **Conversations** sidebar. In **New conversation**,
-choose **One bot** for a direct chat or **Group chat** for two to four bots.
-Select participants, optionally enter a **Conversation name**, then choose
-**Start conversation**. Choosing a different bot with the same role replaces
-that role's selection. There are no duplicate roles.
+Open **Orbit / Your coordinator** in the sidebar, or use **Talk to Orbit** on
+the empty home screen. This returns to the primary bot's latest direct chat or
+opens **Talk to a bot** with it preselected. Tell it what you want to accomplish.
+It can answer directly
+or bring specialists into a shared group. You do not need to assemble the team
+before explaining the task, and there is no manual group-start chooser.
 
-Return to a chat through its sidebar name, preview, and status. Use **Rename
-conversation** in its header and **Save name** to change the title. Coordinator is
-optional. You can create several independent chats with the same bot; each keeps
-its own context and draft.
+In live mode, the Coordinator chooses one to three available specialists with
+different roles and creates at most one group per run. The group includes the
+Coordinator and begins its own task from a bounded brief. Your private direct
+conversation history is not copied into it. Group participants cannot create
+further groups. The primary and group have separate run budgets and stop controls.
+Stopping the primary does not stop a group already started; open the group and
+stop it explicitly. A single user turn may consume two run budgets in live mode.
 
-In live mode, a direct chat invokes that bot's SDK agent. A group with a
-Coordinator delegates only to its selected specialists. A group without one
-runs the selected agents sequentially under a shared budget. Separate chat
-windows are not separate machines, accounts, or security sandboxes.
+When a group is created, its link card offers **Open conversation**. You stay in
+the source chat until you choose to open it. Group headers show **Started by**
+the Coordinator; **Original conversation** returns to the source chat.
 
-Demo mode stays scripted and adapts the tiny-project walkthrough to selected
-participants. It does not turn a custom purpose into live intelligence. There
-are no mentions, reply threads, autonomous background routines, or proactive
-handoffs in this version.
+Use the sidebar to return to the primary chat or a created group. **Talk to a
+bot** opens a direct-only picker with an optional **Conversation name** and
+**Start conversation**. The bot library also provides **Talk to {name}** actions. Named conversations retain separate previews, status,
+drafts, and history. Multiple independent chats can use the same bot. Existing
+groups remain available after this workflow change.
+
+In the no-key demo, a request to fix the failing tests in tiny-project triggers
+a clearly scripted group creation. A simple greeting stays in the primary chat.
+That demonstrates the interaction without claiming live model judgment. There
+are no mentions, reply threads, autonomous background routines, or cross-chat
+memory in this version.
 
 ## Create reusable profiles
 
@@ -86,16 +96,17 @@ before deciding, including on a narrow screen.
 
 See the [handover](../HANDOVER.txt) for verified checks and remaining limitations.
 
-## Recorded conversation checks
+## Recorded primary-first checks
 
-Browser checks confirmed independent direct chats, renaming, and separate drafts
-across switching and reload. On a 390 × 844 viewport, the chat drawer showed
-independent statuses and no horizontal page overflow. Approving a direct Maker
-chat completed its edit while a separate Maker + Checker group's command stayed
-pending; approving that group required its own decision. The group contained no
-Coordinator or Scout. After a server restart, all seven chats retained their titles, authors, and
-drafts, with the active direct chat still selected. A second direct message added
-a new chronological run in the same chat. Group artifacts stayed in the group's
-Changes view; the direct Quill chat's Changes remained empty. These were scripted
-demo checks, not live model execution.
-See [screenshots](../README.md#a-look-inside) and [verification](../HANDOVER.txt).
+The existing primary chat retained its messages while initializing its specialist
+roster. Asking Orbit about the fixture created a linked Tiny-project repair group
+with Scout, Maker, and Checker; the primary chat stayed selected. The group showed
+**Started by Orbit**, an **Original conversation** link, and a Coordinator-authored
+initial brief. Both group approvals completed. An independent direct Quill chat
+completed while the group awaited its command approval. At 390 × 844, the page
+had no horizontal overflow and the approval controls were fully visible.
+After the final server restart, all ten conversations, the existing Maker draft,
+and completed group history returned. The source invitation and group provenance
+links persisted, and navigation worked in both directions.
+These were no-key demo checks. See [screenshots](../README.md#a-look-inside) and
+[the handover](../HANDOVER.txt) for the latest verification limits.
