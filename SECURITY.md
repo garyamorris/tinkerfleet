@@ -46,7 +46,7 @@ The Git-ignored `.tinkerfleet/conversations.json` contains saved conversations, 
 
 Restart preserves saved history but cancels unfinished runs and denies pending approvals. It cannot reverse previous filesystem or command effects.
 
-The server binds to loopback and checks Host, Origin, and mutation tokens. These protect against unrelated web pages; they are not multi-user authentication or protection from a malicious local process. Do not expose this server as a public service.
+The server binds to loopback and checks Host, Origin, and mutation tokens. In development it forwards only the browser app’s own files to Vite (`index.html`, `src/client/`, `src/shared/`, and Vite’s client and prebundled dependencies). Workspace files and `.tinkerfleet/` are therefore not served from the app’s origin, so an HTML page an agent writes cannot run as the app and use its approval controls. Do not select Tinkerfleet’s own source folder as the workspace. These protect against unrelated web pages; they are not multi-user authentication or protection from a malicious local process. Do not expose this server as a public service.
 
 Turn and model-call count limits can be disabled with zero. Token, runtime, and output budgets still apply. These are execution budgets, not guaranteed monetary caps: separate runs and child conversations can incur separate usage, and provider accounting remains authoritative.
 

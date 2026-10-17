@@ -29,9 +29,10 @@ node --import tsx --test tests/native-runner.test.ts
 node --import tsx --test tests/http.test.ts tests/memory-http.test.ts
 ```
 
-Run the six executable lessons separately; they are not included in `npm run check`:
+Run the seven executable lessons separately; they are not included in `npm run check`:
 
 ```sh
+npm run lesson:0
 npm run lesson:1
 npm run lesson:2
 npm run lesson:3

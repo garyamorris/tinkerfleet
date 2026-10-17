@@ -1,6 +1,10 @@
 import {randomBytes,timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 export class HttpError extends Error {constructor(public status:number,message:string){super(message);}}
+// Vite's dev root is the whole repository, which contains the default workspace and .tinkerfleet/.
+// Forward only what the browser app loads, so workspace files and saved state are not served from this origin.
+const DEV_CLIENT_PATH=/^\/(?:index\.html|@vite\/client|src\/(?:client|shared)\/[A-Za-z0-9_./-]+|node_modules\/(?:\.vite\/deps|vite\/dist\/client)\/[A-Za-z0-9_.-]+)?$/;
+export function isDevClientPath(pathname:string){return DEV_CLIENT_PATH.test(pathname)&&!pathname.split('/').includes('..');}
 export function safeEqual(a:string,b:string){const aa=Buffer.from(a),bb=Buffer.from(b);return aa.length===bb.length&&timingSafeEqual(aa,bb);}
 export function createSecurity(port:number){
   const csrf=randomBytes(32).toString('hex'),session=randomBytes(32).toString('hex');
