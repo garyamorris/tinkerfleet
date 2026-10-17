@@ -1,13 +1,39 @@
 # Learn to build agent tools
 
-These six short programs walk from configuring an agent to approving a real local
-action. Run them from the repository root with Node.js 24+ after `npm ci`.
+These seven short programs walk from watching the agent loop run to approving a
+real local action. Run them from the repository root with Node.js 24+ after `npm ci`.
 They make no model requests and need no API key. Each uses assertions: a successful
 run prints its explanation and exits normally; a failed assertion stops the lesson.
 
 Read a source file, predict its result, run it, then try the suggested change.
 Lessons 5 and 6 create and remove their own temporary folders. They do not edit
 the example project or your selected app workspace.
+
+## 0. Watch the loop run
+
+```sh
+npm run lesson:0
+```
+
+**Learn:** an agent is a loop. The model asks for a tool, your code runs it, the
+result goes back to the model, and the model decides what to do next.
+
+**What happens:** part A writes that loop by hand in a few lines, with a fake
+model function and an `add` tool. Part B runs the same exchange through the
+OpenAI Agents SDK, using its `ScriptedModel` test double in place of a real model.
+The lesson checks that the tool ran exactly once and that the second model call
+received the whole transcript: the user message, the tool call, and its result.
+The model is stateless; it only "knows" the result because the loop sent it back.
+
+**Expect:** `0. The loop: model asks, your code runs the tool, the result goes
+back, the model answers.`
+
+**Try:** add a second scripted `add` call before the answer. Predict
+`model.calls.length` and the contents of `ran`, then update the assertions. Next,
+replace `add` with a tool of your own, such as counting the words in a string.
+
+**Source:** [00-loop.ts](00-loop.ts), then the SDK's
+[running agents guide](https://openai.github.io/openai-agents-js/guides/running-agents/).
 
 ## 1. Give an agent a job
 

@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build",
+    "lesson:0": "node --import tsx lessons/00-loop.ts",
     "lesson:1": "node --import tsx lessons/01-coordinator.ts",
     "lesson:2": "node --import tsx lessons/02-specialists.ts",
     "lesson:3": "node --import tsx lessons/03-tools.ts",

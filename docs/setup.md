@@ -169,5 +169,5 @@ node --env-file=.env.local --import tsx src/server/index.ts --production
 ```
 
 Next, follow [Build an agent app](build-an-agent-app.md), run the
-[six lessons](../lessons/README.md), or read [Testing](testing.md) before changing
+[seven lessons](../lessons/README.md), or read [Testing](testing.md) before changing
 an implementation detail.

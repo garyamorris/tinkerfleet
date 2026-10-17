@@ -34,9 +34,10 @@ application still owns storage, permissions, UI, and the functions that do work.
 See the official [running agents guide](https://openai.github.io/openai-agents-js/guides/running-agents/)
 for the SDK’s execution model.
 
-**Read:** [`createFleetAgents` in sdk.ts](../src/server/sdk.ts).
-**Run:** `npm run lesson:1`.
-**Check your understanding:** why can this lesson construct an agent without an
+**Run:** `npm run lesson:0` to watch this loop run, first by hand and then through
+the SDK with a scripted model. Then read
+[`createFleetAgents` in sdk.ts](../src/server/sdk.ts) and run `npm run lesson:1`.
+**Check your understanding:** why can lesson 1 construct an agent without an
 API key? Because defining its configuration is separate from asking a model to respond.
 
 ## 2. Build the chat before adding autonomy

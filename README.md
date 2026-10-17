@@ -86,17 +86,18 @@ share the enabled tools. Changing a bot’s name or avatar does not change its p
 | You want to… | Start here |
 | --- | --- |
 | Understand how to build an app like this | [Build an agent app, step by step](docs/build-an-agent-app.md) |
-| Learn by running small programs | [Six executable lessons](lessons/README.md) |
+| Learn by running small programs | [Seven executable lessons](lessons/README.md) |
 | Follow the complete application | [Architecture and data flow](docs/architecture.md) |
 | Understand tools and real computer access | [Workspace tools](docs/workspace.md) and [approvals](docs/approvals.md) |
 | Add lasting memory | [How bot memory works](docs/memory.md) |
 | Make your own version | [Extend Tinkerfleet](docs/extending.md) |
 | Check whether your changes work | [Testing an agent application](docs/testing.md) |
 
-For a first pass, follow the build guide and run lessons 1–6 in order. Each
-lesson uses real application code, explains one idea, and includes an experiment.
-All six run without a model call. The later native-tool lessons use temporary
-files and short local commands to demonstrate actual execution.
+For a first pass, follow the build guide and run lessons 0–6 in order. Lesson 0
+shows the agent loop itself with a scripted model; lessons 1–6 use real application
+code. Each explains one idea and includes an experiment. All seven run without a
+model call. The later native-tool lessons use temporary files and short local
+commands to demonstrate actual execution.
 
 ## Find the code behind the idea
 
