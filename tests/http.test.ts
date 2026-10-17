@@ -4,6 +4,7 @@ import {request} from 'node:http';
 import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createApp} from '../src/server/app.js';
+import {isDevClientPath} from '../src/server/http.js';
 async function fetch(input:string,init:RequestInit={}){const headers=new Headers(init.headers);headers.set('Connection','close');return globalThis.fetch(input,{...init,headers});}
 const port=45318,origin=`http://127.0.0.1:${port}`;
 test('local API authenticates same-origin sessions and exact single-use approvals',async()=>{
@@ -418,4 +419,9 @@ test('failed direct delivery publication leaves no recipient, link, or hidden ch
  assert.equal((await post(`/api/conversations/${source.id}/runs`,{prompt:'Message my agent'})).status,201);for(let i=0;i<100&&app.state().runs.some(r=>r.status==='running');i++)await delay(5);
  assert.equal(stagedTogether,true);assert.equal(app.state().conversations.length,1);assert.equal(app.state().runs.length,1);assert.ok(app.state().runs[0].messages.every(m=>!m.recipientRunId));const saved=JSON.parse(await readFile(statePath,'utf8'));assert.equal(saved.conversations.length,1);assert.equal(saved.runs.length,1);assert.equal(model.calls.length,1);assert.equal(app.state().runs[0].status,'failed');
  }finally{ConversationStore.prototype.save=save;await app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('dev server forwards only the browser app to Vite, never workspace files or saved state',()=>{
+ for(const p of ['/','/index.html','/@vite/client','/src/client/main.tsx','/src/client/style.css','/src/shared/appearance.ts','/node_modules/.vite/deps/react.js','/node_modules/vite/dist/client/env.mjs'])assert.equal(isDevClientPath(p),true,p);
+ for(const p of ['/examples/tiny-project/preview.html','/examples/tiny-project/sum.js','/.tinkerfleet/conversations.json','/.env.local','/package.json','/src/server/sdk.ts','/src/client/../../examples/tiny-project/x.html','/src/client/%2e%2e/x.html','/src/client\\x.html','/@fs/home/user/x.html','/@id/x','/node_modules/react/index.js'])assert.equal(isDevClientPath(p),false,p);
 });
