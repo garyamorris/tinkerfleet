@@ -14,7 +14,7 @@
     "start": "node --import tsx src/server/index.ts --production",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lesson:0": "node --import tsx lessons/00-loop.ts",

@@ -12,3 +12,6 @@ playwright-report/
 
 # Private local conversation history and drafts
 .tinkerfleet/
+
+# Claude Code agent worktrees
+.claude/worktrees/
