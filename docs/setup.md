@@ -82,16 +82,9 @@ can incur charges.
 
 ### Choosing a model
 
-The model must support tool calls through OpenAI's Responses API. At the time of
-writing (October 2026), OpenAI's models page lists three main options:
-
-| Model | Listed as |
-| --- | --- |
-| GPT-6 Astra | The flagship model |
-| GPT-6.1 Sol | The balance of capability and cost |
-| GPT-6 Luna (`gpt-6-luna`) | For high-volume, low-cost work |
-
-For this app, a low-cost model is a sensible start:
+The model must support tool calls through OpenAI's Responses API. For this app,
+a low-cost model is a sensible start. At the time of writing (October 2026),
+GPT-6 Luna (`gpt-6-luna`) is OpenAI's low-cost option:
 
 ```dotenv
 TINKERFLEET_MODEL=gpt-6-luna
@@ -103,8 +96,7 @@ Model names change. Check the current list and exact IDs on
 set `TINKERFLEET_MODEL`.
 
 Tinkerfleet accepts only `none`, `minimal`, or `low` for
-`TINKERFLEET_REASONING_EFFORT`. Not every model supports every level. For
-example, OpenAI's changelog says GPT-6 Astra does not support `none`. If the
+`TINKERFLEET_REASONING_EFFORT`. Not every model supports every level. If the
 provider rejects the setting, choose another level or delete the line to use the
 model's default.
 

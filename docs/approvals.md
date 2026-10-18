@@ -27,7 +27,7 @@ tool proposal → SDK interruption → prepared action + digest → review card
 6. **Consume and execute.** The runner checks that the workspace and executable still match the prepared proposal. The grant is consumed synchronously before the real action starts, so two racing requests cannot both use it.
 7. **Return a result.** The tool reports completion, failure, cancellation, timeout, or output limit to the agent. A tool finishing is not itself proof that the requested task succeeded.
 
-Trace the layers in [SDK tools and interruption handling](../src/server/sdk.ts), [HTTP approval handling](../src/server/app.ts), [ApprovalStore](../src/server/approval.ts), and [native prepare/execute](../src/server/native-runner.ts).
+Trace the layers in [SDK tools](../src/server/sdk/run-fleet.ts) and [interruption handling](../src/server/sdk/adapter.ts), [HTTP approval handling](../src/server/app.ts), [ApprovalStore](../src/server/approval.ts), and [native prepare/execute](../src/server/native-runner.ts).
 
 ## A command is an executable plus arguments
 

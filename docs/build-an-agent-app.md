@@ -36,7 +36,7 @@ for the SDK’s execution model.
 
 **Run:** `npm run lesson:0` to watch this loop run, first by hand and then through
 the SDK with a scripted model. Then read
-[`createFleetAgents` in sdk.ts](../src/server/sdk.ts) and run `npm run lesson:1`.
+[`createFleetAgents` in sdk/fleet.ts](../src/server/sdk/fleet.ts) and run `npm run lesson:1`.
 **Check your understanding:** why can lesson 1 construct an agent without an
 API key? Because defining its configuration is separate from asking a model to respond.
 
@@ -90,7 +90,7 @@ The useful development question is: **what is the smallest function that gives
 the agent a capability it currently lacks?** Reading a text file is a clearer
 first tool than a general-purpose “do anything” function.
 
-**Read:** `readTools` inside `makeFleet` in [sdk.ts](../src/server/sdk.ts), then
+**Read:** `readTools` inside `buildRunFleet` in [sdk/run-fleet.ts](../src/server/sdk/run-fleet.ts), then
 [workspace validation](../src/server/runner-policy.ts).
 **Run:** `npm run lesson:3`.
 **Build next:** the [extension guide](extending.md) walks through adding a small tool.

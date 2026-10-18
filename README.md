@@ -104,9 +104,9 @@ commands to demonstrate actual execution.
 
 | Part | Start reading |
 | --- | --- |
-| Chat UI, profiles, and approval cards | [`src/client/main.tsx`](src/client/main.tsx) |
+| Chat UI, profiles, and approval cards | [`src/client/main.tsx`](src/client/main.tsx), then panels such as [`chat-run.tsx`](src/client/chat-run.tsx) and [`approval-card.tsx`](src/client/approval-card.tsx) |
 | HTTP routes and conversation coordination | [`src/server/app.ts`](src/server/app.ts) |
-| Agents, tool definitions, model loop, and SDK events | [`src/server/sdk.ts`](src/server/sdk.ts) |
+| Agents, tool definitions, model loop, and SDK events | [`src/server/sdk.ts`](src/server/sdk.ts), a short map of the modules in [`src/server/sdk/`](src/server/sdk/) |
 | Scripted demo behavior | [`src/server/demo.ts`](src/server/demo.ts) |
 | Conversation history and restart behavior | [`src/server/conversations.ts`](src/server/conversations.ts) |
 | Saved facts for each bot | [`src/server/memory.ts`](src/server/memory.ts) |

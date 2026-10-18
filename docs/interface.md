@@ -131,10 +131,10 @@ dialogs. Read labels as well as avatar colors.
 
 | Interaction | Start reading here |
 | --- | --- |
-| Sidebar, creation cards, dialogs, and run display | [`src/client/main.tsx`](../src/client/main.tsx) |
+| Sidebar, creation cards, dialogs, and run display | [`src/client/main.tsx`](../src/client/main.tsx), [`chat-list.tsx`](../src/client/chat-list.tsx), [`chat-run.tsx`](../src/client/chat-run.tsx), and the `*-dialog(s).tsx` files |
 | Memory editor | [`src/client/memory-panel.tsx`](../src/client/memory-panel.tsx) |
 | Saved chats and drafts | [`src/server/conversations.ts`](../src/server/conversations.ts) |
-| Agent instructions and model tools | [`src/server/sdk.ts`](../src/server/sdk.ts) |
+| Agent instructions and model tools | [`src/server/sdk/fleet.ts`](../src/server/sdk/fleet.ts) and [`sdk/run-fleet.ts`](../src/server/sdk/run-fleet.ts) |
 | Exact action decisions | [`src/server/approval.ts`](../src/server/approval.ts) |
 
 You do not need to read every file at once. Pick one visible interaction, follow

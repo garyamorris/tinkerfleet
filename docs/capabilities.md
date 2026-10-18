@@ -34,7 +34,7 @@ The primary has additional coordination tools:
 
 IDs, rather than names, route these operations. Two agents can have similar personalities without being the same participant. Existing conversation identities remain frozen when a library profile is edited. The library and each group have a size cap. In one run, the primary can create only a few agents, send only a few messages, and start one group; see [Limits](#limits). Exact retries reuse the recorded result.
 
-**Trace the implementation:** [profile validation](../src/server/personas.ts), [SDK tools and agent construction](../src/server/sdk.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
+**Trace the implementation:** [profile validation](../src/server/personas.ts), [agent construction](../src/server/sdk/fleet.ts), [SDK tools](../src/server/sdk/run-fleet.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
 
 **Try it without a key:** in demo mode, ask the primary `Create a patient writing coach named Ada`, then `Ask Ada: Hello`. These are explicit scripted patterns, not general language understanding. The created profile can later be used in live mode.
 
@@ -44,7 +44,7 @@ Saved memory is a small, explicit collection of entries scoped to one profile ID
 
 Memory persists locally across restarts. It is not model training, unlimited recall, or access to another agent's private memories. Each agent has a cap on entries and characters; see [Limits](#limits). Local files are not encrypted by this application, and secret-like content is rejected rather than treated as appropriate memory.
 
-**Trace it:** [memory storage](../src/server/memory.ts), memory tool construction in [sdk.ts](../src/server/sdk.ts), and [context budgeting](../src/server/context-budget.ts). Read [architecture](architecture.md) for the distinction between saved state and model context.
+**Trace it:** [memory storage](../src/server/memory.ts), memory tool construction in [sdk/run-fleet.ts](../src/server/sdk/run-fleet.ts), and [context budgeting](../src/server/context-budget.ts). Read [architecture](architecture.md) for the distinction between saved state and model context.
 
 ## Web access is a hosted tool
 
@@ -52,7 +52,7 @@ Live agents can use hosted public web search. Where the selected model supports 
 
 This is not an interactive browser. It does not provide your logged-in browser sessions, manipulate a website UI, submit forms, or guarantee access to paywalled or blocked pages. Web content is untrusted input, and a citation is a source reference rather than proof that the answer is correct. Hosted search can incur charges in addition to model usage; the displayed model-call count is not a separate search-call bill.
 
-**Trace it:** hosted tool setup and provider events in [sdk.ts](../src/server/sdk.ts), [source validation](../src/server/sources.ts), and [citation rendering](../src/client/citations.tsx).
+**Trace it:** hosted tool setup in [sdk/fleet.ts](../src/server/sdk/fleet.ts), provider events in [sdk/model.ts](../src/server/sdk/model.ts), [source validation](../src/server/sources.ts), and [citation rendering](../src/client/citations.tsx).
 
 ## Local work has real effects
 
@@ -78,7 +78,7 @@ A *run* is the work started by one submitted message. You can change these setti
 | `TINKERFLEET_MAX_TOTAL_TOKENS` | `64000` | 1–1,000,000 reported tokens per run |
 | `TINKERFLEET_MAX_RUN_MS` | `120000` (2 minutes) | 1–600,000 milliseconds of active runtime |
 
-Defaults and ranges are in [config.ts](../src/server/config.ts) and `DEFAULT_SDK_LIMITS` in [sdk.ts](../src/server/sdk.ts).
+Defaults and ranges are in [config.ts](../src/server/config.ts) and `DEFAULT_SDK_LIMITS` in [sdk/contract.ts](../src/server/sdk/contract.ts).
 
 ### Fixed limits
 
@@ -92,14 +92,14 @@ These are not configurable. Raising a run budget does not change them.
 | File tools | Size of one file | 256 KiB | [runner-policy.ts](../src/server/runner-policy.ts) |
 | File tools | Included text in one capture | 2 MiB | [runner-policy.ts](../src/server/runner-policy.ts) |
 | Approvals | Lifetime of an approval | 5 minutes | [approval.ts](../src/server/approval.ts) |
-| Approvals | A run left waiting for approval is stopped after | 10 minutes | [sdk.ts](../src/server/sdk.ts) |
-| Model context | Recent same-chat history sent with a run | 8,000 characters | [sdk.ts](../src/server/sdk.ts) |
+| Approvals | A run left waiting for approval is stopped after | 10 minutes | [sdk/contract.ts](../src/server/sdk/contract.ts) |
+| Model context | Recent same-chat history sent with a run | 8,000 characters | [sdk/adapter.ts](../src/server/sdk/adapter.ts) |
 | Memory (per bot) | Saved notes | 20 | [memory.ts](../src/server/memory.ts) |
 | Memory (per bot) | Characters in one note | 2,000 | [memory.ts](../src/server/memory.ts) |
 | Memory (per bot) | Characters across all its notes | 8,000 | [memory.ts](../src/server/memory.ts) |
 | Coordination (per primary run) | New bots created | 3 | [app.ts](../src/server/app.ts) |
 | Coordination (per primary run) | Distinct messages sent to agents | 3 | [app.ts](../src/server/app.ts) |
-| Coordination (per primary run) | Groups started | 1 | [sdk.ts](../src/server/sdk.ts) |
+| Coordination (per primary run) | Groups started | 1 | [sdk/run-fleet.ts](../src/server/sdk/run-fleet.ts) |
 | Coordination | Ordinary agents in one group | 7, plus the primary | [conversations.ts](../src/server/conversations.ts) |
 | Bot library | Saved profiles | 32 | [personas.ts](../src/server/personas.ts) |
 | Saved conversations | Chats | 100 | [conversations.ts](../src/server/conversations.ts) |

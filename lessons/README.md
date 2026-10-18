@@ -59,7 +59,7 @@ coordinator keeps control.
 What would you need to supply to give it a file-reading capability?
 
 **Source:** [01-coordinator.ts](01-coordinator.ts), then
-[`createFleetAgents` in sdk.ts](../src/server/sdk.ts).
+[`createFleetAgents` in sdk/fleet.ts](../src/server/sdk/fleet.ts).
 
 ## 2. Give individuals tools and a way to collaborate
 
@@ -81,7 +81,7 @@ the synthetic tools nor any model is invoked.
 `mutationTools` from the factory call and predict which assertions will fail.
 
 **Source:** [02-specialists.ts](02-specialists.ts), then
-[`createFleetAgents` in sdk.ts](../src/server/sdk.ts).
+[`createFleetAgents` in sdk/fleet.ts](../src/server/sdk/fleet.ts).
 
 ## 3. Define the tool's input contract
 

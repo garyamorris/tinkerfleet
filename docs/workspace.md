@@ -50,7 +50,7 @@ The runner uses an argument vector and `shell: false`. It does not expand pipes,
 
 ### Working directory versus argument paths
 
-The model must include `cwd`: use `null` or `"."` for the selected workspace, or a permitted existing relative subdirectory. Leaving `cwd` out of the model-facing request is not valid. Tinkerfleet's SDK adapter then converts the request into the runner’s internal action, where `cwd` is optional. If the model gives the selected folder or a subdirectory as an absolute `cwd`, the adapter's `normalizeCommandCwd` function in [sdk.ts](../src/server/sdk.ts) turns it into a relative path before approval. That function is Tinkerfleet code, not part of the Agents SDK. An outside-workspace `cwd`, traversal, or symlink directory is rejected.
+The model must include `cwd`: use `null` or `"."` for the selected workspace, or a permitted existing relative subdirectory. Leaving `cwd` out of the model-facing request is not valid. Tinkerfleet's SDK adapter then converts the request into the runner’s internal action, where `cwd` is optional. If the model gives the selected folder or a subdirectory as an absolute `cwd`, the adapter's `normalizeCommandCwd` function in [sdk/actions.ts](../src/server/sdk/actions.ts) turns it into a relative path before approval. That function is Tinkerfleet code, not part of the Agents SDK. An outside-workspace `cwd`, traversal, or symlink directory is rejected.
 
 An argument is different. An explicitly proposed absolute path in `args` may refer outside the workspace. Its effect depends on the installed program and your OS permissions. Review the destination as well as the program name; choosing a workspace does not make all other machine paths inaccessible.
 
@@ -60,7 +60,7 @@ Each command has a short, fixed timeout and a combined output limit ([Limits](ca
 
 The child receives `HOME`, a filtered `PATH`, `TMPDIR`, `LANG`, and permitted `LC_ALL`/`LC_CTYPE` values. It does not inherit arbitrary server variables, the server API key, or loader-hook environment variables. The OS or program may add its own environment values. `HOME` still points at the user's home directory: minimal environment inheritance is not filesystem isolation. A command can also read the server’s own startup environment and files such as `.env.local`; [Credentials and approved commands](../SECURITY.md#credentials-and-approved-commands) explains how to protect your API key.
 
-Changing model-turn or model-call limits does not change the local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk.ts](../src/server/sdk.ts).
+Changing model-turn or model-call limits does not change the local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk/contract.ts](../src/server/sdk/contract.ts).
 
 ## Several chats, one real folder
 

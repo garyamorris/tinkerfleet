@@ -46,11 +46,11 @@ the native runner launches the resolved executable with those exact arguments.
 Its result goes back to the model, which can explain the version it actually
 observed. `cwd: null` means the selected workspace. If the model sends an
 absolute working directory inside that workspace, Tinkerfleet's own
-`normalizeCommandCwd` in [sdk.ts](../src/server/sdk.ts) turns it into the
+`normalizeCommandCwd` in [sdk/actions.ts](../src/server/sdk/actions.ts) turns it into the
 matching relative path. This is app code, not an Agents SDK feature.
 
 Start reading at `startRun` in [app.ts](../src/server/app.ts), then
-`createSdkAdapter` in [sdk.ts](../src/server/sdk.ts). The executable work lives in
+`createSdkAdapter` in [sdk/adapter.ts](../src/server/sdk/adapter.ts). The executable work lives in
 [native-runner.ts](../src/server/native-runner.ts), not in the browser or the model.
 
 ## A bot, a conversation, and a run are different things
@@ -91,7 +91,7 @@ automatically call the primary model again. A later user message starts the next
 primary turn. See `messageAgent` and `relayAgentReplies` in [app.ts](../src/server/app.ts).
 
 Group delegation works within the group's run. `createFleetAgents` in
-[sdk.ts](../src/server/sdk.ts) exposes an `ask_*` tool for each selected ordinary
+[sdk/fleet.ts](../src/server/sdk/fleet.ts) exposes an `ask_*` tool for each selected ordinary
 bot, using SDK `agent.asTool(...)`. The primary supplies a self-contained request;
 the selected bot uses its own instructions and tools, then returns a result to
 the primary. These nested calls share the group's token, call-count, and runtime
@@ -117,7 +117,7 @@ sequentially, sharing earlier replies from that run.
 | --- | --- | --- |
 | Conversation history | Recent messages from this chat, persisted across restarts | [conversations.ts](../src/server/conversations.ts) |
 | Saved memory | Explicit notes belonging to one profile ID, reused across its chats | [memory.ts](../src/server/memory.ts) and [memory guide](memory.md) |
-| SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk.ts](../src/server/sdk.ts) |
+| SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk/adapter.ts](../src/server/sdk/adapter.ts) |
 
 The server selects history from the current conversation. The SDK adapter builds
 a bounded recent-history context from it; [Limits](capabilities.md#limits) gives

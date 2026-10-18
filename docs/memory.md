@@ -61,7 +61,7 @@ The pieces are deliberately small enough to follow:
    duplicates, and capacity. A successful mutation replaces the private JSON
    file atomically before updating its in-memory entries.
 4. At server startup, `createApp` opens the memory store beside the conversation
-   store. At live run start, `makeFleet` in [sdk.ts](../src/server/sdk.ts) loads
+   store. At live run start, `buildRunFleet` in [sdk/run-fleet.ts](../src/server/sdk/run-fleet.ts) loads
    each selected bot's notes before its first model call.
 5. `createFleetAgents` adds those notes to that bot's instructions as labeled,
    untrusted context and exposes its three memory tools.
