@@ -45,23 +45,7 @@ export function ChatRun({
   return (
     <section className="chat-run" aria-label={`Task: ${r.prompt}`}>
       <div className="thread-heading">
-        <span>
-          {new Date(r.startedAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}{' '}
-          · {r.mode === 'demo' ? 'Scripted demo · ' : ''}
-          {statusText[r.status]}
-        </span>
-        <button
-          className="text-button"
-          onClick={() => {
-            onShowDetails(r.id, 'Activity');
-          }}
-        >
-          Task details
-          <Icon name="chevron" size={13} />
-        </button>
+        {new Date(r.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </div>
       {r.messages.map((m) => (
         <article key={m.id} className={`message ${m.author === 'user' ? 'outgoing' : ''}`}>
@@ -132,23 +116,22 @@ export function ChatRun({
           onDecide={(a, approved) => onDecide(r, a, approved)}
         />
       )}
-      <RunActivity run={r} nameFor={(id) => getPerson(id).name} />
-      <div className="run-status">
-        {r.status === 'completed' ? (
-          <>
-            <Icon name="check" size={16} />
-            Complete
-            <button
-              className="text-button"
-              onClick={() => {
-                onShowDetails(r.id, 'Changes');
-              }}
-            >
-              Review results
-              <Icon name="chevron" size={14} />
-            </button>
-          </>
-        ) : null}
+      {/* One row per task: how it ended, its steps, and one way into Task details. */}
+      <div className="run-footer">
+        {!['running', 'awaiting_approval'].includes(r.status) && (
+          <span className={`run-state ${r.status}`}>
+            {r.status === 'completed' && <Icon name="check" size={15} />}
+            {statusText[r.status]}
+          </span>
+        )}
+        <RunActivity run={r} nameFor={(id) => getPerson(id).name} />
+        <button
+          className="text-button run-details"
+          onClick={() => onShowDetails(r.id, r.artifacts.length ? 'Changes' : 'Activity')}
+        >
+          Task details
+          <Icon name="chevron" size={13} />
+        </button>
       </div>
     </section>
   );

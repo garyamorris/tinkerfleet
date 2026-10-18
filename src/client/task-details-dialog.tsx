@@ -2,10 +2,26 @@
 import React from 'react';
 import type { AgentId, AppState, Persona, Run } from '../shared/types';
 import { character } from './profiles';
+import { usefulDetail } from './run-activity';
 import { TraceView } from './trace-view';
 import { Avatar, Diff, Icon, Modal, statusText } from './ui';
 
 const tabs = ['Activity', 'Trace', 'Output', 'Changes'];
+
+/** Long event details (such as the run's budget note) show their first sentence until opened. */
+function EventDetail({ text }: { text?: string }) {
+  if (!text) return null;
+  const first = /^[\s\S]{40,200}?[.!?](?=\s)/.exec(text)?.[0];
+  if (!first || text.length < 220) return <p>{text}</p>;
+  return (
+    <details className="event-detail">
+      <summary>
+        {first} <span>More</span>
+      </summary>
+      <p>{text.slice(first.length).trim()}</p>
+    </details>
+  );
+}
 
 export function TaskDetailsDialog({
   state,
@@ -62,18 +78,25 @@ export function TaskDetailsDialog({
             <dt>Model calls</dt>
             <dd>{run.usage.modelCalls.toLocaleString()}</dd>
           </div>
-          <div>
-            <dt>Input tokens</dt>
-            <dd>{run.usage.inputTokens.toLocaleString()}</dd>
-          </div>
-          <div>
-            <dt>Output tokens</dt>
-            <dd>{run.usage.outputTokens.toLocaleString()}</dd>
-          </div>
-          <div>
-            <dt>Total tokens</dt>
-            <dd>{run.usage.totalTokens.toLocaleString()}</dd>
-          </div>
+          {/* The scripted demo model counts no tokens; three zeros would only be noise. */}
+          {run.usage.totalTokens > 0 || run.mode === 'live' ? (
+            <>
+              <div>
+                <dt>Input tokens</dt>
+                <dd>{run.usage.inputTokens.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Output tokens</dt>
+                <dd>{run.usage.outputTokens.toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Total tokens</dt>
+                <dd>{run.usage.totalTokens.toLocaleString()}</dd>
+              </div>
+            </>
+          ) : (
+            <div className="run-usage-note">The scripted demo model reports no tokens.</div>
+          )}
         </dl>
       )}
       {run && (
@@ -139,7 +162,7 @@ export function TaskDetailsDialog({
                   />
                   <div>
                     <strong>{e.title}</strong>
-                    <p>{e.detail}</p>
+                    <EventDetail text={usefulDetail(e.kind, e.detail) ?? undefined} />
                     <small>
                       {person(e.agent).name} · +{((e.at - run.startedAt) / 1000).toFixed(1)}s
                     </small>

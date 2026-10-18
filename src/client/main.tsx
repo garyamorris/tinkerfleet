@@ -434,6 +434,22 @@ function App() {
       onOpenLibrary={() => setModal('team')}
     />
   );
+  const live = state?.mode === 'live';
+  const modeDetail = live
+    ? `${state?.workspaceToolsEnabled ? 'Local file tools on' : 'No file access or commands'} · Only this conversation’s participants see its context.`
+    : 'No API calls. Tools act on a temporary copy of tiny-project.';
+  const modeHint = `${live ? 'Live model' : 'Scripted demo'} · ${modeDetail}`;
+  const modeChip = (
+    <button
+      className="mode-chip"
+      onClick={() => setModal('settings')}
+      title="Mode and settings"
+      aria-label={`${live ? 'Live chat' : 'Scripted demo'}: mode and settings`}
+    >
+      <span className={`mode-dot ${live ? 'live' : ''}`} />
+      {live ? 'Live' : 'Demo'}
+    </button>
+  );
   return (
     <div className="app">
       <header className="app-header">
@@ -453,7 +469,7 @@ function App() {
             <Icon name="layers" size={18} />
             <span>Chats</span>
           </button>
-          <button onClick={() => setModal('team')}>
+          <button className="mobile-only" onClick={() => setModal('team')}>
             <Icon name="team" size={18} />
             <span>Bots</span>
           </button>
@@ -481,7 +497,22 @@ function App() {
               </div>
               <div>
                 <h1>{chat.title}</h1>
-                <p>{chat.participants.map((p) => p.name).join(' · ')}</p>
+                <p>
+                  {chat.participants.map((p) => p.name).join(' · ')}
+                  {chat.startedBy && (
+                    <>
+                      {' · Started by '}
+                      {startedByName(chat)}
+                      {' · '}
+                      <button
+                        className="inline-link"
+                        onClick={() => chooseChat(chat.startedBy!.conversationId)}
+                      >
+                        Original conversation
+                      </button>
+                    </>
+                  )}
+                </p>
                 {chat.participants.length === 1 ? (
                   <p className="chat-capabilities">
                     <CapabilitySummary
@@ -506,6 +537,7 @@ function App() {
                   </details>
                 )}
               </div>
+              {modeChip}
               <button
                 className="icon-button"
                 aria-label="Rename conversation"
@@ -520,32 +552,6 @@ function App() {
               </button>
             </header>
           )}
-          {chat?.startedBy && (
-            <div className="group-provenance">
-              <span>Started by {startedByName(chat)}</span>
-              <button
-                className="text-button"
-                onClick={() => chooseChat(chat.startedBy!.conversationId)}
-              >
-                Original conversation
-                <Icon name="chevron" size={13} />
-              </button>
-            </div>
-          )}
-          <div className="workspace-bar">
-            <button className="mode-label" onClick={() => setModal('settings')}>
-              <span className={`mode-dot ${state?.mode === 'live' ? 'live' : ''}`} />
-              {state?.mode === 'live' ? 'Live chat' : 'Scripted demo'}
-              <Icon name="chevron" size={13} />
-            </button>
-            <span>
-              {state?.mode === 'live'
-                ? state.workspaceToolsEnabled
-                  ? 'Local file tools enabled'
-                  : 'No file access or commands'
-                : 'No API calls. Tools act on a temporary copy of tiny-project.'}
-            </span>
-          </div>
           {state?.persistenceError && (
             <div role="alert" className="error-banner">
               History could not be saved: {state.persistenceError}
@@ -585,6 +591,10 @@ function App() {
                   <button className="text-button" onClick={() => setModal('team')}>
                     Create and manage your bots
                   </button>
+                </div>
+                <div className="welcome-mode">
+                  {modeChip}
+                  <span>{modeDetail}</span>
                 </div>
               </section>
             ) : !chatRuns.length ? (
@@ -694,11 +704,7 @@ function App() {
                   <Icon name="arrow" size={20} />
                 </button>
               </form>
-              <p className="composer-note">
-                {state?.mode === 'live'
-                  ? 'Live model responses · Only this conversation’s participants receive its context.'
-                  : 'Demo replies come from a scripted model. Live chats use your bots’ purposes.'}
-              </p>
+              <p className="composer-note">{modeHint}</p>
             </div>
           )}
         </main>

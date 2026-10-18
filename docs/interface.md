@@ -32,7 +32,7 @@ can turn that request into a saved name and purpose/personality. Its creation
 card offers **Open this bot’s chat**: the direct conversation already exists,
 so one click opens it.
 
-You can also open **Bots**, choose **Create persona**, and write the profile
+You can also open the **Bot library** (**Bots** on a phone), choose **Create persona**, and write the profile
 yourself. Saving a new persona opens its direct chat. New profiles receive a
 random avatar; **Randomize avatar** changes the appearance. It does not change
 the bot's tools or intelligence.
@@ -97,6 +97,9 @@ approval. An approved native action changes real files or starts a real local
 process. In the demo, that real file and process are in a temporary copy of
 tiny-project.
 
+The **Demo** or **Live** label beside a conversation's title opens the mode and
+settings; the line under the message box says what the current mode can do.
+
 Open **Task details** to inspect output and changes. An artifact records what a
 run produced; another action may have changed the real file since then. Learn
 how that boundary works in [Capabilities](capabilities.md) and
@@ -112,8 +115,9 @@ Source citations link to the evidence behind web answers. When a citation cannot
 be positioned reliably inside formatted text, it remains in the source list.
 Open the source and check the claim yourself.
 
-Expand the **Details** activity summary beneath a run to see recent recorded
-steps, agent names, and elapsed time. A file-read event or completed command is
+Each task ends with one line: how it finished, its activity steps, and **Task
+details**. Expand the steps to see recent recorded steps, agent names, and
+elapsed time. A file-read event or completed command is
 more useful evidence than a sentence promising to do the work. A started event
 alone is not proof of completion. The UI only reports activity supplied by the
 local tools or provider.

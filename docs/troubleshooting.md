@@ -180,7 +180,7 @@ Markdown is presentation, not execution. HTML stays inert, images appear as text
 labels, and only HTTP(S) links are supported. Citations that cannot be placed
 reliably inside formatted text remain in the source list.
 
-Expand **Details** to inspect actual recorded steps. A start event alone does
+Expand a task's activity steps, or open **Task details**, to inspect actual recorded steps. A start event alone does
 not mean success, and missing events are not invented progress. Compare the
 reported status, tool output, and real file state where relevant.
 

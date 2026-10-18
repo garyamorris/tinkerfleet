@@ -124,9 +124,11 @@ export function BotLibraryDialog({
           <section className="team-slot" key={p.id}>
             <Avatar person={character(p)} size={42} />
             <div className="slot-content">
-              <span className="library-role">{agentLabel(p)}</span>
               <div className="slot-select">
-                <strong>{p.name}</strong>
+                <strong>
+                  {p.name}
+                  <span className="library-role">{agentLabel(p)}</span>
+                </strong>
                 <button
                   className="secondary"
                   aria-label={`Edit ${p.name}`}
