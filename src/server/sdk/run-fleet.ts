@@ -7,14 +7,8 @@ import { tool, type Model, type Tool } from '@openai/agents';
 import { z } from 'zod';
 import type { AgentId, MemoryEntry, Persona } from '../../shared/types.js';
 import { validateAvailableBots, validateParticipants } from '../personas.js';
-import { parseAction, requireSafeText } from './actions.js';
-import type {
-  SdkAction,
-  SdkAdapterOptions,
-  SdkEvent,
-  SdkLimits,
-  SdkReasoningEffort,
-} from './contract.js';
+import { requireSafeText } from './actions.js';
+import type { SdkAdapterOptions, SdkEvent, SdkLimits, SdkReasoningEffort } from './contract.js';
 import { SafeSdkError } from './errors.js';
 import { createFleetAgents, defaultParticipants } from './fleet.js';
 import { remapSources } from './response-sources.js';
@@ -37,12 +31,7 @@ export interface RunFleetContext {
   limits: SdkLimits;
   boundedText: (value: unknown) => string;
   emit: (run: PrivateRun, event: Omit<SdkEvent, 'runId' | 'at'>) => void;
-  executeGrant: (
-    run: PrivateRun,
-    name: string,
-    action: SdkAction,
-    callId: string | undefined,
-  ) => Promise<string>;
+  runApproved: (run: PrivateRun, callId: string | undefined) => Promise<string>;
   modelForRun: (run: PrivateRun, role?: AgentId) => Model;
 }
 
@@ -55,7 +44,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
     limits,
     boundedText,
     emit,
-    executeGrant,
+    runApproved,
     modelForRun,
   } = context;
   const memories = new Map<string, MemoryEntry[]>();
@@ -195,13 +184,9 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
           parameters: commandSchema,
           needsApproval: true,
           errorFunction: null,
-          execute: async (args, _context, details) =>
-            executeGrant(
-              run,
-              'run_command',
-              parseAction('run_command', JSON.stringify(args), options.workspaceRoot),
-              details?.toolCall?.callId,
-            ),
+          // needsApproval pauses the run. This only executes after the user approves,
+          // and runs the stored copy of the approved action, not these arguments.
+          execute: async (_args, _context, details) => runApproved(run, details?.toolCall?.callId),
         }),
         tool({
           name: 'edit_file',
@@ -210,8 +195,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
           parameters: editSchema,
           needsApproval: true,
           errorFunction: null,
-          execute: async (args, _context, details) =>
-            executeGrant(run, 'edit_file', { kind: 'edit', ...args }, details?.toolCall?.callId),
+          execute: async (_args, _context, details) => runApproved(run, details?.toolCall?.callId),
         }),
       ]
     : [];

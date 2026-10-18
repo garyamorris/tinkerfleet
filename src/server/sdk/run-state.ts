@@ -30,9 +30,6 @@ export interface Pending {
   item: RunToolApprovalItem;
   view: SdkPendingApproval;
   callId: string;
-  callDigest: string;
-  decision?: boolean;
-  consumed: boolean;
 }
 export interface PrivateRun {
   team?: Persona[];
@@ -51,8 +48,10 @@ export interface PrivateRun {
   controller: AbortController;
   fleet?: ReturnType<typeof createFleetAgents>;
   state?: RunState<unknown, Agent<unknown>>;
+  /** Approvals waiting for the user, by approval ID. */
   pending: Map<string, Pending>;
-  grants: Map<string, Pending>;
+  /** Approved tool calls not yet executed: SDK call ID -> approval ID. Each is used once. */
+  approvedCalls: Map<string, string>;
   busy: boolean;
   activeMs: number;
   expiry?: ReturnType<typeof setTimeout>;

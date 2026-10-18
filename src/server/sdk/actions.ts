@@ -1,5 +1,4 @@
-/** Parse a model's run_command/edit_file arguments into an exact action, and fingerprint it. */
-import { createHash, timingSafeEqual } from 'node:crypto';
+/** Parse a model's run_command/edit_file arguments into an exact action, and compare actions. */
 import path from 'node:path';
 import { redactSdkText } from '../safety.js';
 import type { SdkAction } from './contract.js';
@@ -28,29 +27,13 @@ export function requireSafeText(text: string): void {
   if (redactSdkText(text) !== text)
     throw new SafeSdkError('Credential-like content was blocked. Review it locally.');
 }
-export function digestCall(name: string, action: SdkAction): string {
-  // Runner metadata (snapshot, image, policy) is separately bound by its digest.
-  const normalized: SdkAction =
+/** Compare two actions by the fields a person reviews, ignoring metadata a runner may add. */
+export function sameAction(a: SdkAction, b: SdkAction): boolean {
+  const key = (action: SdkAction) =>
     action.kind === 'edit'
-      ? { kind: 'edit', path: action.path, content: action.content }
-      : {
-          kind: 'command',
-          executable: action.executable,
-          args: action.args,
-          ...(action.cwd ? { cwd: action.cwd } : {}),
-        };
-  return createHash('sha256')
-    .update(name)
-    .update('\0')
-    .update(JSON.stringify(normalized))
-    .digest('hex');
-}
-export function sameDigest(a: string, b: string): boolean {
-  return (
-    /^[a-f0-9]{64}$/i.test(a) &&
-    /^[a-f0-9]{64}$/i.test(b) &&
-    timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'))
-  );
+      ? JSON.stringify(['edit', action.path, action.content])
+      : JSON.stringify(['command', action.executable, action.args, action.cwd || null]);
+  return key(a) === key(b);
 }
 export function parseAction(
   name: string,
