@@ -1,4 +1,5 @@
 /** Plain-language labels and numbers for the trace viewer. No React, so tests can import it. */
+import type { TraceDiff } from '../shared/trace-diff';
 import type { TraceCall, TraceItem, TraceItemKind } from '../shared/types';
 
 export const kindLabel: Record<TraceItemKind, string> = {
@@ -75,4 +76,30 @@ export function readableText(item: TraceItem): string {
   } catch {
     return text;
   }
+}
+
+const what = (call?: TraceCall) => (call ? outcomeText(call) : 'made no call');
+const toolNames = (call?: TraceCall) =>
+  (call?.output ?? []).filter((i) => i.kind === 'tool_call').map((i) => i.name ?? '');
+
+/** A tool call's arguments on one line, shortened, so two calls to the same tool can be told apart. */
+export function argsOf(call: TraceCall, limit = 90): string {
+  const text = call.output
+    .filter((i) => i.kind === 'tool_call')
+    .map((i) => `${i.name ?? ''} ${(i.text ?? '').replace(/\s+/g, ' ')}`.trim())
+    .join('; ');
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
+/** One sentence: the same moves, or the first place the two tasks parted ways. */
+export function verdict(diff: TraceDiff): string {
+  if (diff.firstDivergence === null) {
+    const words = diff.pairs.some((p) => p.wordsDiffer);
+    return `Both tasks made the same moves${words ? ', though their replies were worded differently' : ''}.`;
+  }
+  const pair = diff.pairs[diff.firstDivergence - 1];
+  const names = toolNames(pair.a);
+  if (pair.a && pair.b && names.length && names.join() === toolNames(pair.b).join())
+    return `They first differ at call ${pair.index}: both called ${names.join(', ')}, but with different arguments.`;
+  return `They first differ at call ${pair.index}: this task ${what(pair.a)}, the other ${what(pair.b)}.`;
 }

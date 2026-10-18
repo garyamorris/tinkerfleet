@@ -154,7 +154,21 @@ export function TaskDetailsDialog({
           )
         ) : tab === 'Trace' ? (
           run ? (
-            <TraceView key={run.id} run={run} nameFor={(id) => person(id).name} />
+            <TraceView
+              key={run.id}
+              run={run}
+              nameFor={(id) => person(id).name}
+              others={(state?.runs ?? [])
+                .filter(
+                  (r) => r.id !== run.id && r.conversationId && (r.usage?.modelCalls ?? 0) > 0,
+                )
+                .sort((a, b) => b.startedAt - a.startedAt)
+                .slice(0, 25)
+                .map((r) => ({
+                  run: r,
+                  label: `${r.prompt.slice(0, 60)} · ${state?.conversations.find((c) => c.id === r.conversationId)?.title ?? 'chat'} · ${statusText[r.status]}`,
+                }))}
+            />
           ) : (
             <p className="empty-state">
               Start a task to see what each model call sent and got back.

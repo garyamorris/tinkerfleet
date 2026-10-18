@@ -208,5 +208,5 @@ the server directly, for example
 `node --env-file=.env.other --import tsx src/server/index.ts --production`.
 
 Next, follow [Build an agent app](build-an-agent-app.md), run the
-[eleven lessons](../lessons/README.md), or read [Testing](testing.md) before changing
+[twelve lessons](../lessons/README.md), or read [Testing](testing.md) before changing
 an implementation detail.

@@ -1,8 +1,8 @@
 # Learn to build agent tools
 
-These eleven short programs walk from watching the agent loop run to approving a
-real local action, then measuring whether an agent works and reading what each
-model call actually saw. Run them from the repository root with Node.js 22.12+ after
+These twelve short programs walk from watching the agent loop run to approving a
+real local action, then measuring whether an agent works reading what each
+model call actually saw, and comparing two runs. Run them from the repository root with Node.js 22.12+ after
 `npm ci`. They make no model requests and need no API key. Each uses assertions:
 a successful run prints its explanation and exits normally; a failed assertion
 stops the lesson.
@@ -307,6 +307,35 @@ reports `removedItems`.
 **Source:** [10-trace.ts](10-trace.ts), then
 [sdk/trace.ts](../src/server/sdk/trace.ts) and
 [the model wrapper](../src/server/sdk/model.ts) where each call is recorded.
+
+## 11. Compare two runs
+
+```sh
+npm run lesson:11
+```
+
+**Learn:** two runs of a model rarely say the same words, so comparing their text
+is noise. A useful comparison asks where the runs first *did* something
+different: which tool, with which arguments.
+
+**What happens:** one task runs four times through the app's real adapter, each
+time with a trace attached. The lesson changes one thing at a time and compares
+each run with the first. The same moves in different words show no difference. A
+different agent purpose shows up in the instructions while the moves stay the
+same. A different file read is reported as the first call where the runs split,
+with the arguments that differ. The app shows the same comparison: choose
+**Compare with another task** in a task's **Trace** tab. See
+[Comparing two tasks](../docs/traces.md#compare-two-tasks).
+
+**Expect:** `11. Compare: wording varies, so ask where two runs first did something
+different.`
+
+**Try:** script the second run to call `read_file` twice and predict where the runs
+diverge. Then find where `compareTraces` decides two calls are the same move, and
+change what counts.
+
+**Source:** [11-compare.ts](11-compare.ts), then
+[shared/trace-diff.ts](../src/shared/trace-diff.ts).
 
 ## Connect the pieces
 
