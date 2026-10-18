@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 72" width="660" height="144" role="img" aria-label="tinkerfleet.">
+  <g transform="translate(4 4) scale(1)">
+    <g transform="rotate(-10 32 32)">
+      <rect x="8" y="8" width="23" height="23" rx="7" fill="#8976df" />
+      <rect x="33" y="8" width="23" height="23" rx="7" fill="#b6a8ee" transform="rotate(15 44.5 19.5)" />
+      <rect x="8" y="33" width="23" height="23" rx="7" fill="#5c498d" />
+      <rect x="33" y="33" width="23" height="23" rx="7" fill="#dbd2f6" />
+    </g>
+  </g>
+  <text x="82" y="50" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="44" font-weight="650" letter-spacing="-2" fill="#f3f1f7">tinkerfleet<tspan fill="#8c78e7">.</tspan></text>
+</svg>
