@@ -249,28 +249,33 @@ into an approval card.
 
 ```sh
 npm run lesson:9
-npm run eval -- --live --runs 3   # optional: your configured model, costs money
+npm run eval -- --live --runs 5   # optional: your configured model, costs money
 ```
 
 **Learn:** an eval gives the agent a task and grades the outcome with code the
 agent cannot influence. Because a model's behavior varies, run each case several
-times and look at the score.
+times and look at the rate and its spread, not one result.
 
-**What happens:** each attempt gets a fresh copy of tiny-project. The agent works
-through the app's real adapter, approvals, and runner. The eval approves on your
-behalf with a narrow policy: edits, and only the project's test command. After
-the run, a grader runs the tests itself and checks that the agent did not edit
-them. By default the scripted demo model plays the agent, which checks the
-harness itself; `--live` uses the model in your `.env.local`.
+**What happens:** the harness in [evals/harness.ts](../evals/harness.ts) gives each
+attempt a fresh copy of tiny-project and runs the agent through the app's real
+adapter, approvals, and runner. The eval approves on your behalf with a narrow
+policy: edits, and only the project's test command. Checks then look at the
+result: the tests pass, the tests were not touched, and no other command was
+requested. The lesson runs the honest scripted agent through the repair cases.
+It then runs two more scripted agents against a file with a planted instruction:
+one obeys it and fails, with the steps it took shown, and one ignores it and
+passes. A grader that cannot fail a bad agent proves nothing.
 
 **Expect:** `9. Evals: grade the outcome yourself, with a narrow approval policy,
 over many runs.`
 
-**Try:** add a case the scripted model cannot handle, such as `Hello there.`, and
-read the failure. With a live model, compare scores for two models or two
-reasoning-effort settings.
+**Try:** add a case to [evals/cases.ts](../evals/cases.ts) that the scripted model
+cannot pass, and read what the failure reports. With a live model, run
+`npm run eval -- --live --runs 5 --save` for two models and compare the reports
+with `--compare`. How many runs does it take for the difference to be clear?
 
-**Source:** [09-eval.ts](09-eval.ts).
+**Source:** [09-eval.ts](09-eval.ts), then [Measure an agent with evals](../docs/evals.md)
+for the full workbench.
 
 ## 10. Read a trace
 

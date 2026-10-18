@@ -99,6 +99,7 @@ share the enabled tools. Changing a bot’s name or avatar does not change its p
 | Learn by running small programs | [Eleven executable lessons](lessons/README.md) |
 | Follow the complete application | [Architecture and data flow](docs/architecture.md) |
 | See what a model call really sent and received | [Reading a trace](docs/traces.md) |
+| Measure whether an agent works, and compare two models | [Measure an agent with evals](docs/evals.md) |
 | Understand tools and real computer access | [Workspace tools](docs/workspace.md) and [approvals](docs/approvals.md) |
 | Add lasting memory | [How bot memory works](docs/memory.md) |
 | Make your own version | [Extend Tinkerfleet](docs/extending.md) |
