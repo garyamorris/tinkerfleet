@@ -20,6 +20,7 @@ Start with the [setup guide](setup.md). These are startup modes, not three diffe
 | Create and edit files | The temporary copy, after exact approval | Unavailable | Real files, after exact approval |
 | Run installed commands | The scripted test command in the temporary copy, after exact approval | Unavailable | Real local processes, after exact approval |
 | Saved chat history | Yes | Yes | Yes |
+| [Scheduled runs](#scheduled-runs) | Saved and shown; never run | Run on their own at the chosen time | Same; an edit or command still waits for approval |
 
 Live chat is the default live configuration. `TINKERFLEET_WORKSPACE_TOOLS=1` enables local tools; `TINKERFLEET_WORKSPACE` chooses their starting folder. `TINKERFLEET_WEB_SEARCH=0` disables hosted search. These switches cap every bot: a bot's capabilities choose from what they enable, never more. Live mode requires a configured model and a server-side API key. See [configuration](setup.md) before running paid requests.
 
@@ -56,6 +57,23 @@ IDs, rather than names, route these operations. Two agents can have similar pers
 **Trace the implementation:** [capability rules](../src/shared/capabilities.ts), [profile validation](../src/server/personas.ts), [agent construction](../src/server/sdk/fleet.ts), [SDK tools](../src/server/sdk/run-fleet.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
 
 **Try it without a key:** in demo mode, ask the primary `Create a patient writing coach named Ada`, then `Ask Ada: Hello`. These are explicit scripted patterns, not general language understanding. The created profile starts with memory only and can later be used in live mode. Then try `Create a careful test runner called Rex`: Rex starts with read and memory, and the message under it offers to grant run. Then ask the primary to fix the failing tests: Scout cannot read files, so Maker inspects and fixes, and Checker runs the tests. [Lesson 12](../lessons/README.md#12-give-each-bot-only-what-it-needs) shows the same rules from code.
+
+## Scheduled runs
+
+A schedule is a saved prompt the server sends to one ordinary bot on its own: on chosen days of the week, at one time of day, in the server's local time. Add, edit, pause, and delete schedules in **Bot library → Schedules**. Each schedule shows when it next runs and what happened last time.
+
+When a schedule is due, the server starts an ordinary run in that bot's own direct chat (creating the chat if needed), exactly as if you had typed the prompt there. The bot gets the same agent, history, memory, capabilities, and [run budgets](#run-budgets). The prompt carries a **Scheduled** marker in the chat. Nothing in this path approves anything:
+
+- A bot whose capabilities include `edit` or `run` cannot be given a schedule, and the primary cannot have one, since it creates bots and starts other runs. A profile saved before capabilities existed has every tool, so choose its capabilities first.
+- If you grant `edit` or `run` to a bot after scheduling it, its schedule shows a warning. A scheduled run that reaches an edit or command pauses and waits for you in the chat like any other, and is stopped when the approval wait runs out. A paused schedule for such a bot cannot be resumed.
+
+Only live mode runs schedules. The demo saves and shows them, with their next due time, but never fires them, scripted or otherwise. Live mode without a model or API key skips each due time and says so; nothing is sent.
+
+A due time is recorded as handled before its run starts, so a crash or restart never runs it twice. When the server was off through several due times, the latest one runs once on startup, and the rest are skipped. If the bot's chat is still busy with another run, that due time is skipped, not queued. A new, edited, or resumed schedule counts from that moment, so it never runs for a time already past.
+
+Schedules are saved in `.tinkerfleet/conversations.json.schedules.json`. Each runs at most once a day, and the caps are in [Limits](#limits). An unattended run spends provider money and sends the prompt, history, and memory to the provider; see [SECURITY.md](../SECURITY.md#scheduled-runs-happen-without-you).
+
+**Trace it:** due times and the refusal rule in [shared/schedules.ts](../src/shared/schedules.ts), the saved store in [schedules.ts](../src/server/schedules.ts), and `runDueSchedules` in [app.ts](../src/server/app.ts). [Lesson 13](../lessons/README.md#13-run-a-bot-on-a-schedule) runs one with a scripted model.
 
 ## What “memory” means here
 
@@ -127,6 +145,12 @@ These are not configurable. Raising a run budget does not change them.
 | Saved conversations | Chats | 100 | [conversations.ts](../src/server/conversations.ts) |
 | Saved conversations | Runs | 200 | [conversations.ts](../src/server/conversations.ts) |
 | Saved conversations | Size of the store file | 8 MiB | [conversations.ts](../src/server/conversations.ts) |
+| Schedules | Per bot, and in all | 3, 10 | [shared/schedules.ts](../src/shared/schedules.ts) |
+| Schedules | Runs per schedule | At most one a day, at its chosen time | [shared/schedules.ts](../src/shared/schedules.ts) |
+| Schedules | Shortest gap between two runs of one schedule, even after an edit or a clock change | 1 hour | [shared/schedules.ts](../src/shared/schedules.ts) |
+| Schedules | Characters in a scheduled prompt | 2,000 | [shared/schedules.ts](../src/shared/schedules.ts) |
+| Schedules | How often the server checks for due schedules | 30 seconds | [shared/schedules.ts](../src/shared/schedules.ts) |
+| Schedules | Missed due times run on startup | The latest one, once | [shared/schedules.ts](../src/shared/schedules.ts) |
 
 ## Learn one boundary at a time
 

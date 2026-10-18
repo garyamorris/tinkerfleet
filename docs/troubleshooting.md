@@ -164,7 +164,7 @@ pending approvals. It does not resume SDK execution or undo local file effects.
 Submit a fresh message to continue.
 
 If loading or saving fails, check access to `.tinkerfleet/conversations.json`
-and its `.memories.json` companion. Conversation storage has caps on chats,
+and its `.memories.json` and `.schedules.json` companions. Conversation storage has caps on chats,
 runs, and file size ([Limits](capabilities.md#limits)). Corrupt stores fail
 startup rather than silently replacing your history: the server prints one line
 saying which file could not be read and exits without changing it. Preserve a

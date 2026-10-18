@@ -28,9 +28,10 @@ node --import tsx --test tests/sdk.test.ts
 node --import tsx --test tests/native-runner.test.ts
 node --import tsx --test tests/http.test.ts tests/memory-http.test.ts
 node --import tsx --test tests/trace.test.ts tests/trace-format.test.ts tests/trace-diff.test.ts
+node --import tsx --test tests/schedules.test.ts
 ```
 
-Run the thirteen executable lessons separately; they are not included in `npm run check`:
+Run the fourteen executable lessons separately; they are not included in `npm run check`:
 
 ```sh
 npm run lesson:0
@@ -46,6 +47,7 @@ npm run lesson:9
 npm run lesson:10
 npm run lesson:11
 npm run lesson:12
+npm run lesson:13
 ```
 
 Each lesson prints the behavior it establishes and exits unsuccessfully if an

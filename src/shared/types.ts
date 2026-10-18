@@ -89,6 +89,8 @@ export interface RunUsage {
 }
 export interface Run {
   sentBy?: { conversationId: string; runId: string; coordinatorId: string };
+  /** Set when the server started this run on its own, from this schedule. */
+  scheduleId?: string;
   usage?: RunUsage;
   conversationId?: string;
   team?: Persona[];
@@ -178,8 +180,37 @@ export interface RunTrace {
   /** True when limits stopped the trace from recording every call. */
   truncated: boolean;
 }
+/**
+ * A saved prompt the server sends to one bot on its own, at one time of day on chosen days of the
+ * week, in the server's local time. See src/server/schedules.ts.
+ */
+export interface Schedule {
+  id: string;
+  botId: string;
+  prompt: string;
+  /** Days of the week it runs: 0 is Sunday, 6 is Saturday. */
+  days: number[];
+  /** 24-hour 'HH:MM'. */
+  time: string;
+  paused: boolean;
+  createdAt: number;
+  updatedAt: number;
+  /** Due times at or before this are never run. It moves forward on create, edit, resume, and each run. */
+  handledThrough: number;
+  /** What happened the last time it was due: the run it started, or why it was skipped. */
+  lastRun?: { at: number; runId?: string; conversationId?: string; skipped?: string };
+}
+export interface ScheduleView extends Schedule {
+  /** When it is next due, or null while paused. */
+  nextRunAt: number | null;
+}
 export interface AppState {
   memories: MemoryEntry[];
+  schedules: ScheduleView[];
+  /** Only live mode runs schedules; the demo shows them but never fires them. */
+  schedulesRun: boolean;
+  /** The server's time zone, which schedule times use. */
+  timeZone: string;
   webSearchEnabled: boolean;
   profiles: Persona[];
   workspaceToolsEnabled: boolean;

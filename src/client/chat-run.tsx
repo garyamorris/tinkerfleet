@@ -57,6 +57,12 @@ export function ChatRun({
         <article key={m.id} className={`message ${m.author === 'user' ? 'outgoing' : ''}`}>
           {m.author !== 'user' && <Avatar person={character(getPerson(m.author))} size={32} />}
           <div className="message-content">
+            {m.author === 'user' && r.scheduleId && m.id === r.messages[0]?.id && (
+              <div className="message-byline scheduled-marker" title="Sent by a schedule">
+                <Icon name="clock" size={13} />
+                Scheduled
+              </div>
+            )}
             {m.author !== 'user' && (
               <div className="message-byline">
                 {getPerson(m.author).name}

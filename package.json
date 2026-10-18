@@ -30,6 +30,7 @@
     "lesson:10": "node --import tsx lessons/10-trace.ts",
     "lesson:11": "node --import tsx lessons/11-compare.ts",
     "lesson:12": "node --import tsx lessons/12-least-privilege.ts",
+    "lesson:13": "node --import tsx lessons/13-schedules.ts",
     "eval": "node --env-file-if-exists=.env.local --import tsx evals/run.ts"
   },
   "dependencies": {
