@@ -29,7 +29,7 @@ node --import tsx --test tests/native-runner.test.ts
 node --import tsx --test tests/http.test.ts tests/memory-http.test.ts
 ```
 
-Run the seven executable lessons separately; they are not included in `npm run check`:
+Run the ten executable lessons separately; they are not included in `npm run check`:
 
 ```sh
 npm run lesson:0
@@ -39,6 +39,9 @@ npm run lesson:3
 npm run lesson:4
 npm run lesson:5
 npm run lesson:6
+npm run lesson:7
+npm run lesson:8
+npm run lesson:9
 ```
 
 Each lesson prints the behavior it establishes and exits unsuccessfully if an
@@ -87,6 +90,24 @@ When adding a tool, test the outcome at its boundary: what changes before approv
 what changes after approval, and what happens on denial, replay, invalid input,
 or cancellation. Add a scripted SDK test when the integration with interruptions
 or tool results matters. Use temporary fixtures instead of personal projects.
+
+## Evals: does the agent actually work?
+
+Tests check that the application follows its own rules. An eval asks a different
+question: given a real task, does the agent finish it? [Lesson 9](../lessons/09-eval.ts)
+is a small one. Three ideas carry over to bigger evals:
+
+- **Grade the outcome yourself.** The grader runs the tests on its own and checks
+  that the agent did not edit them. The agent's own report is not evidence.
+- **Approve with a narrow policy.** An eval approves on your behalf, so it allows
+  only what the task needs (here, edits in a temporary copy and the test command)
+  and records anything it declined. Never auto-approve arbitrary commands.
+- **Run each case several times.** Models vary. Report a score such as 5/6, and
+  compare scores when you change a model, a prompt, or a tool.
+
+`npm run lesson:9` uses the scripted demo model, which checks the harness, not a
+model. `npm run eval -- --live --runs 3` grades your configured model and costs
+a few model calls per attempt.
 
 ## Browser checks answer different questions
 

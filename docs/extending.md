@@ -46,7 +46,7 @@ tool({
 
 The flow is schema → workspace read → small structured result → model response. Calling `harness.readFile` preserves the existing selected-folder, excluded-file, symlink, and size checks. Do not replace it with an unrestricted filesystem read. Placing the tool inside `readTools` keeps it disabled when workspace tools are off and makes it available to agents through the existing fleet setup.
 
-Verify with a temporary text fixture containing `one`, a blank line, and `two`: the tool should return two nonempty lines. Also check an empty file, a missing file, and a path outside the selected workspace. Use a fake model to request the new tool and check its returned result without making a provider call; [Testing](testing.md) explains that pattern. The scripted browser demo will not discover your new SDK tool automatically.
+Verify with a temporary text fixture containing `one`, a blank line, and `two`: the tool should return two nonempty lines. Also check an empty file, a missing file, and a path outside the selected workspace. Use a fake model to request the new tool and check its returned result without making a provider call; [lesson 7](../lessons/07-your-tool.ts) shows that pattern, so copy it and swap in your tool. The scripted browser demo will not discover your new SDK tool automatically.
 
 For a polished UI exercise, add a readable activity label for `text_file_stats` in the server’s event mapping. Keep the raw tool name available in task details. The activity label should describe an observed call, not predict that the call succeeded.
 

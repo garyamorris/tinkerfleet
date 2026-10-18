@@ -92,7 +92,8 @@ first tool than a general-purpose “do anything” function.
 
 **Read:** `readTools` inside `buildRunFleet` in [sdk/run-fleet.ts](../src/server/sdk/run-fleet.ts), then
 [workspace validation](../src/server/runner-policy.ts).
-**Run:** `npm run lesson:3`.
+**Run:** `npm run lesson:3`, then `npm run lesson:7` to give the app's agents a
+tool of your own and watch a model call it.
 **Build next:** the [extension guide](extending.md) walks through adding a small tool.
 
 ## 4. Add actions with a visible decision point
@@ -119,7 +120,8 @@ This is an application protocol with state transitions. Writing “always ask
 permission” in an agent’s personality cannot implement it.
 
 **Read:** [how approvals work](approvals.md).
-**Run:** `npm run lesson:4`.
+**Run:** `npm run lesson:4`, then `npm run lesson:8` to watch the SDK pause a run
+for approval and resume it.
 **Try:** deny a command in the demo. Find the code that prevents execution rather
 than just changing the button’s appearance.
 
@@ -271,7 +273,8 @@ A live check answers a different question: does the chosen provider and model
 work with these tools and produce useful results? Separate that evidence from
 unit tests and scripted browser demonstrations.
 
-**Run:** `npm run check`.
+**Run:** `npm run check`, then `npm run lesson:9` for a small eval. With a model
+configured, `npm run eval -- --live --runs 3` grades it on the tiny-project fix.
 **Read:** [testing an agent application](testing.md).
 **Exercise:** invent one failure test for each feature you have added. For
 memory, try the wrong bot’s entry ID. For approvals, try replaying a used decision.

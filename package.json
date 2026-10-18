@@ -23,7 +23,11 @@
     "lesson:3": "node --import tsx lessons/03-tools.ts",
     "lesson:4": "node --import tsx lessons/04-approvals.ts",
     "lesson:5": "node --import tsx lessons/05-local-tools.ts",
-    "lesson:6": "node --import tsx lessons/06-workspace.ts"
+    "lesson:6": "node --import tsx lessons/06-workspace.ts",
+    "lesson:7": "node --import tsx lessons/07-your-tool.ts",
+    "lesson:8": "node --import tsx lessons/08-sdk-approvals.ts",
+    "lesson:9": "node --import tsx lessons/09-eval.ts",
+    "eval": "node --env-file-if-exists=.env.local --import tsx lessons/09-eval.ts"
   },
   "dependencies": {
     "@openai/agents": "0.20.0",
