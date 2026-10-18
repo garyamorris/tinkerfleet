@@ -16,9 +16,26 @@ Commands have a broader boundary: they run with the server user’s operating-sy
 
 The command launcher uses separate executable and argument fields with `shell: false`; it does not implicitly interpret shell syntax. If the user explicitly approves a shell executable and script arguments, that shell can interpret the script. Review the actual executable and arguments, including any script or project code they invoke.
 
-The app binds approval to the run and exact action, including a command’s resolved executable identity, and rechecks that identity before launch. Decisions expire and are single-use. Denial, cancellation, or an invalid decision does not authorize the action. SDK edits and commands also pause for approval. Time and output limits and a reduced child-process environment limit exposure, but do not remove a process’s ability to read accessible files or launch subprocesses. Server API keys are not deliberately inherited in that child environment; accessible credentials on disk remain accessible to commands run as the user.
+The app binds approval to the run and exact action, including a command’s resolved executable identity, and rechecks that identity before launch. Decisions expire and are single-use. Denial, cancellation, or an invalid decision does not authorize the action. SDK edits and commands also pause for approval. Time and output limits and a reduced child-process environment limit exposure, but do not remove a process’s ability to read accessible files or launch subprocesses. Server API keys are not deliberately inherited in that child environment; accessible credentials on disk remain accessible to commands run as the user. [Credentials and approved commands](#credentials-and-approved-commands) explains how to keep your API key safer.
+
+The approval digest covers only the workspace’s included files. Excluded files and folders, such as `.env`, `.npmrc`, and `node_modules`, are not part of it. So an approved `npm test` is bound to npm’s resolved executable and to the included source files, but not to the installed dependencies or npm’s configuration. Review what a command will load, not only its name.
+
+When a command ends, times out, or is stopped, the runner stops the command’s whole process group. A process that detaches itself, for example with `setsid ... &`, leaves that group and can keep running afterwards. `Cleanup confirmed: true` in the command output means the process group was stopped, not that every descendant is gone.
 
 Stopping a run does not undo completed edits or command effects. See [Workspace](docs/workspace.md) and [Approvals](docs/approvals.md) for the execution path.
+
+## Credentials and approved commands
+
+Approved commands run as your user. The app gives them a reduced environment without `OPENAI_API_KEY`, but a command can still find the key in two ways:
+
+- **From the server’s startup environment.** If you exported `OPENAI_API_KEY` in the shell that started the server, it is part of the server process’s environment. An approved command can read its parent’s environment, for example from `/proc/$PPID/environ` on Linux.
+- **From disk.** `.env.local` is an ordinary file. File tools exclude it, but an approved command can read any file your user can read.
+
+To reduce the risk:
+
+- Put the key in `.env.local`, which `npm run dev` loads, or pass a file with `node --env-file=...`. Do not export it in your shell. On Linux, values loaded this way do not appear in `/proc/$PPID/environ`.
+- Use a separate API key for experiments, with a low spending limit set in your provider account. Then a leaked key costs little.
+- Read every command before you approve it, especially one that reads files outside the project or sends data over the network.
 
 ## Bots, conversations, and memory
 
@@ -33,6 +50,14 @@ These are application context boundaries, not OS isolation. Chats using one fold
 Live requests can include prompts, persona purposes, bounded conversation history, coordination briefs, and the replying bot’s saved memories. Workspace reads and command results may become model context when those tools are enabled. Saved memory is stored locally but is sent to the provider when used; local storage does not mean local inference. SDK tracing is disabled, but that does not prevent the inference request itself.
 
 Hosted web search is enabled by default in live mode and can be disabled with `TINKERFLEET_WEB_SEARCH=0`. It uses provider-hosted web tools, not the user’s logged-in browser or cookies. Queries go to the provider and tool use may have additional charges. Retrieved content is untrusted input and cannot grant tool permissions or approve commands. Demo mode does not browse.
+
+### Untrusted text and web search
+
+`read_file` and `list_files` need no approval. Hosted web search, including its open-page and find-in-page actions, runs at the provider, also without approval. Together, these create a leak path. Text planted in a project file or a web page can tell the model to put workspace content into a search query or into a URL it opens. Only the agents’ instructions discourage this; no code blocks it.
+
+If workspace tools are on and the project, or the sites the agent may visit, could contain untrusted text, set `TINKERFLEET_WEB_SEARCH=0`.
+
+### Keep secrets out of model context
 
 Keep credentials out of prompts, profiles, memory, and search queries. Redaction and pattern checks help with recognizable secrets; they are not a complete privacy filter. Keep API keys in server configuration, never browser bundles or `VITE_` variables.
 

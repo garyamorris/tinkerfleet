@@ -24,6 +24,8 @@ The current policy excludes hidden paths, dependency/build directories such as `
 
 These checks reduce accidental exposure through file tools. They are not a complete secret detector, and they do not restrict what an approved native program can access independently.
 
+Reads need no approval, so a file’s text reaches the model as soon as an agent reads it. If the project may contain untrusted text, read [Untrusted text and web search](../SECURITY.md#untrusted-text-and-web-search) before leaving web search on.
+
 **Trace it:** `snapshot`, `readFile`, file capture, and directory checks in [native-runner.ts](../src/server/native-runner.ts); path/content rules and limits in [runner-policy.ts](../src/server/runner-policy.ts).
 
 ## Creating or editing a file
@@ -54,9 +56,9 @@ An argument is different. An explicitly proposed absolute path in `args` may ref
 
 ### Process lifetime and environment
 
-Each command has a short, fixed timeout and a combined output limit ([Limits](capabilities.md#limits)). Output is bounded and redacted before returning to the model. Timeout, cancellation, and normal exit trigger process-group cleanup, including ordinary children left behind by the main process. This is not a persistent terminal or background-server launcher; programs that deliberately escape process-group control are not securely confined.
+Each command has a short, fixed timeout and a combined output limit ([Limits](capabilities.md#limits)). Output is bounded and redacted before returning to the model. Timeout, cancellation, and normal exit trigger process-group cleanup, including ordinary children left behind by the main process. This is not a persistent terminal or background-server launcher; programs that deliberately escape process-group control are not securely confined. For example, a process started with `setsid ... &` keeps running after cleanup, even when the output says `Cleanup confirmed: true`.
 
-The child receives `HOME`, a filtered `PATH`, `TMPDIR`, `LANG`, and permitted `LC_ALL`/`LC_CTYPE` values. It does not inherit arbitrary server variables, the server API key, or loader-hook environment variables. The OS or program may add its own environment values. `HOME` still points at the user's home directory: minimal environment inheritance is not filesystem isolation.
+The child receives `HOME`, a filtered `PATH`, `TMPDIR`, `LANG`, and permitted `LC_ALL`/`LC_CTYPE` values. It does not inherit arbitrary server variables, the server API key, or loader-hook environment variables. The OS or program may add its own environment values. `HOME` still points at the user's home directory: minimal environment inheritance is not filesystem isolation. A command can also read the server’s own startup environment and files such as `.env.local`; [Credentials and approved commands](../SECURITY.md#credentials-and-approved-commands) explains how to protect your API key.
 
 Changing model-turn or model-call limits does not change the local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk.ts](../src/server/sdk.ts).
 

@@ -68,7 +68,11 @@ exists. The server reads settings only at startup, so restart after every change
 Open the app's **Workspace & safety** panel to check the model and enabled tools.
 The panel never shows the key.
 
-You can also set these values as ordinary environment variables.
+You can also set these values as ordinary environment variables. For the API
+key, prefer `.env.local` to exporting it in your shell, and use a separate key
+with a low spending limit for experiments.
+[Credentials and approved commands](../SECURITY.md#credentials-and-approved-commands)
+explains why.
 
 Live conversations can create bots, delegate messages, use saved memory, and
 start groups. With workspace tools off, agents have no project file or command
@@ -136,7 +140,10 @@ sandbox**. See [capabilities](capabilities.md) for how tools become available an
 
 Web research is independent of local tools. It uses a hosted public-web tool,
 not your logged-in browser or its cookies. Page-reading support depends on the
-model. Check the returned sources as you would any other research.
+model. Check the returned sources as you would any other research. If the
+project may contain untrusted text, set `TINKERFLEET_WEB_SEARCH=0` while
+workspace tools are on; [SECURITY.md](../SECURITY.md#untrusted-text-and-web-search)
+explains the risk.
 
 ## Configuration reference
 
