@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256" role="img" aria-label="Tinkerfleet">
+  <g transform="rotate(-10 32 32)">
+    <rect x="8" y="8" width="23" height="23" rx="7" fill="#8976df" />
+    <rect x="33" y="8" width="23" height="23" rx="7" fill="#b6a8ee" transform="rotate(15 44.5 19.5)" />
+    <rect x="8" y="33" width="23" height="23" rx="7" fill="#5c498d" />
+    <rect x="33" y="33" width="23" height="23" rx="7" fill="#dbd2f6" />
+  </g>
+</svg>

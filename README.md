@@ -1,4 +1,11 @@
-# Tinkerfleet
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-dark.svg" />
+    <img src="docs/brand/logo-light.svg" alt="tinkerfleet." width="330" />
+  </picture>
+</p>
+
+<h1 align="center">Your little team, in the loop.</h1>
 
 **Learn how to build a personal agent application by exploring one that works.**
 
