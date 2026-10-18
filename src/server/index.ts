@@ -3,10 +3,15 @@ import { readFile } from 'node:fs/promises';
 import { createApp } from './app.js';
 import { isDevClientPath } from './http.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+/** Everything that stops startup is something the person can fix, so say it in a line, not a stack. */
+function cannotStart(message: string): never {
+  console.error(`Tinkerfleet could not start. ${message}`);
+  process.exit(1);
+}
 const production = process.argv.includes('--production') || process.env.NODE_ENV === 'production';
 const port = Number(process.env.TINKERFLEET_PORT ?? 4317);
 if (!Number.isSafeInteger(port) || port < 1024 || port > 65535)
-  throw new Error('Choose a valid local port from 1024 to 65535.');
+  cannotStart('Choose a valid local port from 1024 to 65535 with TINKERFLEET_PORT.');
 let serve: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
 let closeVite: () => Promise<void> = async () => {};
 if (!production) {
@@ -66,11 +71,27 @@ if (!production) {
     }
   };
 }
-const app = createApp({
-  port,
-  production,
-  serve,
-  statePath: path.resolve('.tinkerfleet/conversations.json'),
+let app: ReturnType<typeof createApp>;
+try {
+  app = createApp({
+    port,
+    production,
+    serve,
+    statePath: path.resolve('.tinkerfleet/conversations.json'),
+  });
+} catch (error) {
+  // Settings and saved files that cannot be read safely are refused with their own message.
+  await closeVite();
+  cannotStart(error instanceof Error ? error.message : 'Check the settings and saved files.');
+}
+app.server.once('error', (error: NodeJS.ErrnoException) => {
+  void closeVite().finally(() =>
+    cannotStart(
+      error.code === 'EADDRINUSE'
+        ? `Port ${port} is already in use. Stop the other program, or choose another port with TINKERFLEET_PORT.`
+        : `The server could not listen on port ${port} (${error.code ?? 'unknown error'}).`,
+    ),
+  );
 });
 app.server.listen(port, '127.0.0.1', () =>
   console.log(`Tinkerfleet is ready at http://127.0.0.1:${port} (${app.state().mode} mode).`),

@@ -52,12 +52,27 @@ export function ChatList({
             const runs = allRuns.filter((r) => r.conversationId === c.id),
               latest = runs.at(-1),
               running = runs.find((r) => ['running', 'awaiting_approval'].includes(r.status)),
-              text = draftFor(c);
+              text = draftFor(c),
+              meta = `${
+                c.startedBy
+                  ? `Started by ${startedByName(c)}`
+                  : c.participants.length === 1
+                    ? c.participants[0].name
+                    : `${c.participants.length} bots`
+              } · ${
+                running
+                  ? statusText[running.status]
+                  : latest
+                    ? statusText[latest.status]
+                    : 'New chat'
+              }`;
             return (
               <button
                 key={c.id}
                 className={activeChatId === c.id ? 'selected' : ''}
                 aria-current={activeChatId === c.id ? 'page' : undefined}
+                // The preview can be a whole reply; a screen reader gets the title and state.
+                aria-label={`${c.title}, ${meta}`}
                 onClick={() => onChoose(c.id)}
               >
                 <span className="chat-row-avatars" aria-hidden="true">
@@ -81,19 +96,7 @@ export function ChatList({
                     : (latest?.messages.at(-1)?.text ??
                       c.participants.map((p) => p.name).join(', '))}
                 </span>
-                <span className="chat-row-meta">
-                  {c.startedBy
-                    ? `Started by ${startedByName(c)}`
-                    : c.participants.length === 1
-                      ? c.participants[0].name
-                      : `${c.participants.length} bots`}{' '}
-                  ·{' '}
-                  {running
-                    ? statusText[running.status]
-                    : latest
-                      ? statusText[latest.status]
-                      : 'New chat'}
-                </span>
+                <span className="chat-row-meta">{meta}</span>
               </button>
             );
           })}

@@ -107,7 +107,14 @@ async function attempt(prompt: string, index: number) {
     const tampered = (await sha(testFile)) !== testsBefore;
     return {
       passed: tests === 'pass' && !tampered,
-      reason: tampered ? 'edited the tests' : `tests ${tests}`,
+      // A run that ended in an error says why, so a failed model call is not mistaken for a
+      // wrong answer.
+      reason: tampered
+        ? 'edited the tests'
+        : `tests ${tests}` +
+          (status.status === 'completed'
+            ? ''
+            : `; run ${status.status}${status.message ? `: ${status.message}` : ''}`),
       run: status.status,
       modelCalls: status.usage.modelCalls,
       tokens: status.usage.totalTokens,

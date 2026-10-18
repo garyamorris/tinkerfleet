@@ -32,6 +32,8 @@ The primary has additional coordination tools:
 - `message_agent` sends an explicit brief to a registered agent's own chat. The recipient can use its own chat history and memory. The primary's private transcript is not copied. A bounded reply or status is relayed to the primary chat and is available on its next turn; the relay does not automatically buy another model call.
 - `start_group_conversation` starts a separate group with the primary and selected agents. The supplied brief is its initial context. Within a group, the primary can use the selected agents' `ask_*` tools.
 
+The bot library holds one primary agent. Creating, editing or importing a second one is refused; a library saved before this rule that already has several still loads.
+
 IDs, rather than names, route these operations. Two agents can have similar personalities without being the same participant. Existing conversation identities remain frozen when a library profile is edited. The library and each group have a size cap. In one run, the primary can create only a few agents, send only a few messages, and start one group; see [Limits](#limits). Exact retries reuse the recorded result.
 
 **Trace the implementation:** [profile validation](../src/server/personas.ts), [agent construction](../src/server/sdk/fleet.ts), [SDK tools](../src/server/sdk/run-fleet.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
