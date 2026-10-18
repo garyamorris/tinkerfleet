@@ -11,7 +11,7 @@ const tools: Record<string, (args: { a: number; b: number }) => string> = {
   add: ({ a, b }) => String(a + b),
 };
 function fakeModel(transcript: string[]): Step {
-  const result = transcript.findLast(line => line.startsWith('tool result: '));
+  const result = transcript.findLast((line) => line.startsWith('tool result: '));
   if (!result) return { tool: 'add', args: { a: 2, b: 3 } };
   return { answer: `2 + 3 = ${result.slice('tool result: '.length)}` };
 }
@@ -26,8 +26,13 @@ for (let turn = 1; turn <= 5 && answer === undefined; turn++) {
   } else {
     // The model only asked. Your application decides whether and how the tool runs.
     const output = tools[step.tool](step.args);
-    console.log(`  turn ${turn}: model asked for ${step.tool}(${JSON.stringify(step.args)}); app ran it → ${output}`);
-    transcript.push(`tool call: ${step.tool}(${JSON.stringify(step.args)})`, `tool result: ${output}`);
+    console.log(
+      `  turn ${turn}: model asked for ${step.tool}(${JSON.stringify(step.args)}); app ran it → ${output}`,
+    );
+    transcript.push(
+      `tool call: ${step.tool}(${JSON.stringify(step.args)})`,
+      `tool result: ${output}`,
+    );
   }
 }
 assert.equal(answer, '2 + 3 = 5');
@@ -47,9 +52,14 @@ const add = tool({
 });
 const model = new ScriptedModel([
   [functionCall('add', { a: 2, b: 3 }, { callId: 'call_1' })], // model call 1: ask for a tool
-  [assistantMessage('2 + 3 = 5')],                             // model call 2: answer
+  [assistantMessage('2 + 3 = 5')], // model call 2: answer
 ]);
-const agent = new Agent({ name: 'calculator', instructions: 'Use tools for arithmetic.', model, tools: [add] });
+const agent = new Agent({
+  name: 'calculator',
+  instructions: 'Use tools for arithmetic.',
+  model,
+  tools: [add],
+});
 const result = await new Runner({ tracingDisabled: true }).run(agent, 'What is 2 + 3?');
 
 assert.deepEqual(ran, [{ a: 2, b: 3 }]); // our code ran the tool exactly once
@@ -60,10 +70,17 @@ model.assertComplete();
 // The model is stateless. Call 2 only "knows" the result because the SDK resent
 // the whole transcript: the user message, the tool call, and the tool's output.
 const secondInput = model.calls[1].request.input as { type: string; output?: { text?: string } }[];
-assert.deepEqual(secondInput.map(item => item.type), ['message', 'function_call', 'function_call_result']);
+assert.deepEqual(
+  secondInput.map((item) => item.type),
+  ['message', 'function_call', 'function_call_result'],
+);
 assert.equal(secondInput[2].output?.text, '5');
-console.log(`  SDK: model call 2 received [${secondInput.map(item => item.type).join(', ')}]`);
-console.log(`  SDK: run items were [${result.newItems.map(item => item.type).join(', ')}]`);
+console.log(`  SDK: model call 2 received [${secondInput.map((item) => item.type).join(', ')}]`);
+console.log(`  SDK: run items were [${result.newItems.map((item) => item.type).join(', ')}]`);
 
-console.log('0. The loop: model asks, your code runs the tool, the result goes back, the model answers.');
-console.log('Exercise: script a second add call before the answer. Predict model.calls.length and ran, then run it.');
+console.log(
+  '0. The loop: model asks, your code runs the tool, the result goes back, the model answers.',
+);
+console.log(
+  'Exercise: script a second add call before the answer. Predict model.calls.length and ran, then run it.',
+);

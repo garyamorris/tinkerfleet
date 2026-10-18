@@ -10,7 +10,9 @@ assert.equal(pending.status, 'pending');
 assert.throws(() => approvals.consume(pending.id, 'lesson-run', action));
 approvals.approve(pending.id);
 assert.throws(() => approvals.consume(pending.id, 'different-run', action));
-assert.throws(() => approvals.consume(pending.id, 'lesson-run', { ...action, content: 'changed after review' }));
+assert.throws(() =>
+  approvals.consume(pending.id, 'lesson-run', { ...action, content: 'changed after review' }),
+);
 assert.equal(approvals.consume(pending.id, 'lesson-run', action).status, 'consumed');
 assert.throws(() => approvals.consume(pending.id, 'lesson-run', action)); // no replay
 
@@ -31,5 +33,7 @@ const afterRestart = new ApprovalStore();
 assert.throws(() => afterRestart.approve(pending.id));
 
 console.log('4. Approvals: pending → approved → consumed, exactly once.');
-console.log('Changed actions, different runs, denial, expiry, replay, and restart all fail closed.');
+console.log(
+  'Changed actions, different runs, denial, expiry, replay, and restart all fail closed.',
+);
 console.log('Exercise: invalidate a run with two pending actions and assert neither can execute.');

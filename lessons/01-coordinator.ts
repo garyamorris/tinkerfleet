@@ -5,8 +5,16 @@ import { createFleetAgents } from '../src/server/sdk.js';
 // Constructing an Agent is configuration, not inference.
 const { coordinator } = createFleetAgents({
   model: 'lesson-no-inference',
-  team: [{ id: 'primary', role: 'coordinator', name: 'Orbit',
-    purpose: 'Help the user and coordinate when useful.', color: '#567a75', shape: 'orbit' }],
+  team: [
+    {
+      id: 'primary',
+      role: 'coordinator',
+      name: 'Orbit',
+      purpose: 'Help the user and coordinate when useful.',
+      color: '#567a75',
+      shape: 'orbit',
+    },
+  ],
 });
 assert.ok(coordinator);
 assert.equal(typeof coordinator.instructions, 'string');
