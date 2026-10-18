@@ -23,6 +23,7 @@ import { NativeWorkspaceRunner } from './native-runner.js';
 import {
   createSdkAdapter,
   redactSdkText,
+  TraceStore,
   type SdkEvent,
   type SdkStatus,
   type SdkStartGroupRequest,
@@ -86,6 +87,8 @@ export function createApp(
   const legacyRunIds = new Set<string>();
   const groupRequests = new Map<string, string>();
   const approvals = new ApprovalStore();
+  // What each model call sent and got back, for the trace viewer. Memory only, never saved.
+  const traces = new TraceStore();
   const runner = config.workspaceToolsEnabled
     ? new NativeWorkspaceRunner({ workspaceRoot: root, approvals })
     : undefined;
@@ -267,6 +270,7 @@ export function createApp(
     limits: config.limits,
     liveEnabled: mode === 'live',
     onEvent,
+    trace: traces,
     startGroup,
     createAgent,
     messageAgent,
@@ -717,6 +721,7 @@ export function createApp(
         child.status = 'cancelled';
         runner?.disposeRun(child.id);
         runsById.delete(child.id);
+        traces.forget(child.id);
       }
       if (linkId) sourceRun.messages = sourceRun.messages.filter((m) => m.id !== linkId);
       source.updatedAt = oldSourceUpdated;
@@ -794,6 +799,7 @@ export function createApp(
         child.status = 'cancelled';
         runner?.disposeRun(child.id);
         runsById.delete(child.id);
+        traces.forget(child.id);
       }
       if (linkId)
         sourceRun.messages = sourceRun.messages.filter((message) => message.id !== linkId);
@@ -1125,6 +1131,19 @@ export function createApp(
       } finally {
         starting.delete('legacy');
       }
+      return;
+    }
+    const traceRoute =
+      /^\/api\/conversations\/([a-zA-Z0-9_-]+)\/runs\/([a-zA-Z0-9_-]+)\/trace$/.exec(url.pathname);
+    if (traceRoute && method === 'GET') {
+      const run = findRun(traceRoute[2]);
+      if (!run || run.conversationId !== traceRoute[1] || !conversations.has(traceRoute[1]))
+        throw new HttpError(404, 'Run not found in this conversation.');
+      json(
+        res,
+        200,
+        traces.get(run.id) ?? { runId: run.id, available: false, calls: [], truncated: false },
+      );
       return;
     }
     const scoped =

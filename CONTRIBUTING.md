@@ -31,7 +31,7 @@ npm run check
 
 It checks formatting, typechecks, runs the offline test suite, and builds the app. Run `npm run format` to apply the project’s Prettier style before committing. See [Testing](docs/testing.md) for choosing useful cases and for the distinction between fake and real execution. Tests must not silently start paid inference. Native-runner tests should use temporary folders.
 
-Run the relevant `npm run lesson:0` through `npm run lesson:9` command when changing what a lesson teaches. For UI changes, inspect the affected flow in a browser, including keyboard focus and a narrow viewport. An approval change deserves both an approved and a declined action; a memory change deserves checking that another bot’s notes remain separate. Report what you actually checked and any limitations. Documentation-only changes need accurate examples and links, not an unrelated full test campaign.
+Run the relevant `npm run lesson:0` through `npm run lesson:10` command when changing what a lesson teaches. For UI changes, inspect the affected flow in a browser, including keyboard focus and a narrow viewport. An approval change deserves both an approved and a declined action; a memory change deserves checking that another bot’s notes remain separate. Report what you actually checked and any limitations. Documentation-only changes need accurate examples and links, not an unrelated full test campaign.
 
 ## Send a reviewable contribution
 

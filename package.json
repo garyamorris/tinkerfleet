@@ -27,6 +27,7 @@
     "lesson:7": "node --import tsx lessons/07-your-tool.ts",
     "lesson:8": "node --import tsx lessons/08-sdk-approvals.ts",
     "lesson:9": "node --import tsx lessons/09-eval.ts",
+    "lesson:10": "node --import tsx lessons/10-trace.ts",
     "eval": "node --env-file-if-exists=.env.local --import tsx lessons/09-eval.ts"
   },
   "dependencies": {

@@ -7,11 +7,12 @@ Read docs/build-an-agent-app.md to follow the construction of a personal agent
 application: the model loop, chat state, tools, approvals, local execution,
 personalities, coordination, memory, web research, and visible activity.
 
-Run the ten lessons described in lessons/README.md. Lesson 0 runs the agent
+Run the eleven lessons described in lessons/README.md. Lesson 0 runs the agent
 loop with a scripted model; lessons 1-6 use the application's modules; lessons
-7-9 add a tool, show SDK approvals, and run a small eval. None makes a model
+7-10 add a tool, show SDK approvals, run a small eval, and read a trace. None makes a model
 call by default. The native-tool lessons use disposable local fixtures.
 
+Use docs/traces.md to read what each model call sent and received.
 Use docs/architecture.md to trace the implementation, docs/capabilities.md to
 understand current behavior, and docs/extending.md to build the next feature.
 Documentation describes this repository's implementation, not the internals of

@@ -96,19 +96,20 @@ share the enabled tools. Changing a bot’s name or avatar does not change its p
 | You want to… | Start here |
 | --- | --- |
 | Understand how to build an app like this | [Build an agent app, step by step](docs/build-an-agent-app.md) |
-| Learn by running small programs | [Ten executable lessons](lessons/README.md) |
+| Learn by running small programs | [Eleven executable lessons](lessons/README.md) |
 | Follow the complete application | [Architecture and data flow](docs/architecture.md) |
+| See what a model call really sent and received | [Reading a trace](docs/traces.md) |
 | Understand tools and real computer access | [Workspace tools](docs/workspace.md) and [approvals](docs/approvals.md) |
 | Add lasting memory | [How bot memory works](docs/memory.md) |
 | Make your own version | [Extend Tinkerfleet](docs/extending.md) |
 | Check whether your changes work | [Testing an agent application](docs/testing.md) |
 
-For a first pass, run lessons 0–9 in order. The build guide links to each lesson
+For a first pass, run lessons 0–10 in order. The build guide links to each lesson
 at the step where it fits, so it visits them in a different order. Lesson 0
 shows the agent loop itself with a scripted model; lessons 1–6 use real
-application code; lessons 7–9 add your own tool, follow an approval through the
-SDK, and grade the agent with a small eval. Each explains one idea and includes an
-experiment. All ten run without a model call, and the native-tool lessons use
+application code; lessons 7–10 add your own tool, follow an approval through the
+SDK, grade the agent with a small eval, and read a trace of its model calls. Each explains one idea and includes an
+experiment. All eleven run without a model call, and the native-tool lessons use
 temporary files and short local commands to demonstrate actual execution.
 
 ## Find the code behind the idea
@@ -134,6 +135,11 @@ API. Local tools use your computer directly. Docker is not part of this app.
 
 This capture is from a real model run that read a file, ran an approved version
 command, and used hosted web search. [View its activity](docs/screenshots/tool-activity-live.jpg).
+
+![The Trace tab for a live run](docs/screenshots/trace-viewer-live.png)
+
+The trace capture is from a real model run: every model call, what it sent, and
+what came back. [Reading a trace](docs/traces.md) explains it.
 
 ![A bot’s own memory panel](docs/screenshots/bot-memory-desktop.png)
 

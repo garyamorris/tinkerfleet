@@ -6,6 +6,7 @@
  *   sdk/run-fleet.ts   the tools one run gets: memory, workspace, coordination
  *   sdk/adapter.ts     the run lifecycle: start, pause for approval, resume, cancel
  *   sdk/model.ts       the model wrapper that enforces budgets and reports activity
+ *   sdk/trace.ts       what each model call sent and got back, for the trace viewer
  *
  * Supporting modules: sdk/contract.ts (shared types and limits), sdk/schemas.ts
  * (tool input schemas), sdk/actions.ts (parsing and fingerprinting proposed actions),
@@ -15,4 +16,5 @@
 export * from './sdk/contract.js';
 export { createFleetAgents } from './sdk/fleet.js';
 export { createSdkAdapter } from './sdk/adapter.js';
+export { TraceStore, TRACE_LIMITS } from './sdk/trace.js';
 export { redactSdkText } from './safety.js';

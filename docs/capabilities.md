@@ -94,6 +94,9 @@ These are not configurable. Raising a run budget does not change them.
 | Approvals | Lifetime of an approval | 5 minutes | [approval.ts](../src/server/approval.ts) |
 | Approvals | A run left waiting for approval is stopped after | 10 minutes | [sdk/contract.ts](../src/server/sdk/contract.ts) |
 | Model context | Recent same-chat history sent with a run | 8,000 characters | [sdk/adapter.ts](../src/server/sdk/adapter.ts) |
+| Trace (per call) | Items shown, characters per item, characters of instructions, tools listed | 60, 1,500, 6,000, 48 | [sdk/trace.ts](../src/server/sdk/trace.ts) |
+| Trace (per run) | Calls recorded, characters stored | 48, 1,000,000 | [sdk/trace.ts](../src/server/sdk/trace.ts) |
+| Trace (all runs) | Runs kept, characters stored; memory only, oldest dropped first | 20, 8,000,000 | [sdk/trace.ts](../src/server/sdk/trace.ts) |
 | Memory (per bot) | Saved notes | 20 | [memory.ts](../src/server/memory.ts) |
 | Memory (per bot) | Characters in one note | 2,000 | [memory.ts](../src/server/memory.ts) |
 | Memory (per bot) | Characters across all its notes | 8,000 | [memory.ts](../src/server/memory.ts) |

@@ -4,12 +4,13 @@
  */
 import { Usage, type Model, type ModelResponse } from '@openai/agents';
 import type { AgentId } from '../../shared/types.js';
-import { trimModelRequest } from '../context-budget.js';
+import { modelInputChars, trimModelRequest } from '../context-budget.js';
 import { parseAction } from './actions.js';
 import type { SdkEvent, SdkLimits } from './contract.js';
-import { SafeSdkError, safeModelFailure } from './errors.js';
+import { SafeSdkError, safeExecutionFailure, safeModelFailure } from './errors.js';
 import { responseSources } from './response-sources.js';
 import { assertActive, clone, type PrivateRun } from './run-state.js';
+import { summarizeCall, type TraceStore } from './trace.js';
 
 export interface ModelContext {
   limits: SdkLimits;
@@ -18,6 +19,8 @@ export interface ModelContext {
   workspaceRoot?: string;
   resolveModel: () => Promise<Model>;
   emit: (run: PrivateRun, event: Omit<SdkEvent, 'runId' | 'at'>) => void;
+  /** When set, every model call is summarized here so the trace viewer can show it. */
+  trace?: TraceStore;
 }
 
 export function guardedModel(
@@ -25,7 +28,7 @@ export function guardedModel(
   role: AgentId | undefined,
   context: ModelContext,
 ): Model {
-  const { limits, webSearchEnabled, streamWebActivity, workspaceRoot, resolveModel, emit } =
+  const { limits, webSearchEnabled, streamWebActivity, workspaceRoot, resolveModel, emit, trace } =
     context;
   const checkBudget = () => {
     assertActive(run);
@@ -39,9 +42,8 @@ export function guardedModel(
   };
   return {
     async getResponse(incoming) {
-      const outgoing = trimModelRequest(incoming, {
-        maxInputChars: limits.maxInputChars,
-      }).request;
+      const trimmed = trimModelRequest(incoming, { maxInputChars: limits.maxInputChars });
+      const outgoing = trimmed.request;
       checkBudget();
       const model = await resolveModel();
       assertActive(run);
@@ -107,9 +109,37 @@ export function guardedModel(
           );
         return completed;
       };
+      const startedAt = Date.now();
+      // Tracing is an aid for readers: whatever goes wrong while recording must not change the run.
+      const recordCall = (outcome: { response?: ModelResponse; error?: string }) => {
+        try {
+          trace?.record(
+            run.view.runId,
+            summarizeCall({
+              agent: role ?? 'coordinator',
+              startedAt,
+              durationMs: Date.now() - startedAt,
+              request: outgoing,
+              charsBefore: modelInputChars(incoming),
+              charsSent: trimmed.inputChars,
+              budget: limits.maxInputChars,
+              removedItems: trimmed.removedItems,
+              trimmedToolOutputs: trimmed.trimmedToolOutputs,
+              ...outcome,
+            }),
+          );
+        } catch {
+          /* The trace is optional. */
+        }
+      };
       const response = await readResponse().catch((error) => {
-        throw safeModelFailure(error);
+        const failure = safeModelFailure(error);
+        recordCall({
+          error: safeExecutionFailure(failure) ?? 'The model call failed.',
+        });
+        throw failure;
       });
+      recordCall({ response });
       assertActive(run);
       run.view.usage.inputTokens += response.usage.inputTokens;
       run.view.usage.outputTokens += response.usage.outputTokens;

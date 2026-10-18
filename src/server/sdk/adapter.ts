@@ -128,6 +128,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
       workspaceRoot: options.workspaceRoot,
       resolveModel,
       emit,
+      trace: options.trace,
     });
 
   /** Execute the action the user approved for this exact tool call, once. */
