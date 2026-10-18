@@ -29,6 +29,7 @@ import { ChatRun } from './chat-run';
 import { NewConversationDialog, RenameDialog } from './conversation-dialogs';
 import { loadDrafts, type ChatDraft } from './drafts';
 import { MemoryPanel } from './memory-panel';
+import { ScheduleDialogBody } from './schedule-dialog';
 import { character, loadLibrary, resolveAgent, starterProfiles, validProfile } from './profiles';
 import { SettingsDialog } from './settings-dialog';
 import { TaskDetailsDialog } from './task-details-dialog';
@@ -52,7 +53,16 @@ function App() {
     [chatErrors, setChatErrors] = useState<Record<string, string>>({}),
     [error, setError] = useState(''),
     [modal, setModal] = useState<
-      'team' | 'edit' | 'new' | 'rename' | 'chats' | 'details' | 'settings' | 'memory' | null
+      | 'team'
+      | 'edit'
+      | 'new'
+      | 'rename'
+      | 'chats'
+      | 'details'
+      | 'settings'
+      | 'memory'
+      | 'schedule'
+      | null
     >(null),
     [tab, setTab] = useState('Activity'),
     [draft, setDraft] = useState<Persona>(starterProfiles[0]),
@@ -60,7 +70,8 @@ function App() {
     [chosen, setChosen] = useState<string[]>([]),
     [chatTitle, setChatTitle] = useState(''),
     [, redrawDrafts] = useState(0);
-  const [memoryBot, setMemoryBot] = useState<Persona | null>(null);
+  const [memoryBot, setMemoryBot] = useState<Persona | null>(null),
+    [scheduleBot, setScheduleBot] = useState<Persona | null>(null);
   const openingBot = useRef(false);
   const end = useRef<HTMLDivElement>(null),
     composer = useRef<HTMLTextAreaElement>(null);
@@ -760,6 +771,7 @@ function App() {
       {modal === 'team' && (
         <BotLibraryDialog
           profiles={orderedProfiles}
+          schedules={state?.schedules ?? []}
           server={server}
           legacyLibrary={legacyLibrary}
           importError={libraryImportError}
@@ -783,6 +795,10 @@ function App() {
             setModal('edit');
           }}
           onMemory={openMemory}
+          onSchedule={(p) => {
+            setScheduleBot(p);
+            setModal('schedule');
+          }}
           onTalk={(p) => void openBot(p)}
           onClose={() => setModal(null)}
         />
@@ -812,6 +828,37 @@ function App() {
             onDelete={async (id) => {
               await api(`/memories/${id}`, { agentId: memoryBot.id }, 'DELETE');
               setState(await api<AppState>('/state'));
+            }}
+          />
+        </Modal>
+      )}
+      {modal === 'schedule' && scheduleBot && (
+        <Modal title={`${scheduleBot.name}’s schedules`} onClose={() => setModal('team')}>
+          <ScheduleDialogBody
+            key={scheduleBot.id}
+            bot={library.profiles.find((p) => p.id === scheduleBot.id) ?? scheduleBot}
+            schedules={(state?.schedules ?? []).filter((s) => s.botId === scheduleBot.id)}
+            runs={state?.runs ?? []}
+            schedulesRun={!!state?.schedulesRun}
+            timeZone={state?.timeZone ?? 'local time'}
+            onSave={async (draft, id) => {
+              await api(id ? `/schedules/${id}` : '/schedules', {
+                ...(id ? {} : { botId: scheduleBot.id }),
+                ...draft,
+              });
+              setState(await api<AppState>('/state'));
+            }}
+            onPause={async (schedule, paused) => {
+              await api(`/schedules/${schedule.id}`, { paused });
+              setState(await api<AppState>('/state'));
+            }}
+            onDelete={async (schedule) => {
+              await api(`/schedules/${schedule.id}`, {}, 'DELETE');
+              setState(await api<AppState>('/state'));
+            }}
+            onOpenChat={(id) => {
+              setModal(null);
+              chooseChat(id);
             }}
           />
         </Modal>

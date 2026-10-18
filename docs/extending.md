@@ -24,6 +24,12 @@ Open that bot’s **Memory** panel and save “Use short Python examples before 
 
 In live mode, the SDK loads this bot’s saved notes and gives it `recall_memory`, `remember_memory`, and `forget_memory`. Their handlers bind the owner to the bot’s identity in server code. The model does not choose another bot’s ID. Follow [Memory](memory.md) to see the storage and prompt path, then remove the note through the panel or ask the bot to forget it. A claim that something was remembered should follow a successful tool result.
 
+## Exercise 2b: let a bot work while you are away
+
+Give a bot with only **Web** and **Memory** a schedule in **Bot library → Schedules**, for example every weekday at 08:00: “Summarize this week’s most important AI news, with sources.” In live mode, its reply appears in that bot’s chat at that time, under a **Scheduled** marker; the schedule shows when it runs next and what happened last time. Each run is a paid request, so pause it when you stop reading the results. Try giving **Schedules** to Maker: it is refused, because Maker can edit files and a scheduled run may happen while you cannot approve anything.
+
+A schedule does not add a new way to run an agent. `runDueSchedules` in [`app.ts`](../src/server/app.ts) calls the same `startRun` as the chat composer, so budgets, capabilities and approvals carry over unchanged. The interesting code is deciding *when*: [`shared/schedules.ts`](../src/shared/schedules.ts) computes due times, and `handledThrough` makes sure a restart never repeats or piles up runs. To support a new kind of timing, such as every few hours, change `nextDueAfter` and `latestDueAtOrBefore` together, keep the one-hour minimum gap, and add due-time cases to [`tests/schedules.test.ts`](../tests/schedules.test.ts). [Lesson 13](../lessons/README.md#13-run-a-bot-on-a-schedule) shows the flow with a scripted model.
+
 ## Exercise 3: add a small read-only tool
 
 A tool gives an agent a capability it cannot get by changing its personality. Try `text_file_stats`: it reads one permitted workspace file and returns character and nonempty-line counts.

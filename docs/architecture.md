@@ -53,6 +53,11 @@ Start reading at `startRun` in [app.ts](../src/server/app.ts), then
 `createSdkAdapter` in [sdk/adapter.ts](../src/server/sdk/adapter.ts). The executable work lives in
 [native-runner.ts](../src/server/native-runner.ts), not in the browser or the model.
 
+A [schedule](capabilities.md#scheduled-runs) enters the same flow at step A without you: in
+live mode, `runDueSchedules` in [app.ts](../src/server/app.ts) calls `startRun` with the saved
+prompt in the bot's own chat. Everything after that is identical, including the pause for
+approval. [schedules.ts](../src/server/schedules.ts) decides when one is due.
+
 ## A bot, a conversation, and a run are different things
 
 A bot profile is a reusable identity. A conversation is one chat with the

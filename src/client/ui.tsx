@@ -56,6 +56,12 @@ export function Icon({ name, size = 18 }: { name: string; size?: number }) {
       </>
     ),
     back: <path d="m15 5-7 7 7 7" />,
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
     stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
     team: (
       <>

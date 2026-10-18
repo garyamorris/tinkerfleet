@@ -85,6 +85,7 @@ needed approval, what actually ran, and what result came back. The
 | Human approvals | Pause work, review the exact action, and resume it once |
 | Public web research and sources | Combine provider-hosted tools with your local tools |
 | Each bot’s own memory | Store useful facts and include them in later requests |
+| [Scheduled runs](docs/capabilities.md#scheduled-runs) | Start a bot’s run on its own at a set time, once, without bypassing approvals |
 | Markdown replies and tool activity | Turn agent execution into an understandable interface |
 
 See [capabilities and current limits](docs/capabilities.md) for what each mode
@@ -99,7 +100,7 @@ change its permissions.
 | You want to… | Start here |
 | --- | --- |
 | Understand how to build an app like this | [Build an agent app, step by step](docs/build-an-agent-app.md) |
-| Learn by running small programs | [Thirteen executable lessons](lessons/README.md) |
+| Learn by running small programs | [Fourteen executable lessons](lessons/README.md) |
 | Follow the complete application | [Architecture and data flow](docs/architecture.md) |
 | See what a model call really sent and received | [Reading a trace](docs/traces.md) |
 | Measure whether an agent works, and compare two models | [Measure an agent with evals](docs/evals.md) |
@@ -108,12 +109,12 @@ change its permissions.
 | Make your own version | [Extend Tinkerfleet](docs/extending.md) |
 | Check whether your changes work | [Testing an agent application](docs/testing.md) |
 
-For a first pass, run lessons 0–12 in order. The build guide links to each lesson
+For a first pass, run lessons 0–13 in order. The build guide links to each lesson
 at the step where it fits, so it visits them in a different order. Lesson 0
 shows the agent loop itself with a scripted model; lessons 1–6 use real
-application code; lessons 7–12 add your own tool, follow an approval through the
-SDK, grade the agent with a small eval, read a trace of its model calls, compare two runs, and give each bot only the tools it needs. Each explains one idea and includes an
-experiment. All thirteen run without a model call, and the native-tool lessons use
+application code; lessons 7–13 add your own tool, follow an approval through the
+SDK, grade the agent with a small eval, read a trace of its model calls, compare two runs, give each bot only the tools it needs, and run a bot on a schedule. Each explains one idea and includes an
+experiment. All fourteen run without a model call, and the native-tool lessons use
 temporary files and short local commands to demonstrate actual execution.
 
 ## Find the code behind the idea
@@ -126,6 +127,7 @@ temporary files and short local commands to demonstrate actual execution.
 | The demo's scripted model | [`src/server/demo.ts`](src/server/demo.ts) |
 | Conversation history and restart behavior | [`src/server/conversations.ts`](src/server/conversations.ts) |
 | Saved facts for each bot | [`src/server/memory.ts`](src/server/memory.ts) |
+| Scheduled runs | [`src/server/schedules.ts`](src/server/schedules.ts) and [`src/shared/schedules.ts`](src/shared/schedules.ts) |
 | Exact-action decisions | [`src/server/approval.ts`](src/server/approval.ts) |
 | Local files and processes | [`src/server/native-runner.ts`](src/server/native-runner.ts) |
 

@@ -1,4 +1,12 @@
 import { MemoryStore, MemoryError } from './memory.js';
+import {
+  SCHEDULE_LIMITS,
+  ScheduleError,
+  ScheduleStore,
+  dueSlot,
+  scheduleRefusal,
+  scheduleView,
+} from './schedules.js';
 import { randomAppearance } from '../shared/appearance.js';
 import { safeSources } from './sources.js';
 import { runtimeConfig, type RuntimeOptions } from './config.js';
@@ -54,6 +62,8 @@ export function createApp(
     demoDelayMs?: number;
     statePath?: string;
     initialRuns?: Run[];
+    /** The time schedules are checked against. Tests and the lesson pass a fixed clock. */
+    clock?: () => number;
     serve?: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
   },
 ) {
@@ -90,6 +100,12 @@ export function createApp(
   const memory = new MemoryStore(
     options.statePath ? `${options.statePath}.memories.json` : undefined,
   );
+  const schedules = new ScheduleStore(
+    options.statePath ? `${options.statePath}.schedules.json` : undefined,
+  );
+  const clock = options.clock ?? Date.now;
+  // Only live mode runs schedules. The demo shows and saves them, but never fires them.
+  const schedulesRun = mode === 'live';
   let profiles = store.state.profiles;
   let libraryImported = store.state.libraryImported;
   const sentMessages = new Map<string, Map<string, { conversationId: string; agentId: string }>>();
@@ -415,8 +431,12 @@ export function createApp(
     }
   }
   function state(): AppState {
+    const now = clock();
     return {
       memories: memory.list(),
+      schedules: schedules.list().map((s) => scheduleView(s, now)),
+      schedulesRun,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       webSearchEnabled: mode === 'live' && config.webSearchEnabled,
       profiles,
       workspaceToolsEnabled: config.workspaceToolsEnabled,
@@ -571,6 +591,86 @@ export function createApp(
       throw error;
     } finally {
       starting.delete(chat.id);
+    }
+  }
+  /** The bot's own direct chat, as the Bot library's Talk button finds it; created if missing. */
+  function directChat(bot: Persona): { chat: Conversation; created: boolean } {
+    const existing = [...conversations.values()]
+      .filter((c) => !c.startedBy && c.participants.length === 1 && c.participants[0].id === bot.id)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (existing) return { chat: existing, created: false };
+    if (conversations.size >= CONVERSATION_LIMITS.conversations)
+      throw new HttpError(409, 'Conversation limit reached.');
+    const now = Date.now(),
+      chat: Conversation = {
+        id: randomUUID(),
+        title: bot.name,
+        participants: validateParticipants([bot]),
+        createdAt: now,
+        updatedAt: now,
+        draft: '',
+        currentRunId: null,
+      };
+    conversations.set(chat.id, chat);
+    return { chat, created: true };
+  }
+  /**
+   * Start every schedule that is due. A due time is marked handled before its run starts, so a
+   * crash or restart cannot run it twice. The run goes through startRun like a typed message: the
+   * same agents, budgets and capabilities, and an edit or command still waits for your approval.
+   */
+  function runDueSchedules() {
+    if (!schedulesRun || closing) return;
+    const now = clock();
+    for (const schedule of schedules.list()) {
+      const slot = dueSlot(schedule, now);
+      if (slot === null) continue;
+      try {
+        schedules.markHandled(schedule.id, slot);
+      } catch {
+        continue; // Not recorded, so not run: a run that cannot be remembered could repeat.
+      }
+      let lastRun: NonNullable<typeof schedule.lastRun>;
+      const bot = profiles.find((p) => p.id === schedule.botId);
+      // A bot given edit or run after it was scheduled still runs; those tools wait for approval.
+      if (schedule.lastRun && now - schedule.lastRun.at < SCHEDULE_LIMITS.minGapMs)
+        lastRun = { at: now, skipped: 'Skipped: it already ran less than an hour ago.' };
+      else if (!bot)
+        lastRun = { at: now, skipped: 'Skipped: the bot is no longer in the library.' };
+      else if (bot.role === 'coordinator')
+        lastRun = { at: now, skipped: 'Skipped: schedules are for ordinary bots.' };
+      else if (!modelReady())
+        lastRun = {
+          at: now,
+          skipped: 'Skipped: live mode needs a model and a server-side API key. Nothing was sent.',
+        };
+      else {
+        let target: ReturnType<typeof directChat> | undefined;
+        try {
+          target = directChat(bot);
+          if (
+            allRuns().some(
+              (run) =>
+                run.conversationId === target!.chat.id &&
+                ['running', 'awaiting_approval'].includes(run.status),
+            )
+          )
+            throw new HttpError(409, 'the bot’s chat was still busy with another run.');
+          const run = startRun(schedule.prompt, target.chat, undefined, false, 'user', (run) => {
+            run.scheduleId = schedule.id;
+          });
+          lastRun = { at: now, runId: run.id, conversationId: target.chat.id };
+        } catch (error) {
+          if (target?.created && !target.chat.currentRunId) conversations.delete(target.chat.id);
+          lastRun = {
+            at: now,
+            skipped: `Skipped: ${error instanceof HttpError ? error.message : 'the run could not start.'}`,
+          };
+        }
+      }
+      try {
+        schedules.markHandled(schedule.id, slot, lastRun);
+      } catch {}
     }
   }
   async function createAgent(
@@ -985,7 +1085,53 @@ export function createApp(
         libraryImported = previousImported;
         throw e;
       }
+      // A deleted bot's schedules go with it. If that cannot be saved, they are skipped when due.
+      if (method === 'DELETE')
+        try {
+          schedules.removeForBot(id!);
+        } catch {}
       json(res, method === 'DELETE' ? 200 : id ? 200 : 201, profile ?? { ok: true });
+      return;
+    }
+    const scheduleRoute = /^\/api\/schedules(?:\/([a-zA-Z0-9_-]+))?$/.exec(url.pathname);
+    if (scheduleRoute && (method === 'POST' || method === 'DELETE')) {
+      const id = scheduleRoute[1];
+      try {
+        if (method === 'DELETE') {
+          if (!id || !schedules.remove(id)) throw new HttpError(404, 'Schedule not found.');
+          json(res, 200, { ok: true });
+          return;
+        }
+        const body = await readJson(req);
+        if (!id) {
+          const refusal = scheduleRefusal(profiles.find((p) => p.id === body.botId));
+          if (refusal) throw new HttpError(refusal === 'Bot not found.' ? 404 : 400, refusal);
+          json(res, 201, scheduleView(schedules.create(body, clock()), clock()));
+        } else {
+          const existing = schedules.get(id);
+          if (!existing) throw new HttpError(404, 'Schedule not found.');
+          // Resuming checks the bot again: its capabilities may have changed since.
+          if (existing.paused && body.paused === false) {
+            const refusal = scheduleRefusal(profiles.find((p) => p.id === existing.botId));
+            if (refusal) throw new HttpError(400, refusal);
+          }
+          json(res, 200, scheduleView(schedules.update(id, body, clock()), clock()));
+        }
+      } catch (error) {
+        if (error instanceof HttpError) throw error;
+        if (error instanceof ScheduleError)
+          throw new HttpError(
+            error.code === 'NOT_FOUND'
+              ? 404
+              : error.code === 'CAPACITY'
+                ? 409
+                : error.code === 'INVALID'
+                  ? 400
+                  : 503,
+            error.message,
+          );
+        throw new HttpError(503, 'Schedules could not be updated. Existing schedules were kept.');
+      }
       return;
     }
     if (url.pathname === '/api/conversations' && method === 'POST') {
@@ -1281,12 +1427,19 @@ export function createApp(
   if (runner) void checkExecution();
   const saveTimer = setInterval(() => persist(), 250);
   saveTimer.unref();
+  // A schedule that came due while the server was off runs now, once.
+  runDueSchedules();
+  const scheduleTimer = setInterval(runDueSchedules, SCHEDULE_LIMITS.checkMs);
+  scheduleTimer.unref();
   return {
     server,
     state,
+    /** Check for due schedules now, instead of waiting for the next half-minute check. */
+    runDueSchedules,
     async close() {
       closing = true;
       clearInterval(saveTimer);
+      clearInterval(scheduleTimer);
       for (const run of runsById.values())
         if (['running', 'awaiting_approval'].includes(run.status)) {
           run.status = 'cancelled';

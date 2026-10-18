@@ -74,6 +74,7 @@ const usageCount = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const runSchema = z.object({
   id,
   sentBy: z.object({ conversationId: id, runId: id, coordinatorId: id }).optional(),
+  scheduleId: id.optional(),
   usage: z
     .object({
       modelCalls: usageCount,

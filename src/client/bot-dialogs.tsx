@@ -1,6 +1,6 @@
 /** The bot library, where profiles live, and the editor for one bot's name, purpose and look. */
 import React from 'react';
-import type { Capability, Persona } from '../shared/types';
+import type { Capability, Persona, ScheduleView } from '../shared/types';
 import {
   appearanceColors as colors,
   appearanceShapes as shapes,
@@ -109,6 +109,7 @@ export function CreatedBotCapabilities({
 
 export function BotLibraryDialog({
   profiles,
+  schedules,
   server,
   legacyLibrary,
   importError,
@@ -116,10 +117,12 @@ export function BotLibraryDialog({
   onEdit,
   onCreate,
   onMemory,
+  onSchedule,
   onTalk,
   onClose,
 }: {
   profiles: Persona[];
+  schedules: ScheduleView[];
   server: ServerCapabilities;
   legacyLibrary: Library;
   importError: string;
@@ -127,6 +130,7 @@ export function BotLibraryDialog({
   onEdit: (profile: Persona) => void;
   onCreate: () => void;
   onMemory: (profile: Persona) => void;
+  onSchedule: (profile: Persona) => void;
   onTalk: (profile: Persona) => void;
   onClose: () => void;
 }) {
@@ -200,6 +204,13 @@ export function BotLibraryDialog({
               <button className="text-button bot-memory-button" onClick={() => onMemory(p)}>
                 Memory
               </button>
+              {p.role !== 'coordinator' && (
+                <button className="text-button bot-memory-button" onClick={() => onSchedule(p)}>
+                  Schedules
+                  {schedules.some((s) => s.botId === p.id) &&
+                    ` · ${schedules.filter((s) => s.botId === p.id).length}`}
+                </button>
+              )}
               <button
                 className="text-button talk-to-bot"
                 disabled={creating}

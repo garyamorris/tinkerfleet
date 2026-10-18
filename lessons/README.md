@@ -1,9 +1,9 @@
 # Learn to build agent tools
 
-These thirteen short programs walk from watching the agent loop run to approving a
+These fourteen short programs walk from watching the agent loop run to approving a
 real local action, then measuring whether an agent works, reading what each
-model call actually saw, comparing two runs, and giving each bot only the tools
-it needs. Run them from the repository root with Node.js 22.12+ after
+model call actually saw, comparing two runs, giving each bot only the tools
+it needs, and letting a bot run on a schedule. Run them from the repository root with Node.js 22.12+ after
 `npm ci`. They make no model requests and need no API key. Each uses assertions:
 a successful run prints its explanation and exits normally; a failed assertion
 stops the lesson.
@@ -368,6 +368,36 @@ call still stop before it reaches the workspace harness?
 **Source:** [12-least-privilege.ts](12-least-privilege.ts), then
 [shared/capabilities.ts](../src/shared/capabilities.ts) and
 [`createFleetAgents` in sdk/fleet.ts](../src/server/sdk/fleet.ts).
+
+## 13. Run a bot on a schedule
+
+```sh
+npm run lesson:13
+```
+
+**Learn:** a schedule is a saved prompt that the server sends to one bot on its
+own, at a time of day on chosen days. It starts an ordinary run, so the bot's
+agent, capabilities, budgets, and approvals are exactly those of a message you
+type. The hard part is not the clock: it is never running the same due time
+twice, and not flooding the bot after the server was off.
+
+**What happens:** the lesson computes when "weekdays at 08:00" is next due, then
+shows that a schedule remembers the last due time it handled (`handledThrough`),
+so three missed weekdays add up to one run, not three. It checks that a bot with
+`run` cannot be scheduled. Then it saves a bot and a schedule, starts the app in
+live mode with a scripted model and a fixed clock after the due time, and checks
+that startup posted one run into the bot's own chat, marked with the schedule.
+Restarting at the same moment runs nothing more.
+
+**Expect:** `13. Schedules: a due time starts one ordinary run in the bot’s own chat.`
+
+**Try:** pause the schedule in part B and predict what `dueSlot` returns. Then
+move the fixed clock in part D to Saturday: which assertion fails, and what is
+the next due time?
+
+**Source:** [13-schedules.ts](13-schedules.ts), then
+[shared/schedules.ts](../src/shared/schedules.ts) for due times and
+`runDueSchedules` in [app.ts](../src/server/app.ts).
 
 ## Connect the pieces
 

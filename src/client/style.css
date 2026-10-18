@@ -2525,3 +2525,95 @@ p.capability-warning {
 .bot-option-copy .capability-summary {
   margin-top: 4px;
 }
+
+/* A bot's schedules: when each runs, its prompt, and what happened last time. */
+.schedule-list {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+.schedule-list li {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.schedule-list li.paused > p,
+.schedule-list li.paused .schedule-when {
+  opacity: 0.6;
+}
+.schedule-when {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+.schedule-when strong {
+  font-weight: 600;
+}
+.schedule-when span,
+.schedule-last {
+  color: var(--muted);
+  font-size: 12px;
+}
+.schedule-list li > p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.schedule-list li > p.schedule-last {
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+}
+.schedule-actions .text-button,
+.schedule-last .text-button {
+  padding-left: 0;
+}
+.schedule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.schedule-days {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  font-size: 13px;
+  min-width: 0;
+}
+.schedule-days legend {
+  font-size: 13px;
+  font-weight: 550;
+  margin-bottom: 6px;
+}
+.schedule-days label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.schedule-time input {
+  max-width: 160px;
+}
+.scheduled-marker {
+  justify-content: flex-end;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}

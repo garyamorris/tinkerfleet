@@ -88,6 +88,16 @@ model tools.
 a separate conversation with that same bot and ask about the preference. In
 demo mode, inspect persistence without expecting a model-generated recall.
 
+## Let a bot run on its own
+
+Open **Schedules** beside an ordinary bot in the library. Write a prompt, choose
+days and a time, and choose **Add schedule**. In live mode, the server sends that
+prompt to the bot at that time and its reply appears in the bot's own chat, under
+a **Scheduled** marker. The schedule shows its next run and what happened last
+time; **Pause**, **Edit**, and **Delete** change it. Only bots without **Edit
+files** and **Run commands** can have one. The demo saves schedules but does not
+run them. See [Scheduled runs](capabilities.md#scheduled-runs).
+
 ## Review a proposed action
 
 With local tools enabled, a bot can read permitted project files and propose an
@@ -146,6 +156,7 @@ dialogs. Read labels as well as avatar colors.
 | --- | --- |
 | Sidebar, creation cards, dialogs, and run display | [`src/client/main.tsx`](../src/client/main.tsx), [`chat-list.tsx`](../src/client/chat-list.tsx), [`chat-run.tsx`](../src/client/chat-run.tsx), and the `*-dialog(s).tsx` files |
 | Memory editor | [`src/client/memory-panel.tsx`](../src/client/memory-panel.tsx) |
+| Schedules | [`src/client/schedule-dialog.tsx`](../src/client/schedule-dialog.tsx) and [`src/server/schedules.ts`](../src/server/schedules.ts) |
 | Saved chats and drafts | [`src/server/conversations.ts`](../src/server/conversations.ts) |
 | Agent instructions and model tools | [`src/server/sdk/fleet.ts`](../src/server/sdk/fleet.ts) and [`sdk/run-fleet.ts`](../src/server/sdk/run-fleet.ts) |
 | Exact action decisions | [`src/server/approval.ts`](../src/server/approval.ts) |

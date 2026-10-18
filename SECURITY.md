@@ -63,9 +63,15 @@ This does not close the path completely. Agents can pass text to each other: the
 
 Keep credentials out of prompts, profiles, memory, and search queries. Redaction and pattern checks help with recognizable secrets; they are not a complete privacy filter. Keep API keys in server configuration, never browser bundles or `VITE_` variables.
 
+## Scheduled runs happen without you
+
+A [schedule](docs/capabilities.md#scheduled-runs) starts a live run while you may be away. Each one is a real provider request, billed like a message you send: it sends the scheduled prompt, the bot's personality, bounded chat history, and its saved memories to the provider, and a bot with `web` can search. Ten schedules can mean up to ten runs a day, each within the run budgets but not a monetary cap. Use a key with a low spending limit, as above, and pause schedules you are not reading. Only live mode runs them; the demo never does.
+
+A scheduled run gets no extra authority. It is an ordinary run in the bot's own chat, and nothing in the scheduler approves anything. Bots with `edit` or `run`, and the primary, cannot be scheduled; if a scheduled bot is later granted `edit` or `run`, its runs pause at each edit or command until you decide, and then stop when the approval wait runs out. A bot with both `read` and `web` keeps the [leak path](#untrusted-text-and-web-search) when it runs unattended, so prefer `web` and `memory` for a scheduled researcher.
+
 ## Local storage and server access
 
-The Git-ignored `.tinkerfleet/conversations.json` contains saved conversations, profiles, and other public app views such as drafts and artifacts. Bot notes are stored separately in `.tinkerfleet/conversations.json.memories.json`. “Public view” means safe for this app’s browser contract, not safe to publish. Neither file is encrypted. Do not share them as debugging fixtures. Raw SDK state and approval grants are not restored from that file.
+The Git-ignored `.tinkerfleet/conversations.json` contains saved conversations, profiles, and other public app views such as drafts and artifacts. Bot notes are stored separately in `.tinkerfleet/conversations.json.memories.json`, and schedules, with their prompts, in `.tinkerfleet/conversations.json.schedules.json`. “Public view” means safe for this app’s browser contract, not safe to publish. None of these files is encrypted. Do not share them as debugging fixtures. Raw SDK state and approval grants are not restored from that file.
 
 The **Trace** tab shows what each model call sent and received, including instructions, file contents and command output that became model context. It is a redacted, bounded summary held in server memory only; it is never written to disk and is gone on restart. It is served only to the same authenticated browser session as the rest of the API. See [Reading a trace](docs/traces.md).
 

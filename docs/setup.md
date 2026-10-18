@@ -181,7 +181,8 @@ Removing turn limits or raising the run budget does not extend it.
 ## Saved state and model context
 
 The server saves profiles and chat views in `.tinkerfleet/conversations.json`.
-Per-bot notes live in `.tinkerfleet/conversations.json.memories.json`. Both are
+Per-bot notes live in `.tinkerfleet/conversations.json.memories.json`, and
+scheduled prompts in `.tinkerfleet/conversations.json.schedules.json`. All are
 private local data in a Git-ignored directory. They can contain your messages,
 drafts, notes, and results; do not include that directory in a shared source copy.
 
@@ -208,5 +209,5 @@ the server directly, for example
 `node --env-file=.env.other --import tsx src/server/index.ts --production`.
 
 Next, follow [Build an agent app](build-an-agent-app.md), run the
-[thirteen lessons](../lessons/README.md), or read [Testing](testing.md) before changing
+[fourteen lessons](../lessons/README.md), or read [Testing](testing.md) before changing
 an implementation detail.
