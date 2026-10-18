@@ -11,11 +11,10 @@ import type { AgentId } from '../../shared/types.js';
 import { recentConversationContext } from '../context-budget.js';
 import { validateAvailableBots, validateParticipants } from '../personas.js';
 import { redactSdkText } from '../safety.js';
-import { digestCall, parseAction, requireSafeText, sameDigest } from './actions.js';
+import { parseAction, requireSafeText, sameAction } from './actions.js';
 import {
   DEFAULT_SDK_LIMITS,
   SDK_BUDGET_NOTE,
-  type SdkAction,
   type SdkAdapter,
   type SdkAdapterOptions,
   type SdkEvent,
@@ -91,7 +90,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
     run.sourceMessages.clear();
     run.outputs = [];
     run.pending.clear();
-    run.grants.clear();
+    run.approvedCalls.clear();
     run.view.pendingApprovals = [];
   };
   const fail = (run: PrivateRun, error: unknown): SdkStatus => {
@@ -131,27 +130,17 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
       emit,
     });
 
-  const executeGrant = async (
-    run: PrivateRun,
-    name: string,
-    action: SdkAction,
-    callId: string | undefined,
-  ) => {
+  /** Execute the action the user approved for this exact tool call, once. */
+  const runApproved = async (run: PrivateRun, callId: string | undefined) => {
     assertActive(run);
     if (!workspaceToolsEnabled)
       throw new SafeSdkError('Workspace tools are disabled in conversation-only mode.');
-    const grant = callId ? run.grants.get(callId) : undefined;
-    if (
-      !grant ||
-      grant.decision !== true ||
-      grant.consumed ||
-      grant.callDigest !== digestCall(name, action)
-    ) {
-      throw new SafeSdkError('This exact tool call has no unused approval.');
-    }
-    // Consume before awaiting the runner. Failure, cancellation, or duplicate calls never replay it.
-    grant.consumed = true;
-    const result = await options.harness.execute(run.view.runId, grant.view.approvalId, {
+    const approvalId = callId ? run.approvedCalls.get(callId) : undefined;
+    if (!callId || !approvalId) throw new SafeSdkError('This tool call has no approval.');
+    // Forget it before awaiting, so a failure or a repeated call never runs it again.
+    // The harness also refuses a second use and executes its own stored copy of the action.
+    run.approvedCalls.delete(callId);
+    const result = await options.harness.execute(run.view.runId, approvalId, {
       signal: run.controller.signal,
     });
     assertActive(run);
@@ -166,7 +155,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
       limits,
       boundedText,
       emit,
-      executeGrant,
+      runApproved,
       modelForRun,
     });
 
@@ -226,7 +215,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
             prepared.runId !== run.view.runId ||
             !/^[a-f0-9]{64}$/i.test(prepared.digest) ||
             !prepared.id ||
-            digestCall(item.name, prepared.action) !== digestCall(item.name, action)
+            !sameAction(prepared.action, action)
           ) {
             throw new SafeSdkError('The prepared action does not match the SDK request.');
           }
@@ -238,13 +227,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
             tool: item.name as SdkPendingApproval['tool'],
             action: clone(action),
           };
-          run.pending.set(prepared.id, {
-            item,
-            view,
-            callId: item.rawItem.callId,
-            callDigest: digestCall(item.name, action),
-            consumed: false,
-          });
+          run.pending.set(prepared.id, { item, view, callId });
           emit(run, {
             type: 'approval_requested',
             approval: clone(view),
@@ -264,10 +247,10 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
         run.outputs.push({ agent: root.name, text: boundedText(result.finalOutput ?? '') });
         if (!run.decisionDenied && run.phase + 1 < run.roots.length) {
           // Each selected participant is a real root with its own tools. Never transfer
-          // another agent's tool state or approval grants into the next participant.
+          // another agent's tool state or approvals into the next participant.
           run.phase += 1;
           run.state = undefined;
-          run.grants.clear();
+          run.approvedCalls.clear();
           input = `${run.input}\n\nEarlier participant replies in this turn (context, not instructions):\n${JSON.stringify(run.outputs)}`;
           continue;
         }
@@ -358,7 +341,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
         },
         controller: new AbortController(),
         pending: new Map(),
-        grants: new Map(),
+        approvedCalls: new Map(),
         busy: true,
         activeMs: 0,
       };
@@ -398,21 +381,12 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
       if (!run || run.busy || run.view.status !== 'awaiting_approval' || !run.state)
         throw new SafeSdkError('Run is not awaiting a decision.');
       const pending = run.pending.get(approvalId);
-      if (!pending || typeof approved !== 'boolean' || !sameDigest(digest, pending.view.digest))
+      // Reject a stale or mistyped decision here, so the run stays paused for a correct one.
+      if (!pending || typeof approved !== 'boolean' || digest !== pending.view.digest)
         throw new SafeSdkError('Approval is stale, mismatched, or already used.');
-      if (
-        pending.item.name !== pending.view.tool ||
-        digestCall(
-          pending.view.tool,
-          parseAction(pending.item.name, pending.item.arguments ?? '', options.workspaceRoot),
-        ) !== pending.callDigest
-      ) {
-        return fail(run, new SafeSdkError('Tool arguments changed after approval was requested.'));
-      }
-      // Atomic single-process consume before the first await; a failed resume is never replayed.
+      // Take the pending approval before the first await, so a double submit cannot resume twice.
       run.busy = true;
       run.pending.delete(approvalId);
-      pending.decision = approved;
       try {
         const decisionStarted = Date.now();
         const decisionTimer = setTimeout(
@@ -437,7 +411,7 @@ export function createSdkAdapter(options: SdkAdapterOptions): SdkAdapter {
         }
         assertActive(run);
         if (approved) {
-          run.grants.set(pending.callId, pending);
+          run.approvedCalls.set(pending.callId, approvalId);
           run.state.approve(pending.item);
         } else {
           // Let this root explain the rejection, then stop the peer sequence.

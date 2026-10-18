@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { canonicalJson } from './approval.js';
-import { redactSdkText } from './safety.js';
+import { containsSecret } from './safety.js';
 
 export type CommandAction = { kind: 'command'; executable: string; args: string[]; cwd?: string };
 export type EditAction = { kind: 'edit'; path: string; content: string };
@@ -72,8 +72,6 @@ const SECRET_FILENAME =
   /(?:^|[._-])(?:secrets?|credentials?|passwords?|tokens?)(?:[._-]|$)|^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.|$)|\.(?:pem|key|p12|pfx|keystore|db|sqlite\d*|log)$/i;
 export const TEXT_EXTENSION =
   /\.(?:[cm]?[jt]sx?|json|md|txt|css|html?|ya?ml|toml|csv|svg|py|sh|bash|zsh|sql|rs|go|java|c|cpp|h|hpp|xml|ini|conf)$/i;
-const SECRET_CONTENT =
-  /-----BEGIN (?:[A-Z ]*PRIVATE KEY)-----|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|\bAKIA[A-Z0-9]{16}\b|\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}|\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*["'][^"'\s]{12,}["']/i;
 
 export function isExcludedPath(relativePath: string): boolean {
   return relativePath
@@ -121,7 +119,7 @@ export function validateText(content: unknown): asserts content is string {
   ) {
     throw new RunnerError('INVALID_FILE', 'Only bounded text files can enter a run snapshot.');
   }
-  if (SECRET_CONTENT.test(content) || redactSdkText(content) !== content)
+  if (containsSecret(content))
     throw new RunnerError(
       'SECRET_CONTENT',
       'Potential credential content cannot enter the run snapshot.',
@@ -171,10 +169,7 @@ export function validateAction(value: unknown): RunnerAction {
     );
   }
   const args = action.args as string[];
-  if (
-    redactSdkText(action.executable) !== action.executable ||
-    args.some((arg) => redactSdkText(arg) !== arg)
-  ) {
+  if (containsSecret(action.executable) || args.some((arg) => containsSecret(arg))) {
     throw new RunnerError('SECRET_CONTENT', 'Do not put credentials in command arguments.');
   }
   const cwd =
