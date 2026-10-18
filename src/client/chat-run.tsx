@@ -50,7 +50,7 @@ export function ChatRun({
             hour: '2-digit',
             minute: '2-digit',
           })}{' '}
-          · {r.mode === 'demo' ? 'Simulated demo · ' : ''}
+          · {r.mode === 'demo' ? 'Scripted demo · ' : ''}
           {statusText[r.status]}
         </span>
         <button
@@ -137,7 +137,7 @@ export function ChatRun({
         {r.status === 'completed' ? (
           <>
             <Icon name="check" size={16} />
-            {r.mode === 'demo' ? 'Complete · simulated results' : 'Complete'}
+            Complete
             <button
               className="text-button"
               onClick={() => {

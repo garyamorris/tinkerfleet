@@ -10,14 +10,14 @@ Start with the [setup guide](setup.md). These are startup modes, not three diffe
 
 | Capability | Demo | Live chat | Live with workspace tools |
 |---|---|---|---|
-| Replies | Scripted teaching examples; no model call | Real Agents SDK model calls | Real Agents SDK model calls |
+| Replies | A scripted model with a few teaching examples; no API call | Real Agents SDK model calls | Real Agents SDK model calls |
 | Personalities and direct chats | Saved profiles; scripted replies | Independent agents with saved profiles | Same |
 | Primary coordination | Documented scripted creation, messaging, and group examples | Create agents, message registered agents, start groups | Same |
 | Public web search and page reading | No | Hosted search enabled by default; model-dependent page actions | Same |
 | Saved memory | Manage entries through the UI; no model deciding what to remember | Per-agent recall, remember, and forget tools | Same |
-| List and read local files | Simulated fixture only | Unavailable | Permitted text files in the selected workspace |
-| Create and edit files | Simulated proposal and result | Unavailable | Real files, after exact approval |
-| Run installed commands | Simulated proposal and output | Unavailable | Real local processes, after exact approval |
+| List and read local files | A temporary copy of tiny-project | Unavailable | Permitted text files in the selected workspace |
+| Create and edit files | The temporary copy, after exact approval | Unavailable | Real files, after exact approval |
+| Run installed commands | The scripted test command in the temporary copy, after exact approval | Unavailable | Real local processes, after exact approval |
 | Saved chat history | Yes | Yes | Yes |
 
 Live chat is the default live configuration. `TINKERFLEET_WORKSPACE_TOOLS=1` enables local tools; `TINKERFLEET_WORKSPACE` chooses their starting folder. `TINKERFLEET_WEB_SEARCH=0` disables hosted search. Live mode requires a configured model and a server-side API key. See [configuration](setup.md) before running paid requests.
@@ -116,6 +116,6 @@ npm run lesson:4
 npm run lesson:5
 ```
 
-Lesson 3 explores validated tool inputs. Lesson 4 demonstrates exact, single-use approvals. Lesson 5 makes a real approved edit and runs a local command in a temporary teaching folder, then cleans it up. The demo UI remains simulated even though these lessons exercise real server components.
+Lesson 3 explores validated tool inputs. Lesson 4 demonstrates exact, single-use approvals. Lesson 5 makes a real approved edit and runs a local command in a temporary teaching folder, then cleans it up. The demo UI uses the same server components, driven by a scripted model.
 
 For a new capability, follow the same path: define structured input, implement a bounded server operation, decide where approval is needed, expose the result to the model, and test rejection as well as success. Adding a tool description alone does not implement that capability.

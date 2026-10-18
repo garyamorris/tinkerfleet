@@ -23,10 +23,13 @@ Talk to Orbit, the primary agent. Ask it to fix the failing tests in tiny-projec
 then open its group conversation and review the proposed actions. Try denying
 one action before approving another in a fresh run.
 
-The demo follows a script. It does not call a model, search the web, execute a
-command, or change project files. Its profiles, conversations, and memory notes
-**do** use real local storage. This lets you learn the app's state transitions
-without confusing simulated work with model intelligence.
+The demo replaces the language model with a small scripted one
+([demo.ts](../src/server/demo.ts)). It does not call an API or search the web.
+Everything around the model is real: tool calls, approvals, file edits, and the
+test command, which act on a temporary copy of tiny-project deleted when the
+server stops. Profiles, conversations, and memory notes use real local storage.
+So you see the app's real mechanics without confusing a script with model
+intelligence.
 
 **Try it:** create a persona through **Bots**, save a sample preference in its
 **Memory** panel, and reload. Notice which state survives. Follow the

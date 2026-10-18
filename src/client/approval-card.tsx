@@ -47,7 +47,8 @@ export function ApprovalCard({
             </>
           )}
           {'\n'}Arguments: {JSON.stringify(a.action.args)}
-          {'\n'}Working directory: {mode === 'demo' ? 'tiny-project (simulated)' : workspaceRoot}
+          {'\n'}Working directory:{' '}
+          {mode === 'demo' ? 'temporary copy of tiny-project' : workspaceRoot}
           {a.action.cwd && a.action.cwd !== '.' ? '/' + a.action.cwd : ''}
         </pre>
       )}
@@ -62,7 +63,9 @@ export function ApprovalCard({
       <div className="approval-footnote">
         <span>
           {mode === 'demo'
-            ? 'Simulated action · no files or commands change'
+            ? a.action.kind === 'edit'
+              ? 'This changes a file in a temporary copy of tiny-project.'
+              : 'This runs a real command in a temporary copy of tiny-project.'
             : a.action.kind === 'edit'
               ? 'This changes a real local file.'
               : 'This runs a real command with your user permissions.'}

@@ -31,8 +31,8 @@ You can print the selected path with `printf '%s\n' "$practice_dir"`.
 
 ## Follow the action through Tinkerfleet
 
-The demo can show the scripted approval flow without making model calls or
-changing these files. For a real agent-driven edit, follow
+The demo runs this fix through the real tools and approvals on a temporary copy
+of this folder, so these files stay unchanged. For a real agent-driven edit, follow
 [setup](../../docs/setup.md) and select the disposable folder as the workspace
 with local tools enabled. Live inference uses the configured provider and may
 incur charges; it is separate from running this fixture's Node tests.

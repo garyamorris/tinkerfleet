@@ -98,8 +98,9 @@ not alter someone's existing conversations.
 
 Be explicit about the mode in your evidence:
 
-- **Demo browser check:** proves the interface handles the scripted demonstration.
-  The demo does not execute local tools or call a model.
+- **Demo browser check:** exercises the real loop, tools, approvals, and a real
+  test command in a temporary copy, driven by the scripted demo model. It does not
+  show how a real model behaves.
 - **Offline SDK browser check:** a server with an injected `ScriptedModel` exercises
   SDK-backed UI behavior. A synthetic citation can prove that a source link renders
   beside a claim; it does not prove a web search occurred.

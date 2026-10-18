@@ -153,9 +153,7 @@ export function TaskDetailsDialog({
         ) : tab === 'Output' ? (
           run?.output ? (
             <>
-              <p className="output-label">
-                {run.mode === 'demo' ? 'Simulated demo output' : 'Command output'}
-              </p>
+              <p className="output-label">Command output</p>
               <pre className="terminal-output">{run.output}</pre>
             </>
           ) : (

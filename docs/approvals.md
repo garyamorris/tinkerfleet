@@ -81,6 +81,6 @@ npm run lesson:4
 npm run lesson:5
 ```
 
-[Lesson 4](../lessons/04-approvals.ts) proves that an approval can be consumed once and that replay, changed actions, and expiry fail. [Lesson 5](../lessons/05-local-tools.ts) connects that approval to a real edit and command in a temporary folder. In the demo UI, the same approve/deny interaction controls only a simulated fixture.
+[Lesson 4](../lessons/04-approvals.ts) proves that an approval can be consumed once and that replay, changed actions, and expiry fail. [Lesson 5](../lessons/05-local-tools.ts) connects that approval to a real edit and command in a temporary folder. In the demo UI, the same approve/deny interaction controls a real edit and test command in a temporary copy of tiny-project.
 
 When adding a tool to your own agent app, decide which effects need review. Keep authorization outside model-generated text, bind the decision to immutable arguments, consume it once, and test the paths that must refuse execution. The relevant regressions are in [approval tests](../tests/approval.test.ts), [native-runner tests](../tests/native-runner.test.ts), and [HTTP integration tests](../tests/http.test.ts).

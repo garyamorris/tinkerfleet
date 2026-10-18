@@ -513,7 +513,7 @@ function App() {
                 ? state.workspaceToolsEnabled
                   ? 'Local file tools enabled'
                   : 'No file access or commands'
-                : 'No API calls. No real file changes.'}
+                : 'No API calls. Tools act on a temporary copy of tiny-project.'}
             </span>
           </div>
           {state?.persistenceError && (
@@ -585,7 +585,7 @@ function App() {
                     <Icon name="terminal" size={21} />
                     <span>
                       <strong>Try a demo conversation</strong>
-                      <small>A scripted walkthrough with these bots</small>
+                      <small>A scripted model with real tools and approvals</small>
                     </span>
                     <Icon name="arrow" size={18} />
                   </button>
@@ -667,7 +667,7 @@ function App() {
               <p className="composer-note">
                 {state?.mode === 'live'
                   ? 'Live model responses · Only this conversation’s participants receive its context.'
-                  : 'Demo responses are scripted. Live chats use your bots’ purposes.'}
+                  : 'Demo replies come from a scripted model. Live chats use your bots’ purposes.'}
               </p>
             </div>
           )}

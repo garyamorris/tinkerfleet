@@ -1,451 +1,344 @@
-import { validateParticipants, validateAvailableBots } from './personas.js';
-import { randomUUID, createHash } from 'node:crypto';
-import type { Persona, Run, AgentId, Action, FleetEvent } from '../shared/types.js';
-import { initialSource, fixedSource } from '../shared/types.js';
+/**
+ * The no-key demo's model: a small, deterministic stand-in for a language model.
+ *
+ * It implements the same Model interface as the real OpenAI model, so the demo runs
+ * through the real agent loop, tools, approvals and native runner. Only the choice
+ * of the next step is scripted. Each call reads the request the way a model would
+ * (instructions, available tools, transcript) and returns either tool calls or a
+ * reply. It knows a few teaching examples and does not understand arbitrary text.
+ */
+import { randomUUID } from 'node:crypto';
+import { cpSync, mkdtempSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  Usage,
+  type AgentOutputItem,
+  type Model,
+  type ModelRequest,
+  type ModelResponse,
+} from '@openai/agents';
 
-type GroupRequest = { title: string; brief: string; botIds: string[] };
-type MessageRequest = { agentId: string; message: string };
-const workRequest = (prompt: string) =>
-  !/^(?:hello|hi|hey|explain|teach|tell me|what|how)\b/i.test(prompt.trim()) &&
-  /\b(fix|repair|build|implement|debug|run|verify|check|test)\b/i.test(prompt);
+/** Copy the tiny-project fixture to a fresh temporary folder for the demo to work on. */
+export function createDemoWorkspace(): string {
+  const fixture = fileURLToPath(new URL('../../examples/tiny-project', import.meta.url));
+  const folder = realpathSync(mkdtempSync(path.join(tmpdir(), 'tinkerfleet-demo-')));
+  cpSync(fixture, folder, { recursive: true });
+  return folder;
+}
 
-/** Deterministic, participant-aware lessons. Never calls a model or a command. */
-export class DemoEngine {
-  readonly runs = new Map<string, Run>();
-  private timers = new Map<string, ReturnType<typeof setTimeout>>();
-  constructor(
-    private delayMs = 650,
-    private startGroup?: (
-      runId: string,
-      request: GroupRequest,
-    ) => Promise<{ conversationId: string; title: string }>,
-    private createAgent?: (
-      runId: string,
-      request: { name: string; purpose: string },
-    ) => Promise<Persona>,
-    private messageAgent?: (
-      runId: string,
-      request: MessageRequest,
-    ) => Promise<{ conversationId: string; agentId: string }>,
-  ) {}
+export class DemoModel implements Model {
+  /** delayMs paces the demo so you can watch each step; tests use a small value. */
+  constructor(private delayMs = 650) {}
 
-  start(
-    prompt: string,
-    team?: Persona[],
-    options: { availableBots?: Persona[]; promptAuthor?: AgentId | 'user' } = {},
-  ): Run {
-    const runTeam = team === undefined ? undefined : validateParticipants(team);
-    const availableBots =
-      options.availableBots === undefined
-        ? undefined
-        : validateAvailableBots(options.availableBots);
-    const run: Run = {
-      ...(runTeam ? { team: runTeam } : {}),
-      id: randomUUID(),
-      prompt,
-      status: 'running',
-      mode: 'demo',
-      messages: [],
-      events: [],
-      approvals: [],
-      artifacts: [],
-      output: '',
-      activeAgent: null,
-      startedAt: Date.now(),
+  async getResponse(request: ModelRequest): Promise<ModelResponse> {
+    await pause(this.delayMs, request.signal);
+    return {
+      output: nextStep(readRequest(request)),
+      usage: new Usage(),
+      responseId: `demo-${randomUUID()}`,
     };
-    this.runs.set(run.id, run);
-    this.message(run, options.promptAuthor ?? 'user', prompt);
-    if (runTeam?.length === 1 && runTeam[0].role === 'coordinator') {
-      run.activeAgent = 'coordinator';
-      this.message(
-        run,
-        'coordinator',
-        'I’m your primary agent. We can work here, create reusable agents, or bring selected agents into a conversation. This no-key demo is scripted.',
-      );
-      this.later(run, () => {
-        void this.coordinate(run, availableBots ?? []);
-      });
-    } else if (runTeam && !workRequest(prompt)) {
-      this.later(run, () => this.greet(run));
-    } else {
-      this.message(
-        run,
-        this.speaker(run),
-        `This scripted walkthrough uses ${this.identities(run)
-          .map((id) => this.name(run, id))
-          .join(
-            ', ',
-          )}. Agents share the same capabilities; this example assigns working steps by agent order while the primary coordinates. Every proposed edit and command needs your approval.`,
-      );
-      this.later(run, () => this.inspect(run));
-    }
-    return run;
   }
 
-  /** Small documented examples, not general language understanding or model decisions. */
-  private async coordinate(run: Run, availableBots: Persona[]) {
-    const ask = /^ask\s+([^:\r\n]{1,64}):\s*([\s\S]+)$/i.exec(run.prompt.trim());
-    if (ask) {
-      const target = ask[1].trim().toLowerCase(),
-        message = ask[2].trim();
-      const matches = availableBots.filter(
-        (bot) => bot.id.toLowerCase() === target || bot.name.toLowerCase() === target,
+  async *getStreamedResponse(): AsyncIterable<never> {
+    throw new Error('The demo model does not stream.');
+  }
+}
+
+/** What the demo model looks at in a request. */
+interface RequestView {
+  tools: string[];
+  name: string;
+  roster: { id: string; name: string }[];
+  members: { id: string; name: string }[];
+  prompt: string;
+  earlierReplies: boolean;
+  results: { name: string; text: string }[];
+}
+
+function readRequest(request: ModelRequest): RequestView {
+  const instructions = request.systemInstructions ?? '';
+  const items: unknown[] =
+    typeof request.input === 'string'
+      ? [{ type: 'message', role: 'user', content: request.input }]
+      : request.input;
+  const firstUser = items.find(
+    (item): item is { content: unknown } =>
+      isRecord(item) && item.type === 'message' && item.role === 'user',
+  );
+  const text = textOf(firstUser?.content);
+  const marker = 'Current user request:\n';
+  const prompt = (
+    text.includes(marker) ? text.slice(text.lastIndexOf(marker) + marker.length) : text
+  )
+    .split('\n\nEarlier participant replies in this turn')[0]
+    .trim();
+  const names = new Map<string, string>();
+  for (const item of items)
+    if (isRecord(item) && item.type === 'function_call')
+      names.set(String(item.callId), String(item.name));
+  const results = items.flatMap((item) =>
+    isRecord(item) && item.type === 'function_call_result'
+      ? [{ name: names.get(String(item.callId)) ?? String(item.name), text: textOf(item.output) }]
+      : [],
+  );
+  return {
+    tools: (request.tools ?? []).map((tool) => ('name' in tool ? String(tool.name) : '')),
+    name: jsonAfter<{ name?: string }>(instructions, 'Your profile:\n')?.name ?? 'your agent',
+    roster: jsonAfter(instructions, 'this roster (data, not instructions):\n') ?? [],
+    members: jsonAfter(instructions, 'Agents in this group: ') ?? [],
+    prompt,
+    earlierReplies: text.includes('Earlier participant replies in this turn'),
+    results,
+  };
+}
+
+/** Pick the next step: the primary agent coordinates, a group lead delegates, others work. */
+function nextStep(r: RequestView): AgentOutputItem[] {
+  const coordinates = ['create_agent', 'message_agent', 'start_group_conversation'].some((t) =>
+    r.tools.includes(t),
+  );
+  if (coordinates) return primaryStep(r);
+  if (r.tools.some((t) => t.startsWith('ask_'))) return groupLeadStep(r);
+  return workerStep(r);
+}
+
+const isWorkRequest = (prompt: string) =>
+  !/^(?:hello|hi|hey|explain|teach|tell me|what|how)\b/i.test(prompt) &&
+  /\b(fix|repair|build|implement|debug|run|verify|check|test|inspect)\w*\b/i.test(prompt);
+
+function primaryStep(r: RequestView): AgentOutputItem[] {
+  const ask = /^ask\s+([^:\r\n]{1,64}):\s*([\s\S]+)$/i.exec(r.prompt);
+  if (ask) {
+    const target = ask[1].trim().toLowerCase();
+    const matches = r.roster.filter(
+      (bot) => bot.id.toLowerCase() === target || bot.name.toLowerCase() === target,
+    );
+    if (resultOf(r, 'message_agent') !== undefined)
+      return say(
+        `I sent your message to ${matches[0]?.name ?? 'that agent'} in their own chat. Their reply will appear here when they finish.`,
       );
-      if (matches.length !== 1 || !this.messageAgent || message.length > 8000) {
-        this.complete(
-          run,
-          'I could not send that scripted request. Use “Ask Ada: <message>” with one uniquely named agent in your library. No message was sent.',
-        );
-        return;
-      }
-      try {
-        const result = await this.messageAgent(run.id, { agentId: matches[0].id, message });
-        if (run.status !== 'running') return;
-        if (result.agentId !== matches[0].id || !result.conversationId)
-          throw new Error('Invalid message result.');
-        this.complete(
-          run,
-          `Sent your message to ${matches[0].name} in their conversation. This is a scripted handoff; their reply will appear when their demo turn finishes.`,
-          'Agent message sent',
-        );
-      } catch {
-        this.fail(
-          run,
-          'I could not send that agent message. No successful handoff was confirmed.',
-          'Agent message could not be sent',
-        );
-      }
-      return;
-    }
-    const creation =
-      /^(?:please\s+)?(?:create|make|add)\s+(?:me\s+)?(.{1,400}?)\s+(?:called|named)\s+([A-Za-z][A-Za-z0-9 -]{0,39}?)[.!]?$/i.exec(
-        run.prompt.trim(),
+    if (matches.length !== 1)
+      return say(
+        'I could not find exactly one agent with that name, so I sent nothing. Try “Ask Nova: Hello” with an agent from your library.',
       );
-    if (creation && this.createAgent) {
-      try {
-        const persona = await this.createAgent(run.id, {
-          name: creation[2].trim(),
-          purpose: `Act as ${creation[1].trim()}.`,
-        });
-        if (run.status !== 'running') return;
-        this.complete(
-          run,
-          `This scripted example saved ${persona.name} to your agent library. Try “Ask ${persona.name}: Hello”. You can also talk to them directly or include them in a group. Their personality guides live replies; the no-key demo remains scripted.`,
-          'Agent saved to your library',
-        );
-      } catch {
-        this.fail(
-          run,
-          'I could not save that agent. Check the agent library and workspace status before trying again.',
-          'Agent could not be saved',
-        );
-      }
-      return;
-    }
-    const asksForGroup =
-      workRequest(run.prompt) || /\b(collaborate|team|group)\b/i.test(run.prompt);
-    const staysDirect =
-      /\b(?:do not|don't|without|no)\b[^.!?]{0,45}\b(?:group|team|agents?|specialists?|collaborat\w*)\b/i.test(
-        run.prompt,
-      );
-    const selected = availableBots.slice(0, 3);
-    if (asksForGroup && !staysDirect && selected.length && this.startGroup) {
-      this.message(
-        run,
-        'coordinator',
-        `For this scripted example, I’ll bring ${selected.map((p) => p.name).join(', ')} together to investigate tiny-project. I’ll share only a task brief.`,
-        'delegation',
-      );
-      try {
-        await this.startGroup(run.id, {
-          title: 'Tiny-project repair',
-          brief:
-            'Fix the failing addition tests in tiny-project. Inspect the fixture, propose the smallest fix, and verify it. Ask for approval before any edit or command.',
-          botIds: selected.map((p) => p.id),
-        });
-        if (run.status !== 'running') return;
-        this.complete(
-          run,
-          'The shared conversation has started. Its scripted edits and commands still require your approval.',
-          'Started a shared conversation',
-        );
-      } catch {
-        this.fail(
-          run,
-          'I could not start that shared conversation. No edit or command was approved here.',
-          'Shared conversation could not start',
-        );
-      }
-    } else if (workRequest(run.prompt)) {
-      this.inspect(run);
-    } else this.greet(run);
+    return [call('message_agent', { agentId: matches[0].id, message: ask[2].trim() })];
   }
 
-  private identities(run: Run): AgentId[] {
-    return (
-      run.team?.map((p) => (p.role === 'coordinator' ? 'coordinator' : p.id)) ?? [
-        'scout',
-        'maker',
-        'checker',
-      ]
+  const create =
+    /^(?:please\s+)?(?:create|make|add)\s+(?:me\s+)?(.{1,400}?)\s+(?:called|named)\s+([A-Za-z][A-Za-z0-9 -]{0,39}?)[.!]?$/i.exec(
+      r.prompt,
     );
-  }
-  private speaker(run: Run): AgentId {
-    return run.team?.some((p) => p.role === 'coordinator')
-      ? 'coordinator'
-      : this.identities(run)[0];
-  }
-  private stages(run: Run) {
-    const selected = this.identities(run),
-      ordinary = selected.filter((id) => id !== 'coordinator'),
-      ids = ordinary.length ? ordinary : selected;
-    return { inspect: ids[0], edit: ids[1] ?? ids[0], check: ids[2] ?? ids.at(-1)! };
-  }
-  private name(run: Run, id: AgentId) {
-    return (
-      run.team?.find((p) => (p.role === 'coordinator' ? 'coordinator' : p.id) === id)?.name ??
-      id[0].toUpperCase() + id.slice(1)
-    );
-  }
-  private later(run: Run, fn: () => void) {
-    const timer = setTimeout(() => {
-      this.timers.delete(run.id);
-      if (run.status === 'running') fn();
-    }, this.delayMs);
-    this.timers.set(run.id, timer);
-  }
-  private message(
-    run: Run,
-    author: AgentId | 'user',
-    text: string,
-    kind: 'text' | 'delegation' | 'result' = 'text',
-  ) {
-    run.messages.push({ id: randomUUID(), author, text, kind, at: Date.now() });
-  }
-  private event(
-    run: Run,
-    agent: AgentId,
-    kind: FleetEvent['kind'],
-    title: string,
-    detail?: string,
-  ) {
-    run.events.push({ id: randomUUID(), agent, kind, title, detail, at: Date.now() });
-  }
-  private complete(run: Run, text: string, title = 'Scripted response complete') {
-    if (run.status !== 'running') return;
-    this.message(run, this.speaker(run), text, 'result');
-    run.status = 'completed';
-    run.activeAgent = null;
-    run.endedAt = Date.now();
-    this.event(
-      run,
-      this.speaker(run),
-      'result',
-      title,
-      'Scripted demo · no model call or local command',
-    );
-  }
-  private fail(run: Run, text: string, title: string) {
-    if (run.status !== 'running') return;
-    run.status = 'failed';
-    run.activeAgent = null;
-    run.endedAt = Date.now();
-    this.message(run, this.speaker(run), text);
-    this.event(run, this.speaker(run), 'error', title, 'The scripted request failed.');
-  }
-  private greet(run: Run) {
-    this.complete(
-      run,
-      `Hello from ${this.name(run, this.speaker(run))}. This no-key reply is scripted. Ask me to fix tiny-project to see file creation, editing, and commands simulated with approvals. Agents have the same tools; personality guides their live replies.`,
-    );
-  }
-  private beginStage(run: Run, agent: AgentId, title: string) {
-    run.activeAgent = agent;
-    this.event(run, agent, 'message', title, 'Selected participant · scripted demo');
-  }
-  private inspect(run: Run) {
-    const agent = this.stages(run).inspect;
-    this.beginStage(run, agent, `${this.name(run, agent)}, take a look`);
-    this.event(run, agent, 'tool', 'Read sum.js', 'Simulated read · 3 lines · tiny-project');
-    this.message(
-      run,
-      agent,
-      'Found it. sum() subtracts b from a. The tests expect addition, so one operator needs to change. No files have been edited.',
-    );
-    this.later(run, () => this.propose(run));
-  }
-  private propose(run: Run) {
-    const agent = this.stages(run).edit;
-    this.beginStage(run, agent, `${this.name(run, agent)}, propose the fix`);
-    this.message(
-      run,
-      agent,
-      'A one-character fix should do it. Here is the simulated change; your real project stays untouched.',
-    );
-    this.request(
-      run,
-      { kind: 'edit', path: 'sum.js', content: fixedSource },
-      agent,
-      'Update sum.js',
-      'Change subtraction to addition. Original files stay untouched.',
-      initialSource,
-    );
-  }
-  private verify(run: Run) {
-    const agent = this.stages(run).check;
-    this.beginStage(run, agent, `${this.name(run, agent)}, verify the change`);
-    this.message(
-      run,
-      agent,
-      'I’ll show the project’s three test results in the simulation. No command runs on your computer in this demo.',
-    );
-    this.request(
-      run,
-      { kind: 'command', executable: 'node', args: ['--test', 'sum.test.js'], cwd: '.' },
-      agent,
-      'Run the test suite',
-      'One simulated command. No host command executes.',
-    );
-  }
-  private request(
-    run: Run,
-    action: Action,
-    agent: AgentId,
-    title: string,
-    description: string,
-    before?: string,
-  ) {
-    const id = randomUUID(),
-      digest = createHash('sha256')
-        .update(JSON.stringify({ runId: run.id, id, action }))
-        .digest('hex');
-    run.approvals.push({
-      id,
-      digest,
-      agent,
-      title,
-      description,
-      action,
-      status: 'pending',
-      before,
-    });
-    run.status = 'awaiting_approval';
-    this.event(run, agent, 'approval', 'Your approval is needed', title);
-  }
-  private finish(run: Run) {
-    const stages = this.stages(run);
-    this.complete(
-      run,
-      `${this.name(run, stages.inspect)} inspected the fixture, ${this.name(run, stages.edit)} proposed the fix, and ${this.name(run, stages.check)} checked the expected result. Both approvals applied only to this simulation. The diff and simulated output are in Details; no real file changed.`,
-    );
-  }
-  decide(runId: string, id: string, digest: string, approved: boolean): Run {
-    const run = this.runs.get(runId);
-    if (!run) throw new Error('Run not found or expired after restart.');
-    const approval = run.approvals.find((a) => a.id === id);
-    if (
-      run.status !== 'awaiting_approval' ||
-      !approval ||
-      approval.status !== 'pending' ||
-      approval.digest !== digest
-    )
-      throw new Error('This approval is stale, changed, or already used.');
-    approval.status = approved ? 'approved' : 'denied';
-    if (!approved) {
-      run.status = 'denied';
-      run.activeAgent = null;
-      run.endedAt = Date.now();
-      this.event(run, approval.agent, 'result', 'Action declined', 'No action was performed.');
-      this.message(
-        run,
-        this.speaker(run),
-        'Understood. I’ve stopped here. That action wasn’t performed, and your original project is unchanged.',
+  if (create) {
+    const created = resultOf(r, 'create_agent');
+    if (created !== undefined) {
+      const name = parseJson<{ name?: string }>(created)?.name ?? create[2].trim();
+      return say(
+        `I saved ${name} to your bot library. Try “Ask ${name}: Hello”, or open their chat. In live mode their personality shapes real replies; this demo model is scripted.`,
       );
-      return run;
     }
-    run.status = 'running';
-    this.event(
-      run,
-      approval.agent,
-      'result',
-      'Approved for this action only',
-      `Action fingerprint ${digest.slice(0, 12)} · consumed once`,
-    );
-    if (approval.action.kind === 'edit') {
-      run.artifacts.push({
-        path: 'sum.js',
-        before: initialSource,
-        after: fixedSource,
-        simulated: true,
-      });
-      this.event(
-        run,
-        approval.agent,
-        'result',
-        'Simulated patch applied',
-        'In-memory demo fixture only',
-      );
-      this.message(
-        run,
-        approval.agent,
-        'The demo patch is ready in this run’s fixture. No real file was written.',
-      );
-      this.later(run, () => this.verify(run));
-    } else {
-      run.activeAgent = approval.agent;
-      this.event(
-        run,
-        approval.agent,
-        'tool',
-        'Simulating node --test sum.test.js',
-        'No command is running on this computer',
-      );
-      this.later(run, () => {
-        run.output =
-          '[SIMULATED DEMO OUTPUT]\n$ node --test sum.test.js\n\n✔ adds two positive numbers\n✔ handles negative numbers\n✔ adds zero\n\ntests 3   pass 3   fail 0\nexit code 0\n';
-        this.event(
-          run,
-          approval.agent,
-          'result',
-          '3 of 3 tests pass · simulated',
-          'Expected fixture output; not a real command run',
-        );
-        this.message(
-          run,
-          approval.agent,
-          'All three fixture tests pass in the simulation. The patch is one line, and no real files changed.',
-        );
-        this.finish(run);
-      });
-    }
-    return run;
+    return [
+      call('create_agent', { name: create[2].trim(), purpose: `Act as ${create[1].trim()}.` }),
+    ];
   }
-  cancel(id: string) {
-    const run = this.runs.get(id);
-    if (!run) throw new Error('Run not found.');
-    if (!['running', 'awaiting_approval'].includes(run.status)) return run;
-    clearTimeout(this.timers.get(id));
-    this.timers.delete(id);
-    run.approvals.filter((a) => a.status === 'pending').forEach((a) => (a.status = 'denied'));
-    run.status = 'cancelled';
-    run.activeAgent = null;
-    run.endedAt = Date.now();
-    this.event(
-      run,
-      this.speaker(run),
-      'result',
-      'Run stopped',
-      'Outstanding approvals invalidated',
+
+  const staysDirect =
+    /\b(?:do not|don't|without|no)\b[^.!?]{0,45}\b(?:group|team|agents?|collaborat\w*)\b/i.test(
+      r.prompt,
     );
-    this.message(
-      run,
-      this.speaker(run),
-      'Stopped. Any pending approvals are now invalid. Start a new run whenever you’re ready.',
+  const wantsGroup = isWorkRequest(r.prompt) || /\b(collaborate|team|group)\b/i.test(r.prompt);
+  if (wantsGroup && !staysDirect && r.roster.length) {
+    if (resultOf(r, 'start_group_conversation') !== undefined)
+      return say(
+        'I started a group conversation for this and shared only a short brief. Open it to watch the agents work; each edit and command there still needs your approval.',
+      );
+    return [
+      call('start_group_conversation', {
+        title: 'Tiny-project repair',
+        brief:
+          'Fix the failing addition tests in tiny-project. Inspect sum.js, make the smallest fix, and verify it by running the tests.',
+        botIds: r.roster.slice(0, 3).map((bot) => bot.id),
+      }),
+    ];
+  }
+  return workerStep(r);
+}
+
+function groupLeadStep(r: RequestView): AgentOutputItem[] {
+  if (!isWorkRequest(r.prompt)) return greet(r);
+  const askTools = r.tools.filter((t) => t.startsWith('ask_'));
+  const toolFor = (member: { id: string }) =>
+    `ask_${member.id.replace(/_/g, '__u').replace(/-/g, '__h')}`;
+  const ordered = r.members.map(toolFor).filter((t) => askTools.includes(t));
+  const lanes = ordered.length ? ordered : askTools;
+  const stages = [
+    { tool: lanes[0], input: 'Inspect sum.js in tiny-project and report what is wrong.' },
+    { tool: lanes[1] ?? lanes[0], input: 'Fix sum.js with the smallest change.' },
+    { tool: lanes[2] ?? lanes.at(-1)!, input: 'Verify the fix by running the tests.' },
+  ];
+  const asked = r.results.filter((result) => result.name.startsWith('ask_'));
+  if (asked.some((result) => /declined|rejected|not made|did not run/i.test(result.text)))
+    return say('An action was declined, so I stopped the plan here. Nothing else was changed.');
+  if (asked.length < stages.length)
+    return [call(stages[asked.length].tool, { input: stages[asked.length].input })];
+  const nameOf = (tool: string) =>
+    r.members.find((member) => toolFor(member) === tool)?.name ?? tool.slice(4);
+  const counts = /\d+ passed and \d+ failed/.exec(asked[2].text)?.[0];
+  return say(
+    `${nameOf(stages[0].tool)} inspected sum.js, ${nameOf(stages[1].tool)} fixed it, and ${nameOf(stages[2].tool)} ran the tests${counts ? `: ${counts}` : ''}. Open Task details to review the diff and output.`,
+  );
+}
+
+const FIXTURE = 'sum.js';
+const TEST_COMMAND = { executable: 'node', args: ['--test', 'sum.test.js'], cwd: null };
+
+function workerStep(r: RequestView): AgentOutputItem[] {
+  if (r.earlierReplies)
+    return say(
+      `I read the earlier replies in this group. ${r.name} agrees with the plan; nothing more is needed from me.`,
     );
-    return run;
+  if (!isWorkRequest(r.prompt)) return greet(r);
+  const inspectOnly = /^inspect\b/i.test(r.prompt);
+  const fixOnly = /^fix\b/i.test(r.prompt) && !/\btests?\b/i.test(r.prompt);
+  const verifyOnly = /^verify\b/i.test(r.prompt);
+
+  const declined = r.results.find((result) => /user rejected/i.test(result.text));
+  if (declined)
+    return say(
+      `Understood. You declined the ${declined.name === 'edit_file' ? 'edit, so the change was not made' : 'command, so it did not run'}. I stopped there.`,
+    );
+
+  const source = resultOf(r, 'read_file');
+  if (!verifyOnly && source === undefined) return [call('read_file', { path: FIXTURE })];
+  if (inspectOnly)
+    return say(
+      source?.includes('a - b')
+        ? 'Found it: sum() returns a - b, but the tests expect addition. One operator needs to change. I have not edited anything.'
+        : 'sum() already adds its arguments, so I found nothing to fix.',
+    );
+
+  const edited = resultOf(r, 'edit_file');
+  if (!verifyOnly && source?.includes('a - b') && edited === undefined)
+    return [
+      call('edit_file', {
+        path: FIXTURE,
+        content: source.replace('return a - b;', 'return a + b;'),
+      }),
+    ];
+  if (fixOnly)
+    return say(
+      edited === undefined
+        ? 'sum() already adds its arguments, so no edit was needed.'
+        : 'I changed a - b to a + b in sum.js. The edit was approved and written.',
+    );
+
+  const tested = resultOf(r, 'run_command');
+  if (tested === undefined) return [call('run_command', TEST_COMMAND)];
+  return say(testSummary(tested));
+}
+
+function testSummary(output: string): string {
+  const result = parseJson<{ stdout?: string; exitCode?: number }>(output);
+  const stdout = result?.stdout ?? output;
+  const pass = /# pass (\d+)/.exec(stdout)?.[1];
+  const fail = /# fail (\d+)/.exec(stdout)?.[1];
+  const counts = pass && fail ? `${pass} passed and ${fail} failed` : 'the run finished';
+  return result?.exitCode === 0
+    ? `I ran node --test sum.test.js: ${counts}. The change is in a temporary copy of tiny-project; open Task details to review the diff and output.`
+    : `I ran node --test sum.test.js: ${counts}. Open Task details to see the output.`;
+}
+
+function greet(r: RequestView): AgentOutputItem[] {
+  return say(
+    `Hello from ${r.name}. This reply comes from the scripted demo model, not a real one. Ask me to fix the failing tests in tiny-project to watch real tool calls and approvals on a temporary copy.`,
+  );
+}
+
+// --- Building a model response: these are the two kinds of output a model returns.
+
+function call(name: string, args: Record<string, unknown>): AgentOutputItem {
+  const callId = `demo-call-${randomUUID()}`;
+  return {
+    type: 'function_call',
+    name,
+    callId,
+    id: callId,
+    status: 'completed',
+    arguments: JSON.stringify(args),
+  };
+}
+
+function say(text: string): AgentOutputItem[] {
+  return [
+    {
+      type: 'message',
+      role: 'assistant',
+      status: 'completed',
+      content: [{ type: 'output_text', text }],
+    },
+  ];
+}
+
+// --- Small readers for the request.
+
+function resultOf(r: RequestView, tool: string): string | undefined {
+  return r.results.findLast((result) => result.name === tool)?.text;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function textOf(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(textOf).join('');
+  if (isRecord(value) && typeof value.text === 'string') return value.text;
+  return '';
+}
+
+function parseJson<T>(text: string): T | undefined {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined;
   }
-  dispose() {
-    for (const id of this.runs.keys()) this.cancel(id);
-    this.runs.clear();
+}
+
+/** Parse the JSON value that starts right after a label in the instructions, if present. */
+function jsonAfter<T>(instructions: string, label: string): T | undefined {
+  const start = instructions.indexOf(label);
+  if (start < 0) return undefined;
+  const text = instructions.slice(start + label.length);
+  // Scan to the bracket that closes the opening one, skipping over strings.
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (char === '\\') i++;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === '[' || char === '{') depth++;
+    else if (char === ']' || char === '}') {
+      depth--;
+      if (depth === 0) return parseJson<T>(text.slice(0, i + 1));
+    } else if (depth === 0 && i > 0) return undefined;
   }
+  return undefined;
+}
+
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('Cancelled.'));
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new Error('Cancelled.'));
+      },
+      { once: true },
+    );
+  });
 }
