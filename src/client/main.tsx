@@ -9,7 +9,8 @@ import type { AppState, Run, Approval, AgentId, Persona, Conversation } from '..
 import './style.css';
 import { randomAppearance } from '../shared/appearance';
 import { api, setCsrf } from './api';
-import { BotLibraryDialog, PersonaEditorDialog } from './bot-dialogs';
+import { BotLibraryDialog, CapabilitySummary, PersonaEditorDialog } from './bot-dialogs';
+import { CAPABILITIES, withLibraryLimit, type ServerCapabilities } from '../shared/capabilities';
 import { directBotChat } from './bot-chat';
 import { ChatList } from './chat-list';
 import { ChatRun } from './chat-run';
@@ -65,6 +66,12 @@ function App() {
     library.profiles.find((p) => p.role === 'coordinator') ??
     starterProfiles[0];
   const team = [primary, ...library.profiles.filter((p) => p.id !== primary.id)];
+  // Which tool groups this server provides; each bot's profile chooses from these.
+  const server: ServerCapabilities = {
+    web: !!state?.webSearchEnabled,
+    workspace: !!state?.workspaceToolsEnabled,
+    memory: true,
+  };
   const conversations = state?.conversations ?? [];
   const chat =
     conversations.find((c) => c.id === chatId) ??
@@ -506,6 +513,29 @@ function App() {
                     </>
                   )}
                 </p>
+                {chat.participants.length === 1 ? (
+                  <p className="chat-capabilities">
+                    <CapabilitySummary
+                      profile={withLibraryLimit(chat.participants[0], library.profiles)}
+                      server={server}
+                    />
+                  </p>
+                ) : (
+                  <details className="chat-capabilities">
+                    <summary>What each bot can do</summary>
+                    <ul>
+                      {chat.participants.map((p) => (
+                        <li key={p.id}>
+                          <strong>{p.name}: </strong>
+                          <CapabilitySummary
+                            profile={withLibraryLimit(p, library.profiles)}
+                            server={server}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </div>
               {modeChip}
               <button
@@ -710,12 +740,14 @@ function App() {
       {modal === 'team' && (
         <BotLibraryDialog
           profiles={orderedProfiles}
+          server={server}
           legacyLibrary={legacyLibrary}
           importError={libraryImportError}
           creating={creating}
           onEdit={(p) => {
             setFormError('');
-            setDraft({ ...p });
+            // A profile saved before capabilities had every enabled tool; the editor shows that.
+            setDraft({ ...p, capabilities: p.capabilities ?? [...CAPABILITIES] });
             setModal('edit');
           }}
           onCreate={() => {
@@ -725,6 +757,7 @@ function App() {
               role: 'agent',
               name: '',
               purpose: '',
+              capabilities: ['read', 'memory'],
               ...randomAppearance(),
             });
             setModal('edit');
@@ -737,6 +770,7 @@ function App() {
       {modal === 'edit' && (
         <PersonaEditorDialog
           draft={draft}
+          server={server}
           isNew={!library.profiles.some((p) => p.id === draft.id)}
           error={formError}
           saving={savingProfile}

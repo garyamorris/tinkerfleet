@@ -14,10 +14,12 @@ Choose the primary agent in the sidebar and describe what you want to do. Orbit
 is the default primary. It can answer or do simple enabled tool work itself; it
 can also create agents, message one, or start a group when collaboration helps.
 
-All ordinary agents have the same enabled local and web tools. Names such as
-Scout, Maker, and Checker describe example personalities, not permission tiers.
-The direct primary has extra coordination tools. Changing a personality does
-not enable a tool or remove an approval requirement.
+Each bot has capabilities, chosen in **Bot library → Edit**: web, read files,
+edit files, run commands, and memory. The starter Scout searches the web, Maker
+reads and edits, and Checker reads and runs commands. The chat header lists what
+each participant can do; in a group, open **What each bot can do**. The direct
+primary has extra coordination tools. Changing a personality does not enable a
+tool or remove an approval requirement.
 
 In the no-key demo, ask to fix the failing tests in tiny-project. The primary's
 scripted model calls `start_group_conversation`, just as a real model would. A greeting stays in the primary chat.

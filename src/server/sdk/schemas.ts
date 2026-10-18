@@ -53,6 +53,13 @@ export const createAgentSchema = z
       .min(1)
       .max(600)
       .regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]+$/),
+    capabilities: z
+      .array(z.enum(['web', 'read', 'edit', 'run', 'memory']))
+      .max(5)
+      .refine((list) => new Set(list).size === list.length, 'List each capability once.')
+      .describe(
+        'Tool groups for the new agent: web (public web search), read (list and read workspace files), memory (its own notes). edit and run are refused, as is read with web; the user grants those in the Bot library. Use [] for a chat-only agent.',
+      ),
   })
   .strict();
 

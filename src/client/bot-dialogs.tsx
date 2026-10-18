@@ -6,11 +6,52 @@ import {
   appearanceShapes as shapes,
   randomAppearance,
 } from '../shared/appearance';
+import {
+  CAPABILITIES,
+  canLeakWorkspace,
+  capabilityInfo,
+  enabledCapabilities,
+  grantedCapabilities,
+  normalizeCapabilities,
+  type ServerCapabilities,
+} from '../shared/capabilities';
 import { agentLabel, character, type Library } from './profiles';
 import { Avatar, Icon, Modal } from './ui';
 
+const LEAK_WARNING =
+  'Read files and Web together can leak workspace files: text planted in a file or page can ask the model to put file contents into a search. Give them to different bots unless you trust the project and the sites.';
+
+/** A bot's capabilities as short labels. Groups the server has switched off are marked. */
+export function CapabilitySummary({
+  profile,
+  server,
+}: {
+  profile: Persona;
+  server: ServerCapabilities;
+}) {
+  const granted = grantedCapabilities(profile, server);
+  const off = (profile.capabilities ?? []).filter((c) => !granted.includes(c));
+  return (
+    <span className="capability-summary">
+      {granted.length
+        ? granted.map((c) => capabilityInfo[c].label).join(' · ')
+        : 'Chat only, no tools'}
+      {profile.capabilities === undefined && ' (all enabled tools: saved before capabilities)'}
+      {off.length > 0 &&
+        ` · off on this server: ${off.map((c) => capabilityInfo[c].label).join(', ')}`}
+      {canLeakWorkspace(granted) && (
+        <span className="capability-warning" title={LEAK_WARNING}>
+          {' '}
+          · read + web
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function BotLibraryDialog({
   profiles,
+  server,
   legacyLibrary,
   importError,
   creating,
@@ -21,6 +62,7 @@ export function BotLibraryDialog({
   onClose,
 }: {
   profiles: Persona[];
+  server: ServerCapabilities;
   legacyLibrary: Library;
   importError: string;
   creating: boolean;
@@ -96,6 +138,7 @@ export function BotLibraryDialog({
                 </button>
               </div>
               <p>{p.purpose}</p>
+              <CapabilitySummary profile={p} server={server} />
               <button className="text-button bot-memory-button" onClick={() => onMemory(p)}>
                 Memory
               </button>
@@ -113,7 +156,8 @@ export function BotLibraryDialog({
       </div>
       <div className="panel-note">
         Bots are saved with this workspace and stay in sync. Existing conversations keep their
-        original profiles; new conversations use your latest changes.
+        original profiles; new conversations use your latest changes. Removing a capability applies
+        at once, in existing conversations too.
       </div>
       <div className="actions">
         <button className="secondary" onClick={onCreate}>
@@ -130,6 +174,7 @@ export function BotLibraryDialog({
 
 export function PersonaEditorDialog({
   draft,
+  server,
   isNew,
   error,
   saving,
@@ -138,6 +183,7 @@ export function PersonaEditorDialog({
   onCancel,
 }: {
   draft: Persona;
+  server: ServerCapabilities;
   isNew: boolean;
   error: string;
   saving: boolean;
@@ -224,10 +270,12 @@ export function PersonaEditorDialog({
               ))}
             </div>
           </fieldset>
+          <CapabilityPicker draft={draft} server={server} onChange={onChange} />
         </div>
         <p className="panel-note">
-          Agents share the tools enabled for this workspace. Every file edit and command requires
-          your approval. Personality guides how an agent works; keep secrets out of it.
+          Personality guides how an agent works; capabilities decide which tools it gets. The
+          server’s settings still cap them. Every file edit and command requires your approval. Keep
+          secrets out of the personality.
         </p>
         <div className="actions">
           <button type="button" className="secondary" onClick={() => onCancel()}>
@@ -242,5 +290,55 @@ export function PersonaEditorDialog({
         </div>
       </form>
     </Modal>
+  );
+}
+
+function CapabilityPicker({
+  draft,
+  server,
+  onChange,
+}: {
+  draft: Persona;
+  server: ServerCapabilities;
+  onChange: (draft: Persona) => void;
+}) {
+  const chosen = draft.capabilities ?? [...CAPABILITIES];
+  const enabled = enabledCapabilities(server);
+  return (
+    <fieldset className="capabilities full">
+      <legend>Capabilities</legend>
+      <p className="field-hint">
+        Give this bot only the tools its work needs. Adding one applies to new conversations;
+        removing one applies at once.
+      </p>
+      {CAPABILITIES.map((c) => (
+        <label key={c} className="capability-option">
+          <input
+            type="checkbox"
+            checked={chosen.includes(c)}
+            onChange={(e) =>
+              onChange({
+                ...draft,
+                capabilities: normalizeCapabilities(
+                  e.target.checked ? [...chosen, c] : chosen.filter((x) => x !== c),
+                ),
+              })
+            }
+          />
+          <span>
+            <strong>{capabilityInfo[c].label}</strong>
+            <span className="field-hint">
+              {capabilityInfo[c].about} <code>{capabilityInfo[c].tools}</code>
+              {!enabled.includes(c) && ' · Off on this server, so not available yet.'}
+            </span>
+          </span>
+        </label>
+      ))}
+      {canLeakWorkspace(chosen) && (
+        <p className="capability-warning" role="note">
+          {LEAK_WARNING}
+        </p>
+      )}
+    </fieldset>
   );
 }

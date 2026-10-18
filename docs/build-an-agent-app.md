@@ -150,27 +150,32 @@ and how a changed file changes the workspace digest.
 later `get_job_status` call distinguish “still running” from “finished successfully”?
 These job tools are an extension idea, not existing Tinkerfleet tools.
 
-## 6. Add personalities without inventing permission classes
+## 6. Add personalities, then give each one only the tools it needs
 
 A profile gives an agent a name and a purpose: its expertise, tone, and working
 style. For example, “Explain astronomy patiently using small visual examples”
 helps shape a tutor’s replies.
 
-The server separately supplies the tools. Ordinary Tinkerfleet agents receive
-the same enabled file, command, web, and memory capabilities. Scout, Maker, and
-Checker are starter personalities; their names do not enforce a workflow.
+The server separately supplies the tools, in groups called capabilities: web,
+read, edit, run, and memory. A profile lists the groups it wants, and the server
+gives only those it enables. Scout searches the web, Maker reads and edits, and
+Checker reads and runs. Names do not enforce a workflow; capabilities do, because
+an agent cannot call a tool it was never given.
 
 Appearance is another independent field. A random avatar helps distinguish bots
 in the interface. It is not a model setting or an access policy.
 
-The primary can use `create_agent` to request a name and purpose. The server
-validates the request, creates a stable profile ID and random appearance, saves
-them, and creates a direct chat. The message link points to that actual chat.
+The primary can use `create_agent` to request a name, purpose, and capabilities.
+The server validates the request, refuses `edit`, `run`, and `read` with `web`
+for a bot the user has not reviewed, creates a stable profile ID and random
+appearance, saves them, and creates a direct chat. The message link points to that actual chat.
 
 **Read:** [`createAgent` in app.ts](../src/server/app.ts),
+[capability rules](../src/shared/capabilities.ts),
 [profile validation](../src/server/personas.ts), and [appearance](../src/shared/appearance.ts).
 **Try:** create Nova in the demo, then change its appearance. Which data changes?
-Does its existing chat acquire different tool permissions?
+Then remove Nova's memory capability. Does its existing chat lose the tool?
+Run [lesson 12](../lessons/README.md#12-give-each-bot-only-what-it-needs).
 
 ## 7. Coordinate through explicit messages
 

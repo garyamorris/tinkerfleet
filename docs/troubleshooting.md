@@ -89,8 +89,11 @@ By default, live mode has no workspace tools. Set
 `TINKERFLEET_WORKSPACE`, and restart. Check the selected path and tool availability
 in **Workspace & safety**. An unavailable folder prevents execution.
 
-The primary and ordinary agents have the same enabled local tools. Renaming a
-bot or changing its personality cannot turn them on. The primary can do a simple
+Each bot gets only the capabilities its profile chooses. Open **Bot library →
+Edit** and check **Read files**, **Edit files**, and **Run commands**; the chat
+header shows what each participant can do now. Renaming a bot or changing its
+personality cannot turn tools on, and no profile can turn on what the server
+disables. The primary can do a simple
 local task itself; it does not need to delegate every edit.
 
 File tools use paths relative to the selected root. For commands, a trusted

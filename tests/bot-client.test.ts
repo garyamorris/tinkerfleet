@@ -76,3 +76,39 @@ test('memory panel displays escaped per-bot notes and labelled delete/add contro
   assert.ok(html.includes('Save memory'));
   assert.ok(html.includes('maxLength="2000"'));
 });
+
+test('starter bots get least privilege and none can read files and use the web', async () => {
+  const { starterProfiles, validProfile } = await import('../src/client/profiles');
+  const { canLeakWorkspace } = await import('../src/shared/capabilities');
+  const byName = Object.fromEntries(starterProfiles.map((p) => [p.name, p.capabilities]));
+  assert.deepEqual(byName, {
+    Orbit: ['read', 'memory'],
+    Scout: ['web', 'memory'],
+    Maker: ['read', 'edit', 'memory'],
+    Checker: ['read', 'run', 'memory'],
+  });
+  assert.ok(starterProfiles.every((p) => validProfile(p) && !canLeakWorkspace(p.capabilities!)));
+  assert.ok(!validProfile({ ...bot, capabilities: ['root'] } as unknown as Persona));
+});
+
+test('capability summary marks switched-off groups, legacy profiles and read with web', async () => {
+  const { CapabilitySummary } = await import('../src/client/bot-dialogs');
+  const server = { web: false, workspace: true, memory: true };
+  const html = (profile: Persona) =>
+    renderToStaticMarkup(React.createElement(CapabilitySummary, { profile, server }));
+  assert.match(
+    html({ ...bot, capabilities: ['web', 'read'] }),
+    /Read files · off on this server: Web/,
+  );
+  assert.match(html(bot), /all enabled tools: saved before capabilities/);
+  assert.match(html({ ...bot, capabilities: [] }), /Chat only, no tools/);
+  assert.match(
+    renderToStaticMarkup(
+      React.createElement(CapabilitySummary, {
+        profile: { ...bot, capabilities: ['web', 'read'] },
+        server: { ...server, web: true },
+      }),
+    ),
+    /read \+ web/,
+  );
+});

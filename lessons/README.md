@@ -1,8 +1,9 @@
 # Learn to build agent tools
 
-These twelve short programs walk from watching the agent loop run to approving a
-real local action, then measuring whether an agent works reading what each
-model call actually saw, and comparing two runs. Run them from the repository root with Node.js 22.12+ after
+These thirteen short programs walk from watching the agent loop run to approving a
+real local action, then measuring whether an agent works, reading what each
+model call actually saw, comparing two runs, and giving each bot only the tools
+it needs. Run them from the repository root with Node.js 22.12+ after
 `npm ci`. They make no model requests and need no API key. Each uses assertions:
 a successful run prints its explanation and exits normally; a failed assertion
 stops the lesson.
@@ -72,7 +73,8 @@ npm run lesson:2
 their capabilities. An agent can also become a callable tool through `asTool`.
 
 **What happens:** Orbit, Ada, and Quill receive the same synthetic read and
-approval-required mutation tools. The lesson checks that Orbit additionally has
+approval-required mutation tools, because their profiles name no capabilities
+(lesson 12 shows how a profile narrows them). The lesson checks that Orbit additionally has
 `ask_ada` and `ask_quill`, and constructs an `asTool` wrapper for Ada. Neither
 the synthetic tools nor any model is invoked.
 
@@ -336,6 +338,36 @@ change what counts.
 
 **Source:** [11-compare.ts](11-compare.ts), then
 [shared/trace-diff.ts](../src/shared/trace-diff.ts).
+
+## 12. Give each bot only what it needs
+
+```sh
+npm run lesson:12
+```
+
+**Learn:** least privilege. A profile chooses capabilities (web, read, edit, run,
+memory), and an agent receives only those tools, and only if the server enables
+them. Telling a model what it may do is guidance; not giving it the tool is
+enforcement.
+
+**What happens:** the lesson builds Scout, Maker, Checker, and a profile saved
+before capabilities existed, with synthetic tools under the real names. It checks
+each agent's tool list, then switches web search off and checks that Scout loses
+it. It checks that no starter has both read and web, which together can leak files
+(see [SECURITY.md](../SECURITY.md#untrusted-text-and-web-search)), and that a bot
+the primary creates cannot start with edit or run. Finally a scripted model asks
+Checker to call `edit_file`. The run fails, and the workspace is never touched,
+because Checker never had that tool.
+
+**Expect:** `12. Least privilege: each bot gets only the tools its profile asks for,`
+
+**Try:** give Scout `read` as well and predict which assertion fails. Then give
+Checker `edit` too: which tool lists change, and does the scripted `edit_file`
+call still stop before it reaches the workspace harness?
+
+**Source:** [12-least-privilege.ts](12-least-privilege.ts), then
+[shared/capabilities.ts](../src/shared/capabilities.ts) and
+[`createFleetAgents` in sdk/fleet.ts](../src/server/sdk/fleet.ts).
 
 ## Connect the pieces
 

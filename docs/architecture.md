@@ -66,8 +66,12 @@ named Ada can have different IDs and different memories. Existing conversations
 keep their captured profiles; editing the library affects new conversations.
 Saved memory follows the ID even when a profile's personality changes.
 
-The primary and ordinary bots receive the same enabled local and web tools.
-There are no researcher/builder/reviewer permission classes. Older `scout`,
+Each bot's profile chooses its capabilities: `web`, `read`, `edit`, `run`, and
+`memory`. `createFleetAgents` gives an agent a group's tools only when the profile
+asks for it and the server enables it; see
+[capability rules](../src/shared/capabilities.ts). Before each run the server also
+applies the library's current choice, so removing a capability reaches conversations
+that captured an older copy. Roles are not permission classes. Older `scout`,
 `maker`, and `checker` role values remain compatible profile data. The primary's
 special ability is coordination. Internally its SDK agent and message author
 are named `coordinator`; its saved profile ID still determines its memory owner.
