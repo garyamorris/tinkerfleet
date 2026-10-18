@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Run } from '../shared/types';
+import { Icon } from './ui';
 const rawToolNames = new Set([
   'list_files',
   'read_file',
@@ -15,7 +16,7 @@ const rawToolNames = new Set([
   'remember_memory',
   'forget_memory',
 ]);
-function usefulDetail(kind: string, detail?: string) {
+export function usefulDetail(kind: string, detail?: string) {
   return detail &&
     !(
       kind === 'tool' &&
@@ -39,7 +40,7 @@ export function RunActivity({ run, nameFor }: { run: Run; nameFor: (id: string) 
       <summary>
         <span className={working ? 'working-dot' : 'activity-dot'} />
         <span role="status">{summary}</span>
-        <span className="activity-disclosure">Details</span>
+        <Icon name="chevron" size={13} />
       </summary>
       <ol>
         {events.length ? (
