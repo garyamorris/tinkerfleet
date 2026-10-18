@@ -14,7 +14,7 @@ Enable it with `TINKERFLEET_WORKSPACE_TOOLS=1` and select a small practice folde
 
 **A command's working directory is not a sandbox or an OS access boundary.** File tools have a workspace path policy; an approved program has the server user's OS permissions. A program can read other paths, use the network, load credentials from ordinary host files, or start subprocesses where those permissions allow it. The app does not claim container or VM isolation.
 
-All ordinary agents receive the same enabled local tools. The primary can use them directly too. Names and personalities do not restrict an agent to a particular coding job.
+Which agents receive these tools depends on their capabilities: `read` gives `list_files` and `read_file`, `edit` gives `edit_file`, and `run` gives `run_command`. The primary follows its profile too. Names and personalities do not grant or restrict tools; see [capabilities](capabilities.md#personalities-capabilities-and-coordination).
 
 ## Listing and reading files
 

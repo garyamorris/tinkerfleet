@@ -8,7 +8,13 @@ Open **Bot library**, edit a persona, and give it a concrete purpose such as:
 
 > Teach Python patiently. Start with a small example, explain one idea at a time, and ask what I think the code will do before revealing the answer.
 
-Start a new conversation to use the edited profile. Existing conversations retain their captured participant profiles. A profile changes the agent’s instructions; it does not add tools or grant operating-system permissions. Ordinary agents share the workspace’s enabled tools. The primary also has tools for creating agents, messaging them, and starting a group conversation.
+Start a new conversation to use the edited profile. Existing conversations retain their captured participant profiles. A profile’s personality changes the agent’s instructions; it does not add tools or grant operating-system permissions. The primary also has tools for creating agents, messaging them, and starting a group conversation.
+
+## Exercise 1b: give a bot only what it needs
+
+In the same editor, the **Capabilities** boxes choose which tool groups the bot receives: web, read files, edit files, run commands, and memory. Untick **Run commands** for Maker and start a new conversation with it. Ask it to run the tests. In live mode it should say it cannot; in the trace, its request lists no `run_command` tool at all. Then tick **Web** for a bot that can read files and notice the warning: that pair is the leak path in [SECURITY.md](../SECURITY.md#untrusted-text-and-web-search).
+
+Capabilities can only narrow what the server enables. With `TINKERFLEET_WEB_SEARCH=0`, ticking **Web** has no effect; the library shows it as off on this server. To add a new capability group, extend `CAPABILITIES` in [`src/shared/capabilities.ts`](../src/shared/capabilities.ts), give its tools to `createFleetAgents` in [`sdk/fleet.ts`](../src/server/sdk/fleet.ts), and add a test like those in [`tests/capabilities.test.ts`](../tests/capabilities.test.ts). [Lesson 12](../lessons/README.md#12-give-each-bot-only-what-it-needs) walks through the rules.
 
 Compare two answers to the same short question. The demo is scripted, so it cannot demonstrate whether new personality instructions affect a model. Use the live app only when you intentionally want a provider request.
 

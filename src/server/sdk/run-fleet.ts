@@ -6,6 +6,7 @@
 import { tool, type Model, type Tool } from '@openai/agents';
 import { z } from 'zod';
 import type { AgentId, MemoryEntry, Persona } from '../../shared/types.js';
+import { createdAgentProblem, normalizeCapabilities } from '../../shared/capabilities.js';
 import { validateAvailableBots, validateParticipants } from '../personas.js';
 import { requireSafeText } from './actions.js';
 import type { SdkAdapterOptions, SdkEvent, SdkLimits, SdkReasoningEffort } from './contract.js';
@@ -175,7 +176,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
         }),
       ]
     : [];
-  const mutationTools = workspaceToolsEnabled
+  const commandTools = workspaceToolsEnabled
     ? [
         tool({
           name: 'run_command',
@@ -188,6 +189,10 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
           // and runs the stored copy of the approved action, not these arguments.
           execute: async (_args, _context, details) => runApproved(run, details?.toolCall?.callId),
         }),
+      ]
+    : [];
+  const mutationTools = workspaceToolsEnabled
+    ? [
         tool({
           name: 'edit_file',
           description:
@@ -254,7 +259,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
       ? tool({
           name: 'create_agent',
           description:
-            'Create a reusable agent profile with a chosen name, personality and focus. It receives the same enabled tools as other agents. Returns the actual new bot identity for this conversation’s roster and future use; does not execute work or grant permissions.',
+            'Create a reusable agent profile with a chosen name, personality, focus, and capabilities (tool groups). Choose the fewest capabilities the work needs: web, read, or memory; never edit or run, and not read with web. Returns the actual new bot identity for this conversation’s roster and future use, or why it was not created; does not execute work.',
           parameters: createAgentSchema,
           errorFunction: null,
           execute: async (input) => {
@@ -264,6 +269,10 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
             const requestKey = JSON.stringify(request);
             const existing = run.createdAgents.get(requestKey);
             if (existing) return boundedText(existing);
+            // The model may ask for any capability, but the server decides. A refusal is a normal
+            // result, so the model can try again with fewer capabilities.
+            const problem = createdAgentProblem(request.capabilities);
+            if (problem) return boundedText({ created: false, reason: problem });
             if (run.createdAgents.size >= 3)
               throw new SafeSdkError('Only three agents can be created per user turn.');
             if (run.availableBots!.length >= 32)
@@ -275,6 +284,8 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
             if (
               profile.name !== request.name ||
               profile.purpose !== request.purpose ||
+              JSON.stringify(profile.capabilities) !==
+                JSON.stringify(normalizeCapabilities(request.capabilities)) ||
               profile.role !== 'agent' ||
               run.team!.some((bot) => bot.id === profile.id) ||
               run.availableBots!.some((bot) => bot.id === profile.id)
@@ -328,6 +339,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
     team: run.team,
     readTools,
     mutationTools,
+    commandTools,
     workspaceToolsEnabled,
     workspaceRoot: options.workspaceRoot,
     webSearchEnabled,

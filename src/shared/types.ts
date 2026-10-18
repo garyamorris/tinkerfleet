@@ -1,5 +1,7 @@
 export type AgentId = string;
 export type PersonaRole = 'coordinator' | 'agent' | 'scout' | 'maker' | 'checker';
+/** A group of tools a profile can ask for. See src/shared/capabilities.ts. */
+export type Capability = 'web' | 'read' | 'edit' | 'run' | 'memory';
 export interface Persona {
   id: string;
   name: string;
@@ -7,6 +9,11 @@ export interface Persona {
   role: PersonaRole;
   color: string;
   shape: 'orbit' | 'spark' | 'pebble' | 'gem';
+  /**
+   * The tool groups this bot asks for. The server's own switches still cap them. Missing means
+   * a profile saved before capabilities existed: it gets every enabled tool, as it always did.
+   */
+  capabilities?: Capability[];
 }
 export type RunStatus =
   'idle' | 'running' | 'awaiting_approval' | 'completed' | 'denied' | 'cancelled' | 'failed';

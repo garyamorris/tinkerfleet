@@ -88,15 +88,18 @@ needed approval, what actually ran, and what result came back. The
 | Markdown replies and tool activity | Turn agent execution into an understandable interface |
 
 See [capabilities and current limits](docs/capabilities.md) for what each mode
-supports. Scout, Maker, and Checker are starter personalities; ordinary agents
-share the enabled tools. Changing a bot’s name or avatar does not change its permissions.
+supports. Scout, Maker, and Checker are starter personalities with different
+capabilities: Scout searches the web, Maker reads and edits files, and Checker
+reads files and runs commands. Each bot gets only the tool groups its profile
+chooses, within what the server enables. Changing a bot’s name or avatar does not
+change its permissions.
 
 ## Choose your learning path
 
 | You want to… | Start here |
 | --- | --- |
 | Understand how to build an app like this | [Build an agent app, step by step](docs/build-an-agent-app.md) |
-| Learn by running small programs | [Twelve executable lessons](lessons/README.md) |
+| Learn by running small programs | [Thirteen executable lessons](lessons/README.md) |
 | Follow the complete application | [Architecture and data flow](docs/architecture.md) |
 | See what a model call really sent and received | [Reading a trace](docs/traces.md) |
 | Measure whether an agent works, and compare two models | [Measure an agent with evals](docs/evals.md) |
@@ -105,12 +108,12 @@ share the enabled tools. Changing a bot’s name or avatar does not change its p
 | Make your own version | [Extend Tinkerfleet](docs/extending.md) |
 | Check whether your changes work | [Testing an agent application](docs/testing.md) |
 
-For a first pass, run lessons 0–11 in order. The build guide links to each lesson
+For a first pass, run lessons 0–12 in order. The build guide links to each lesson
 at the step where it fits, so it visits them in a different order. Lesson 0
 shows the agent loop itself with a scripted model; lessons 1–6 use real
-application code; lessons 7–11 add your own tool, follow an approval through the
-SDK, grade the agent with a small eval, and read a trace of its model calls, and compare two runs. Each explains one idea and includes an
-experiment. All twelve run without a model call, and the native-tool lessons use
+application code; lessons 7–12 add your own tool, follow an approval through the
+SDK, grade the agent with a small eval, read a trace of its model calls, compare two runs, and give each bot only the tools it needs. Each explains one idea and includes an
+experiment. All thirteen run without a model call, and the native-tool lessons use
 temporary files and short local commands to demonstrate actual execution.
 
 ## Find the code behind the idea

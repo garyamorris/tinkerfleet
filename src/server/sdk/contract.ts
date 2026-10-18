@@ -1,5 +1,11 @@
 /** Types and limits shared by the agent layer, the HTTP app and tests. */
-import type { Persona, Message, MessageSource, MemoryEntry } from '../../shared/types.js';
+import type {
+  Capability,
+  Persona,
+  Message,
+  MessageSource,
+  MemoryEntry,
+} from '../../shared/types.js';
 import type { Model } from '@openai/agents';
 import type { TraceStore } from './trace.js';
 
@@ -124,6 +130,8 @@ export interface SdkStartedGroup {
 export interface SdkCreateAgentRequest {
   name: string;
   purpose: string;
+  /** Asked for by the model; the server refuses edit, run, and read with web. */
+  capabilities: Capability[];
 }
 export interface SdkMessageAgentRequest {
   agentId: string;

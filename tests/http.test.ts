@@ -1186,7 +1186,11 @@ test('coordinator creation persists a reusable bot and immediately uses it in a 
     statePath = path.join(directory, 'state.json'),
     port = 45333,
     base = `http://127.0.0.1:${port}`;
-  const request = { name: 'Quill', purpose: 'Explain evidence patiently and concisely.' };
+  const request = {
+    name: 'Quill',
+    purpose: 'Explain evidence patiently and concisely.',
+    capabilities: ['memory'],
+  };
   let app: ReturnType<typeof createApp>;
   const model = new ScriptedModel([
     [functionCall('create_agent', request, { callId: 'create-quill' })],
@@ -1329,7 +1333,7 @@ test('first browser import upgrades provisional profiles once and failed bot cre
     [
       functionCall(
         'create_agent',
-        { name: 'Unsaved bot', purpose: 'Help explain evidence.' },
+        { name: 'Unsaved bot', purpose: 'Help explain evidence.', capabilities: [] },
         { callId: 'unsaved' },
       ),
     ],

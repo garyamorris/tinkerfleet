@@ -1369,7 +1369,8 @@ test('prompts and profiles cannot enable workspace access in conversation-only m
     assert.equal(done.status, 'error');
     assert.equal(done.pendingApprovals.length, 0);
     assert.deepEqual(model.calls[0].request.tools, []);
-    assert.match(model.calls[0].request.systemInstructions!, /grants no tools or permissions/);
+    assert.match(model.calls[0].request.systemInstructions!, /Your capabilities: \[\]/);
+    assert.match(model.calls[0].request.systemInstructions!, /purpose grant nothing more/);
     assert.deepEqual(h.calls, []);
     model.assertComplete();
   }
@@ -1503,6 +1504,7 @@ const agentRequest = (name = 'Methodical Maya'): SdkCreateAgentRequest => ({
   name,
   purpose:
     'Be patient and methodical, explain tradeoffs with short examples, and focus on readable code.',
+  capabilities: ['memory'],
 });
 const createdProfile = (id: string, request = agentRequest()): Persona => ({
   ...participants('maker')[0],
@@ -2562,7 +2564,7 @@ test('private primary creates a personality without roles and messages its retur
     model,
     workspaceToolsEnabled: false,
     createAgent: async (_runId, input) => {
-      assert.deepEqual(Object.keys(input).sort(), ['name', 'purpose']);
+      assert.deepEqual(Object.keys(input).sort(), ['capabilities', 'name', 'purpose']);
       return createdProfile('new-maya', input);
     },
     messageAgent: async (runId, input) => {

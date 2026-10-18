@@ -4,6 +4,7 @@ import { safeSources } from './sources.js';
 import { runtimeConfig, type RuntimeOptions } from './config.js';
 import type { Model } from '@openai/agents';
 import { validateParticipants, validateAvailableBots, validateProfiles } from './personas.js';
+import { createdAgentProblem, withLibraryLimit } from '../shared/capabilities.js';
 import {
   ConversationStore,
   CONVERSATION_LIMITS,
@@ -29,7 +30,15 @@ import {
   type SdkStartGroupRequest,
   type SdkStartedGroup,
 } from './sdk.js';
-import type { AppState, Run, AgentId, Action, Conversation, Persona } from '../shared/types.js';
+import type {
+  AppState,
+  Run,
+  AgentId,
+  Action,
+  Capability,
+  Conversation,
+  Persona,
+} from '../shared/types.js';
 
 const isPrimary = (p: Persona) => p.role === 'coordinator';
 const ONE_PRIMARY =
@@ -527,14 +536,15 @@ export function createApp(
         }
         if (runner) await runner.snapshot(id);
         if (closing || (run.status as string) === 'cancelled') return;
+        const limit = (p: Persona) => withLibraryLimit(p, profiles);
         sync(
           await sdk.start({
             runId: id,
             prompt,
-            team,
+            team: team.map(limit),
             history,
             availableBots:
-              chat.availableBots ??
+              chat.availableBots?.map(limit) ??
               (chat.participants.length === 1 &&
               chat.participants[0].role === 'coordinator' &&
               !chat.startedBy
@@ -565,7 +575,7 @@ export function createApp(
   }
   async function createAgent(
     runId: string,
-    request: { name: string; purpose: string },
+    request: { name: string; purpose: string; capabilities: Capability[] },
   ): Promise<Persona> {
     const run = findRun(runId),
       chat = run?.conversationId ? conversations.get(run.conversationId) : undefined;
@@ -579,15 +589,20 @@ export function createApp(
       chat.participants[0].role !== 'coordinator'
     )
       throw new Error('Only an active direct coordinator can create a bot.');
-    if (Object.keys(request).some((key) => !['name', 'purpose'].includes(key)))
-      throw new Error('Only name and personality are accepted.');
+    if (Object.keys(request).some((key) => !['name', 'purpose', 'capabilities'].includes(key)))
+      throw new Error('Only name, personality and capabilities are accepted.');
+    // Capabilities are required here: a created bot never silently gets every tool.
+    if (!Array.isArray(request.capabilities)) throw new Error('Choose capabilities.');
     const candidate = validateParticipants([
       { ...request, role: 'agent', id: randomUUID(), ...randomAppearance() },
     ])[0];
+    const problem = createdAgentProblem(candidate.capabilities!);
+    if (problem) throw new Error(problem);
     const key = canonicalJson({
       name: candidate.name,
       purpose: candidate.purpose,
       role: candidate.role,
+      capabilities: candidate.capabilities,
     });
     const cache = createdAgents.get(runId) ?? new Map<string, Persona>();
     const previous = cache.get(key);
@@ -928,7 +943,9 @@ export function createApp(
       } else {
         const body = await readJson(req);
         if (
-          Object.keys(body).some((k) => !['name', 'purpose', 'role', 'color', 'shape'].includes(k))
+          Object.keys(body).some(
+            (k) => !['name', 'purpose', 'role', 'color', 'shape', 'capabilities'].includes(k),
+          )
         )
           throw new HttpError(400, 'Only bot profile fields are accepted.');
         if (

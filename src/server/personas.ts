@@ -1,8 +1,13 @@
 import type { Persona, PersonaRole } from '../shared/types.js';
 import { canonicalJson } from './approval.js';
 import { redactSdkText } from './safety.js';
+import { isCapability, normalizeCapabilities } from '../shared/capabilities.js';
 const roles: PersonaRole[] = ['coordinator', 'agent', 'scout', 'maker', 'checker'];
-/** Profiles customize identity and focus, never a role's capabilities. */
+/**
+ * Profiles customize identity and focus, and may choose which tool groups (capabilities) the bot
+ * gets. The server's own settings still cap those; a profile can narrow tools, never add them.
+ * A profile without `capabilities` predates them and keeps every enabled tool.
+ */
 export function validateTeam(input: unknown): Persona[] | undefined {
   if (input === undefined) return undefined;
   const team = validateParticipants(input);
@@ -17,7 +22,7 @@ export function validateTeam(input: unknown): Persona[] | undefined {
 export function validateParticipants(input: unknown): Persona[] {
   const invalid = () =>
     new Error(
-      'Choose one to eight valid bot profiles with unique IDs and at most one primary. Names allow 40 characters and purposes 600; credentials are not allowed.',
+      'Choose one to eight valid bot profiles with unique IDs and at most one primary. Names allow 40 characters and purposes 600; capabilities come from web, read, edit, run and memory; credentials are not allowed.',
     );
   let value: unknown;
   try {
@@ -33,7 +38,7 @@ export function validateParticipants(input: unknown): Persona[] {
     const p = entry as Record<string, unknown>;
     if (
       Object.keys(p).some(
-        (key) => !['id', 'name', 'purpose', 'role', 'color', 'shape'].includes(key),
+        (key) => !['id', 'name', 'purpose', 'role', 'color', 'shape', 'capabilities'].includes(key),
       )
     )
       throw invalid();
@@ -68,6 +73,14 @@ export function validateParticipants(input: unknown): Persona[] {
       !['orbit', 'spark', 'pebble', 'gem'].includes(p.shape)
     )
       throw invalid();
+    if (
+      p.capabilities !== undefined &&
+      (!Array.isArray(p.capabilities) ||
+        p.capabilities.length > 5 ||
+        !p.capabilities.every(isCapability) ||
+        new Set(p.capabilities).size !== p.capabilities.length)
+    )
+      throw invalid();
     if (p.role !== 'coordinator' && ['coordinator', 'user'].includes(p.id)) throw invalid();
     ids.add(p.id);
     if (p.role === 'coordinator') hasPrimary = true;
@@ -78,6 +91,9 @@ export function validateParticipants(input: unknown): Persona[] {
       role: p.role as PersonaRole,
       color: p.color,
       shape: p.shape as Persona['shape'],
+      ...(p.capabilities === undefined
+        ? {}
+        : { capabilities: Object.freeze(normalizeCapabilities(p.capabilities)) }),
     });
   });
   return Object.freeze(team) as unknown as Persona[];

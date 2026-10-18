@@ -1,6 +1,7 @@
 /** Bot profiles: the starter team, the legacy browser library, and display helpers. */
-import type { Persona } from '../shared/types';
+import type { Capability, Persona } from '../shared/types';
 import { appearanceShapes as shapes } from '../shared/appearance';
+import { isCapability } from '../shared/capabilities';
 
 export type Shape = 'orbit' | 'spark' | 'pebble' | 'gem';
 export type Person = {
@@ -27,7 +28,8 @@ export const defaults: Person[] = [
     role: 'Agent',
     color: '#368cda',
     shape: 'spark',
-    description: 'Curious and thorough. Gathers evidence and explains what it means.',
+    description:
+      'Curious and thorough. Gathers evidence from the public web and explains what it means.',
   },
   {
     id: 'maker',
@@ -43,10 +45,22 @@ export const defaults: Person[] = [
     role: 'Agent',
     color: '#399d7b',
     shape: 'gem',
-    description: 'Careful and candid. Checks assumptions and points out what could improve.',
+    description:
+      'Careful and candid. Runs checks, tests assumptions, and points out what could improve.',
   },
 ];
 const legacyRoleIds = ['coordinator', 'scout', 'maker', 'checker'];
+/**
+ * Each starter bot gets only what its job needs. Scout searches the web but cannot read your
+ * files, Maker edits but does not run commands, and Checker runs them but does not edit. No starter
+ * has both read and web, which together could leak workspace files (see SECURITY.md).
+ */
+const starterCapabilities: Record<string, Capability[]> = {
+  coordinator: ['read', 'memory'],
+  scout: ['web', 'memory'],
+  maker: ['read', 'edit', 'memory'],
+  checker: ['read', 'run', 'memory'],
+};
 export const starterProfiles: Persona[] = defaults.map((p) => ({
   id: `starter-${p.id}`,
   role: p.id === 'coordinator' ? 'coordinator' : 'agent',
@@ -54,6 +68,7 @@ export const starterProfiles: Persona[] = defaults.map((p) => ({
   purpose: p.description,
   color: p.color,
   shape: p.shape,
+  capabilities: starterCapabilities[p.id],
 }));
 export type Library = { profiles: Persona[]; assignments: Record<string, string> };
 export function agentLabel(p: Persona) {
@@ -88,7 +103,9 @@ export function validProfile(p: Persona) {
     p.purpose.trim().length > 0 &&
     p.purpose.length <= 600 &&
     /^#[0-9a-f]{6}$/i.test(p.color) &&
-    shapes.includes(p.shape)
+    shapes.includes(p.shape) &&
+    (p.capabilities === undefined ||
+      (Array.isArray(p.capabilities) && p.capabilities.every(isCapability)))
   );
 }
 export function loadLibrary(): Library {

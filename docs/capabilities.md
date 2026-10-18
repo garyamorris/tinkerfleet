@@ -1,6 +1,6 @@
 # What Tinkerfleet can do
 
-Tinkerfleet is a small agent application you can run, inspect, and change. A model chooses among tools supplied by the application; server code decides what those tools can actually do. An agent's personality changes its instructions. It does not grant new permissions.
+Tinkerfleet is a small agent application you can run, inspect, and change. A model chooses among tools supplied by the application; server code decides what those tools can actually do. An agent's personality changes its instructions. Its [capabilities](#personalities-capabilities-and-coordination) decide which of the enabled tools it receives.
 
 This page is the reference for what each mode can do and for every numeric limit. Other documents link to [Limits](#limits) instead of repeating the numbers.
 
@@ -12,6 +12,7 @@ Start with the [setup guide](setup.md). These are startup modes, not three diffe
 |---|---|---|---|
 | Replies | A scripted model with a few teaching examples; no API call | Real Agents SDK model calls | Real Agents SDK model calls |
 | Personalities and direct chats | Saved profiles; scripted replies | Independent agents with saved profiles | Same |
+| Per-bot capabilities | Applied; web is always off | Applied; read, edit, and run are off | Applied |
 | Primary coordination | Documented scripted creation, messaging, and group examples | Create agents, message registered agents, start groups | Same |
 | Public web search and page reading | No | Hosted search enabled by default; model-dependent page actions | Same |
 | Saved memory | Manage entries through the UI; no model deciding what to remember | Per-agent recall, remember, and forget tools | Same |
@@ -20,15 +21,31 @@ Start with the [setup guide](setup.md). These are startup modes, not three diffe
 | Run installed commands | The scripted test command in the temporary copy, after exact approval | Unavailable | Real local processes, after exact approval |
 | Saved chat history | Yes | Yes | Yes |
 
-Live chat is the default live configuration. `TINKERFLEET_WORKSPACE_TOOLS=1` enables local tools; `TINKERFLEET_WORKSPACE` chooses their starting folder. `TINKERFLEET_WEB_SEARCH=0` disables hosted search. Live mode requires a configured model and a server-side API key. See [configuration](setup.md) before running paid requests.
+Live chat is the default live configuration. `TINKERFLEET_WORKSPACE_TOOLS=1` enables local tools; `TINKERFLEET_WORKSPACE` chooses their starting folder. `TINKERFLEET_WEB_SEARCH=0` disables hosted search. These switches cap every bot: a bot's capabilities choose from what they enable, never more. Live mode requires a configured model and a server-side API key. See [configuration](setup.md) before running paid requests.
 
-## Personalities, tools, and coordination
+## Personalities, capabilities, and coordination
 
-An ordinary agent has an ID, name, personality, and avatar. Ordinary agents receive the same enabled workspace and web tools. There are no fixed researcher, builder, or checker permission classes. Historical profiles can retain old role labels so their saved conversations remain readable.
+An agent has an ID, name, personality, avatar, and a set of *capabilities*. The personality shapes how it works. The capabilities decide which tools it gets:
+
+| Capability | Tools | Approval |
+| --- | --- | --- |
+| `web` | Hosted `web_search`, with page actions where the model supports them | None; runs at the provider |
+| `read` | `list_files`, `read_file` | None |
+| `edit` | `edit_file` | Every edit |
+| `run` | `run_command` | Every command |
+| `memory` | `recall_memory`, `remember_memory`, `forget_memory` | None |
+
+An agent receives a tool only when its profile asks for the capability **and** the server enables it. A profile can narrow what the server provides; it cannot widen it. The model is told its capabilities, but that is guidance: a tool that was never given cannot be called, whatever the model asks for. The primary's own tools follow its profile too; its coordination tools come with its role.
+
+The starter bots show least privilege. Orbit can read and remember; Scout can search the web and remember; Maker can read and edit; Checker can read and run commands. No starter has both `read` and `web`, which together form the [leak path](../SECURITY.md#untrusted-text-and-web-search) described in SECURITY.md. The Bot library warns when you give one bot both.
+
+A profile saved before capabilities existed has no `capabilities` field. It keeps its old behavior: every enabled tool. Opening it in the editor shows every box ticked; saving stores that choice explicitly. Historical profiles can also retain old role labels so their saved conversations remain readable.
+
+Edit a bot's capabilities in **Bot library → Edit**. The chat header shows what each participant can do now. A conversation keeps the copy of each profile it started with, but removing a capability in the library applies to existing conversations at once. Adding one applies to new conversations only.
 
 The primary has additional coordination tools:
 
-- `create_agent` saves a reusable personality and provides its direct-chat link. Creation itself does not ask that agent to perform a task.
+- `create_agent` saves a reusable personality with the capabilities the primary asks for, and provides its direct-chat link. The user has not reviewed that bot, so the server refuses `edit`, `run`, and `read` with `web` together; the refusal is returned to the model so it can try again with less. You can grant more in the Bot library. Creation itself does not ask that agent to perform a task.
 - `message_agent` sends an explicit brief to a registered agent's own chat. The recipient can use its own chat history and memory. The primary's private transcript is not copied. A bounded reply or status is relayed to the primary chat and is available on its next turn; the relay does not automatically buy another model call.
 - `start_group_conversation` starts a separate group with the primary and selected agents. The supplied brief is its initial context. Within a group, the primary can use the selected agents' `ask_*` tools.
 
@@ -36,9 +53,9 @@ The bot library holds one primary agent. Creating, editing or importing a second
 
 IDs, rather than names, route these operations. Two agents can have similar personalities without being the same participant. Existing conversation identities remain frozen when a library profile is edited. The library and each group have a size cap. In one run, the primary can create only a few agents, send only a few messages, and start one group; see [Limits](#limits). Exact retries reuse the recorded result.
 
-**Trace the implementation:** [profile validation](../src/server/personas.ts), [agent construction](../src/server/sdk/fleet.ts), [SDK tools](../src/server/sdk/run-fleet.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
+**Trace the implementation:** [capability rules](../src/shared/capabilities.ts), [profile validation](../src/server/personas.ts), [agent construction](../src/server/sdk/fleet.ts), [SDK tools](../src/server/sdk/run-fleet.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
 
-**Try it without a key:** in demo mode, ask the primary `Create a patient writing coach named Ada`, then `Ask Ada: Hello`. These are explicit scripted patterns, not general language understanding. The created profile can later be used in live mode.
+**Try it without a key:** in demo mode, ask the primary `Create a patient writing coach named Ada`, then `Ask Ada: Hello`. These are explicit scripted patterns, not general language understanding. The created profile starts with memory only and can later be used in live mode. Then ask the primary to fix the failing tests: Scout cannot read files, so Maker inspects and fixes, and Checker runs the tests. [Lesson 12](../lessons/README.md#12-give-each-bot-only-what-it-needs) shows the same rules from code.
 
 ## What “memory” means here
 
@@ -58,7 +75,7 @@ This is not an interactive browser. It does not provide your logged-in browser s
 
 ## Local work has real effects
 
-With workspace tools enabled, any agent, including the primary, can propose an edit or installed command. The UI pauses that action for review. Approved edits change real files; approved commands run with the server user's OS permissions, so the starting folder does not confine them. Command arguments can refer to other host paths, and an explicitly proposed shell can run a script.
+With workspace tools enabled, any agent with the `edit` or `run` capability, including the primary, can propose an edit or installed command. The UI pauses that action for review. Approved edits change real files; approved commands run with the server user's OS permissions, so the starting folder does not confine them. Command arguments can refer to other host paths, and an explicitly proposed shell can run a script.
 
 Each command has a short, fixed timeout and bounded output; see [Limits](#limits). This runner is not a persistent terminal, interactive login session, or background-job supervisor. A long build, package installation, or development server can exceed its lifetime. There is no dedicated installer tool, but an installed package manager can be proposed through the ordinary approved-command path. There is no automatic undo for effects already performed.
 

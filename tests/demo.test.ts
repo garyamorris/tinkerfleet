@@ -153,7 +153,11 @@ test('the primary agent creates, messages and groups agents through its real too
   const { adapter } = demoAdapter(t, {
     createAgent: async (_runId, request) => {
       calls.push({ tool: 'create_agent', request });
-      return { ...agent('nova-2', request.name), purpose: request.purpose };
+      return {
+        ...agent('nova-2', request.name),
+        purpose: request.purpose,
+        capabilities: request.capabilities,
+      };
     },
     messageAgent: async (_runId, request) => {
       calls.push({ tool: 'message_agent', request });
@@ -179,7 +183,11 @@ test('the primary agent creates, messages and groups agents through its real too
   assert.deepEqual(calls, [
     {
       tool: 'create_agent',
-      request: { name: 'Stella', purpose: 'Act as a patient astronomy tutor.' },
+      request: {
+        name: 'Stella',
+        purpose: 'Act as a patient astronomy tutor.',
+        capabilities: ['memory'],
+      },
     },
     { tool: 'message_agent', request: { agentId: 'nova', message: 'What is a light year?' } },
     {
@@ -225,4 +233,43 @@ test('a group lead delegates inspect, fix and verify to members in order, keepin
   );
   assert.match(await sumJs(), /return a \+ b;/);
   assert.doesNotMatch(JSON.stringify(events), /Later change/);
+});
+
+test('a group lead gives each stage to a member whose capabilities fit it', async (t) => {
+  const { adapter, events, sumJs } = demoAdapter(t);
+  const [lead, scout, maker, checker] = customTeam();
+  const team = [
+    lead,
+    { ...scout, capabilities: ['web' as const, 'memory' as const] },
+    { ...maker, capabilities: ['read' as const, 'edit' as const] },
+    { ...checker, capabilities: ['read' as const, 'run' as const] },
+  ];
+  const paused = await adapter.start({
+    runId: 'least-privilege',
+    prompt: 'Fix tiny-project',
+    team,
+  });
+  const { final, paused: steps } = await approveAll(adapter, paused);
+  assert.deepEqual(
+    steps.map((s) => s.pendingApprovals[0].agent),
+    ['custom-maker', 'custom-checker'],
+  );
+  assert.equal(final.status, 'completed', JSON.stringify(final));
+  // Bot 2 has no read capability, so Bot 3 inspects as well as fixing.
+  assert.match(
+    lastMessage(events),
+    /Bot 3 inspected sum\.js, Bot 3 fixed it, and Bot 4 ran the tests: 3 passed and 0 failed/,
+  );
+  assert.match(await sumJs(), /return a \+ b;/);
+});
+
+test('a demo agent without the capability says so instead of calling the tool', async (t) => {
+  const { adapter, events } = demoAdapter(t);
+  const done = await adapter.start({
+    runId: 'no-run',
+    prompt: 'Verify the fix by running the tests.',
+    team: [{ ...agent('reader', 'Reader'), capabilities: ['read'] }],
+  });
+  assert.equal(done.status, 'completed');
+  assert.match(lastMessage(events), /cannot run commands: my capabilities do not include it/);
 });

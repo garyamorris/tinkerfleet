@@ -51,7 +51,7 @@ interface RequestView {
   tools: string[];
   name: string;
   roster: { id: string; name: string }[];
-  members: { id: string; name: string }[];
+  members: { id: string; name: string; capabilities?: string[] }[];
   prompt: string;
   earlierReplies: boolean;
   results: { name: string; text: string }[];
@@ -139,7 +139,12 @@ function primaryStep(r: RequestView): AgentOutputItem[] {
       );
     }
     return [
-      call('create_agent', { name: create[2].trim(), purpose: `Act as ${create[1].trim()}.` }),
+      // A created agent starts with only its own notes; the user can grant more in the Bot library.
+      call('create_agent', {
+        name: create[2].trim(),
+        purpose: `Act as ${create[1].trim()}.`,
+        capabilities: ['memory'],
+      }),
     ];
   }
 
@@ -170,12 +175,21 @@ function groupLeadStep(r: RequestView): AgentOutputItem[] {
   const askTools = r.tools.filter((t) => t.startsWith('ask_'));
   const toolFor = (member: { id: string }) =>
     `ask_${member.id.replace(/_/g, '__u').replace(/-/g, '__h')}`;
-  const ordered = r.members.map(toolFor).filter((t) => askTools.includes(t));
-  const lanes = ordered.length ? ordered : askTools;
+  const members = r.members.filter((member) => askTools.includes(toolFor(member)));
+  const lanes = members.length ? members.map(toolFor) : askTools;
+  // Inspect, fix, verify: one stage per member in order, unless that member lacks the capability
+  // the stage needs. Then it goes to the first member that has it.
+  const lane = (index: number, capability: string) => {
+    const usual = lanes[index] ?? (index === 2 ? lanes.at(-1)! : lanes[0]);
+    const member = members.find((m) => toolFor(m) === usual);
+    if (!member?.capabilities || member.capabilities.includes(capability)) return usual;
+    const able = members.find((m) => m.capabilities?.includes(capability));
+    return able ? toolFor(able) : usual;
+  };
   const stages = [
-    { tool: lanes[0], input: 'Inspect sum.js in tiny-project and report what is wrong.' },
-    { tool: lanes[1] ?? lanes[0], input: 'Fix sum.js with the smallest change.' },
-    { tool: lanes[2] ?? lanes.at(-1)!, input: 'Verify the fix by running the tests.' },
+    { tool: lane(0, 'read'), input: 'Inspect sum.js in tiny-project and report what is wrong.' },
+    { tool: lane(1, 'edit'), input: 'Fix sum.js with the smallest change.' },
+    { tool: lane(2, 'run'), input: 'Verify the fix by running the tests.' },
   ];
   const asked = r.results.filter((result) => result.name.startsWith('ask_'));
   if (asked.some((result) => /declined|rejected|not made|did not run/i.test(result.text)))
@@ -209,8 +223,16 @@ function workerStep(r: RequestView): AgentOutputItem[] {
       `Understood. You declined the ${declined.name === 'edit_file' ? 'edit, so the change was not made' : 'command, so it did not run'}. I stopped there.`,
     );
 
+  // An agent can only call the tools its capabilities give it, so it says what it is missing.
+  const lacks = (tool: string, what: string) =>
+    r.tools.includes(tool)
+      ? undefined
+      : say(
+          `I cannot ${what}: my capabilities do not include it. Give me that capability in the Bot library, or ask an agent that has it.`,
+        );
   const source = resultOf(r, 'read_file');
-  if (!verifyOnly && source === undefined) return [call('read_file', { path: FIXTURE })];
+  if (!verifyOnly && source === undefined)
+    return lacks('read_file', 'read files') ?? [call('read_file', { path: FIXTURE })];
   if (inspectOnly)
     return say(
       source?.includes('a - b')
@@ -220,12 +242,14 @@ function workerStep(r: RequestView): AgentOutputItem[] {
 
   const edited = resultOf(r, 'edit_file');
   if (!verifyOnly && source?.includes('a - b') && edited === undefined)
-    return [
-      call('edit_file', {
-        path: FIXTURE,
-        content: source.replace('return a - b;', 'return a + b;'),
-      }),
-    ];
+    return (
+      lacks('edit_file', 'edit files') ?? [
+        call('edit_file', {
+          path: FIXTURE,
+          content: source.replace('return a - b;', 'return a + b;'),
+        }),
+      ]
+    );
   if (fixOnly)
     return say(
       edited === undefined
@@ -234,15 +258,17 @@ function workerStep(r: RequestView): AgentOutputItem[] {
     );
 
   const tested = resultOf(r, 'run_command');
-  if (tested === undefined) return [call('run_command', TEST_COMMAND)];
+  if (tested === undefined)
+    return lacks('run_command', 'run commands') ?? [call('run_command', TEST_COMMAND)];
   return say(testSummary(tested));
 }
 
 function testSummary(output: string): string {
   const result = parseJson<{ stdout?: string; exitCode?: number }>(output);
   const stdout = result?.stdout ?? output;
-  const pass = /# pass (\d+)/.exec(stdout)?.[1];
-  const fail = /# fail (\d+)/.exec(stdout)?.[1];
+  // The TAP reporter prints "# pass 3"; the spec reporter, Node's default from 24, "ℹ pass 3".
+  const pass = /^(?:#|ℹ) pass (\d+)/m.exec(stdout)?.[1];
+  const fail = /^(?:#|ℹ) fail (\d+)/m.exec(stdout)?.[1];
   const counts = pass && fail ? `${pass} passed and ${fail} failed` : 'the run finished';
   return result?.exitCode === 0
     ? `I ran node --test sum.test.js: ${counts}. The change is in a temporary copy of tiny-project; open Task details to review the diff and output.`
