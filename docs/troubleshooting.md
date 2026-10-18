@@ -6,8 +6,8 @@ help you diagnose the mechanism rather than repeatedly sending the same prompt.
 
 ## The demo repeats itself or ignores my request
 
-The no-key demo is a script, not a model. It demonstrates a few known flows,
-including the tiny-project repair. A custom purpose can be saved there, but it
+The no-key demo's model is a script, not a real model. It recognizes a few known
+requests, including the tiny-project repair. A custom purpose can be saved there, but it
 does not generate new intelligence.
 
 Check the mode in **Workspace & safety**. Use the documented demo prompts to

@@ -19,8 +19,8 @@ Scout, Maker, and Checker describe example personalities, not permission tiers.
 The direct primary has extra coordination tools. Changing a personality does
 not enable a tool or remove an approval requirement.
 
-In the no-key demo, ask to fix the failing tests in tiny-project. The primary
-creates a group through a scripted path. A greeting stays in the primary chat.
+In the no-key demo, ask to fix the failing tests in tiny-project. The primary's
+scripted model calls `start_group_conversation`, just as a real model would. A greeting stays in the primary chat.
 This is a useful way to inspect the interaction before trying real models.
 
 ## Create a bot you want to talk to
@@ -92,7 +92,8 @@ edit, or the executable, arguments, and working directory for a command.
 Approve only the action you want. That decision belongs to one exact action in
 one run. Denial does not execute it, and switching chats never transfers the
 approval. An approved native action changes real files or starts a real local
-process. Demo actions only advance the simulation.
+process. In the demo, that real file and process are in a temporary copy of
+tiny-project.
 
 Open **Task details** to inspect output and changes. An artifact records what a
 run produced; another action may have changed the real file since then. Learn

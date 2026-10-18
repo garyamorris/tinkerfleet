@@ -15,7 +15,7 @@ export function SettingsDialog({
       <p className="modal-intro">
         {state?.mode === 'live'
           ? 'Live model calls use the configured provider.'
-          : 'This demo is scripted. No API calls, device commands, or real file edits.'}
+          : 'The demo uses a scripted model, so it makes no API calls. Its tools are real: approved edits and commands act on a temporary copy of tiny-project, deleted when the server stops.'}
       </p>
       <dl className="settings-list">
         <div>
@@ -24,7 +24,9 @@ export function SettingsDialog({
         </div>
         <div>
           <dt>Model</dt>
-          <dd>{state?.model ?? 'None connected'}</dd>
+          <dd>
+            {state?.mode === 'demo' ? 'Scripted demo model' : (state?.model ?? 'None connected')}
+          </dd>
         </div>
         {state?.mode === 'live' && state.reasoningEffort && (
           <div>
@@ -42,7 +44,7 @@ export function SettingsDialog({
           <dt>File tools</dt>
           <dd>
             {state?.mode === 'demo'
-              ? 'Simulated'
+              ? 'Temporary copy · exact approval required'
               : state?.workspaceToolsEnabled
                 ? 'Local · exact approval required'
                 : 'Off · no file access or commands'}
@@ -51,8 +53,8 @@ export function SettingsDialog({
         <div>
           <dt>Command execution</dt>
           <dd>
-            {state?.mode === 'demo'
-              ? 'Simulated'
+            {state?.mode === 'demo' && state.execution.available
+              ? 'Temporary copy · your user permissions'
               : !state?.workspaceToolsEnabled
                 ? 'Off · chat only'
                 : state?.execution.available
@@ -64,7 +66,7 @@ export function SettingsDialog({
           <dt>Local files</dt>
           <dd>
             {state?.mode === 'demo'
-              ? 'Unchanged · simulated demo'
+              ? 'Yours are unchanged · only the temporary copy is edited'
               : state?.workspaceToolsEnabled
                 ? 'Approved edits change real files'
                 : 'Unchanged · file tools off'}

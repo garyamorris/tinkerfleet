@@ -132,9 +132,16 @@ test('local API authenticates same-origin sessions and exact single-use approval
         }),
       ),
     );
-    assert.deepEqual(decisions.map((r) => r.status).sort(), [200, 409]);
-    state = await (await fetch(origin + '/api/state', { headers: auth })).json();
-    assert.equal(state.runs[0].status, 'denied');
+    assert.deepEqual(decisions.map((r) => r.status).sort(), [202, 409]);
+    for (let i = 0; i < 100; i++) {
+      state = await (await fetch(origin + '/api/state', { headers: auth })).json();
+      if (state.runs[0].status !== 'running') break;
+      await delay(10);
+    }
+    // The agent explains the declined action and the run ends; nothing was written.
+    assert.equal(state.runs[0].status, 'completed');
+    assert.equal(state.runs[0].approvals[0].status, 'denied');
+    assert.match(state.runs[0].messages.at(-1).text, /declined the edit/);
     assert.equal(state.runs[0].artifacts.length, 0);
     assert.equal(state.model, null);
     assert.doesNotMatch(JSON.stringify(state), /OPENAI_API_KEY|sk-proj-/);

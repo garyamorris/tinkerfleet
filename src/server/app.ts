@@ -13,8 +13,9 @@ import {
 } from './conversations.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import path from 'node:path';
-import { DemoEngine } from './demo.js';
+import { DemoModel, createDemoWorkspace } from './demo.js';
 import { createSecurity, HttpError, json, readJson } from './http.js';
 import { canonicalJson } from './approval.js';
 import { ApprovalStore } from './approval.js';
@@ -43,14 +44,34 @@ export function createApp(
   },
 ) {
   const mode = options.mode ?? (process.env.TINKERFLEET_MODE === 'live' ? 'live' : 'demo');
-  const config = runtimeConfig(options);
+  // The demo runs the real agent loop, tools and approvals with a scripted model (demo.ts),
+  // on a temporary copy of tiny-project that is deleted when the server closes.
+  const demo = mode === 'demo';
+  const config = runtimeConfig(
+    demo
+      ? {
+          ...options,
+          workspaceToolsEnabled: options.workspaceToolsEnabled ?? true,
+          webSearchEnabled: false,
+        }
+      : options,
+  );
+  const sdkModel = options.sdkModel ?? (demo ? new DemoModel(options.demoDelayMs) : undefined);
   const model = options.sdkModel
     ? 'offline-scripted-model'
     : process.env.TINKERFLEET_MODEL?.trim() || null;
-  const modelReady = () => !!options.sdkModel || (!!model && !!process.env.OPENAI_API_KEY);
-  const root = path.resolve(
-    options.workspaceRoot ?? process.env.TINKERFLEET_WORKSPACE ?? 'examples/tiny-project',
-  );
+  const modelReady = () => !!sdkModel || (!!model && !!process.env.OPENAI_API_KEY);
+  const demoWorkspace =
+    demo && config.workspaceToolsEnabled && !options.workspaceRoot
+      ? createDemoWorkspace()
+      : undefined;
+  const root =
+    demoWorkspace ??
+    path.resolve(
+      options.workspaceRoot ??
+        (demo ? undefined : process.env.TINKERFLEET_WORKSPACE) ??
+        'examples/tiny-project',
+    );
   const store = new ConversationStore(options.statePath, options.initialRuns);
   const memory = new MemoryStore(
     options.statePath ? `${options.statePath}.memories.json` : undefined,
@@ -60,9 +81,8 @@ export function createApp(
   const sentMessages = new Map<string, Map<string, { conversationId: string; agentId: string }>>();
   const createdAgents = new Map<string, Map<string, Persona>>();
   const conversations = new Map(store.state.conversations.map((chat) => [chat.id, chat]));
-  const demo = new DemoEngine(options.demoDelayMs, startGroup, createAgent, messageAgent);
-  const liveRuns = new Map<string, Run>();
-  for (const run of store.state.runs) (run.mode === 'demo' ? demo.runs : liveRuns).set(run.id, run);
+  const runsById = new Map<string, Run>();
+  for (const run of store.state.runs) runsById.set(run.id, run);
   const legacyRunIds = new Set<string>();
   const groupRequests = new Map<string, string>();
   const approvals = new ApprovalStore();
@@ -127,7 +147,7 @@ export function createApp(
     return finished ? 'Tool operation finished' : 'Using a tool';
   }
   function onEvent(e: SdkEvent) {
-    const run = liveRuns.get(e.runId);
+    const run = runsById.get(e.runId);
     if (!run) return;
     const agent = e.agent ?? run.activeAgent ?? participantId(run.team?.[0]);
     const displayName =
@@ -241,7 +261,7 @@ export function createApp(
     },
     workspaceRoot: root,
     webSearchEnabled: mode === 'live' && config.webSearchEnabled,
-    model: options.sdkModel ?? model ?? undefined,
+    model: sdkModel ?? model ?? undefined,
     workspaceToolsEnabled: config.workspaceToolsEnabled,
     reasoningEffort: config.reasoningEffort ?? undefined,
     limits: config.limits,
@@ -278,7 +298,7 @@ export function createApp(
                 .catch(() => '')
             : '';
         const result = await workspaceRunner().execute(id, approvalId, opts);
-        const run = liveRuns.get(id);
+        const run = runsById.get(id);
         if (run) {
           if (a?.kind === 'edit' && result.status === 'completed')
             run.artifacts.push({
@@ -298,7 +318,7 @@ export function createApp(
     },
   });
   function sync(s: SdkStatus) {
-    const r = liveRuns.get(s.runId);
+    const r = runsById.get(s.runId);
     if (!r) return;
     r.usage = { ...s.usage };
     r.status = s.status === 'error' || s.status === 'deferred' ? 'failed' : s.status;
@@ -318,8 +338,8 @@ export function createApp(
         at: Date.now(),
       });
   }
-  const allRuns = () => [...demo.runs.values(), ...liveRuns.values()];
-  const findRun = (id: string) => demo.runs.get(id) ?? liveRuns.get(id);
+  const allRuns = () => [...runsById.values()];
+  const findRun = (id: string) => runsById.get(id);
   function touch(run: Run) {
     const chat = run.conversationId ? conversations.get(run.conversationId) : undefined;
     if (chat) chat.updatedAt = Date.now();
@@ -451,34 +471,22 @@ export function createApp(
       const prompt = redactSdkText(value.trim()),
         team = validateParticipants(chat.participants),
         history = conversationHistory(chat.id, allRuns());
-      const run: Run =
-        mode === 'demo'
-          ? demo.start(prompt, team, {
-              availableBots:
-                chat.availableBots ??
-                (chat.participants.length === 1 &&
-                chat.participants[0].role === 'coordinator' &&
-                !chat.startedBy
-                  ? []
-                  : undefined),
-              promptAuthor,
-            })
-          : {
-              id: randomUUID(),
-              prompt,
-              team,
-              mode,
-              status: 'running',
-              startedAt: Date.now(),
-              activeAgent: participantId(team.find((p) => p.role === 'coordinator') ?? team[0]),
-              messages: [{ id: randomUUID(), author: promptAuthor, text: prompt, at: Date.now() }],
-              events: [],
-              approvals: [],
-              artifacts: [],
-              output: '',
-            };
+      const run: Run = {
+        id: randomUUID(),
+        prompt,
+        team,
+        mode,
+        status: 'running',
+        startedAt: Date.now(),
+        activeAgent: participantId(team.find((p) => p.role === 'coordinator') ?? team[0]),
+        messages: [{ id: randomUUID(), author: promptAuthor, text: prompt, at: Date.now() }],
+        events: [],
+        approvals: [],
+        artifacts: [],
+        output: '',
+      };
       run.conversationId = chat.id;
-      if (mode === 'live') liveRuns.set(run.id, run);
+      runsById.set(run.id, run);
       if (legacy) legacyRunIds.add(run.id);
       currentRunId = run.id;
       chat.currentRunId = run.id;
@@ -488,15 +496,11 @@ export function createApp(
         beforePublish?.(run);
         persist(true);
       } catch (e) {
-        if (mode === 'demo') demo.cancel(run.id);
-        else {
-          run.status = 'cancelled';
-          run.activeAgent = null;
-        }
+        run.status = 'cancelled';
+        run.activeAgent = null;
         throw e;
       }
       if (res) json(res, 201, run);
-      if (mode === 'demo') return run;
       const id = run.id;
       void (async () => {
         const availability = runner ? await checkExecution() : undefined;
@@ -710,14 +714,9 @@ export function createApp(
       return result;
     } catch (error) {
       if (child) {
-        if (child.mode === 'demo') {
-          demo.cancel(child.id);
-          demo.runs.delete(child.id);
-        } else {
-          child.status = 'cancelled';
-          runner?.disposeRun(child.id);
-          liveRuns.delete(child.id);
-        }
+        child.status = 'cancelled';
+        runner?.disposeRun(child.id);
+        runsById.delete(child.id);
       }
       if (linkId) sourceRun.messages = sourceRun.messages.filter((m) => m.id !== linkId);
       source.updatedAt = oldSourceUpdated;
@@ -792,14 +791,9 @@ export function createApp(
     } catch (error) {
       child ??= group.currentRunId ? findRun(group.currentRunId) : undefined;
       if (child) {
-        if (child.mode === 'demo') {
-          demo.cancel(child.id);
-          demo.runs.delete(child.id);
-        } else {
-          child.status = 'cancelled';
-          runner?.disposeRun(child.id);
-          liveRuns.delete(child.id);
-        }
+        child.status = 'cancelled';
+        runner?.disposeRun(child.id);
+        runsById.delete(child.id);
       }
       if (linkId)
         sourceRun.messages = sourceRun.messages.filter((message) => message.id !== linkId);
@@ -1151,24 +1145,21 @@ export function createApp(
         throw new HttpError(404, 'Run not found in this conversation.');
       const body = await readJson(req);
       if (operation === 'stop') {
-        if (run.mode === 'demo') demo.cancel(id);
-        else {
-          await sdk.cancel(id);
-          runner?.disposeRun(id);
-          if (['running', 'awaiting_approval'].includes(run.status))
-            onEvent({
-              runId: id,
-              type: 'run_cancelled',
-              at: new Date().toISOString(),
-              message: 'Stopped. Pending approvals are invalid.',
-            });
-        }
+        await sdk.cancel(id);
+        runner?.disposeRun(id);
+        if (['running', 'awaiting_approval'].includes(run.status))
+          onEvent({
+            runId: id,
+            type: 'run_cancelled',
+            at: new Date().toISOString(),
+            message: 'Stopped. Pending approvals are invalid.',
+          });
         touch(run);
         persist(true);
         json(res, 200, { ok: true });
         return;
       }
-      if (run.mode === 'live' && !config.workspaceToolsEnabled)
+      if (!config.workspaceToolsEnabled)
         throw new HttpError(409, 'Workspace approvals are unavailable in chat-only mode.');
       const { approvalId, digest, approved } = body;
       if (
@@ -1180,17 +1171,6 @@ export function createApp(
           400,
           'An exact approval ID, digest, and explicit decision are required.',
         );
-      if (run.mode === 'demo') {
-        try {
-          demo.decide(id, approvalId, digest, approved);
-        } catch (e) {
-          throw new HttpError(409, (e as Error).message);
-        }
-        touch(run);
-        persist(true);
-        json(res, 200, { ok: true });
-        return;
-      }
       const pending = run.approvals.find((a) => a.id === approvalId && a.status === 'pending');
       if (!pending || pending.digest !== digest || run.status !== 'awaiting_approval')
         throw new HttpError(409, 'This approval is stale, changed, or already used.');
@@ -1241,7 +1221,7 @@ export function createApp(
   server.headersTimeout = 10_000;
   server.keepAliveTimeout = 5_000;
   persist(true);
-  if (mode === 'live' && runner) void checkExecution();
+  if (runner) void checkExecution();
   const saveTimer = setInterval(() => persist(), 250);
   saveTimer.unref();
   return {
@@ -1250,7 +1230,7 @@ export function createApp(
     async close() {
       closing = true;
       clearInterval(saveTimer);
-      for (const run of liveRuns.values())
+      for (const run of runsById.values())
         if (['running', 'awaiting_approval'].includes(run.status)) {
           run.status = 'cancelled';
           run.activeAgent = null;
@@ -1260,14 +1240,14 @@ export function createApp(
           touch(run);
         }
       try {
-        for (const id of demo.runs.keys()) demo.cancel(id);
-        await Promise.all([...liveRuns.keys()].map((id) => sdk.cancel(id)));
-        for (const id of liveRuns.keys()) runner?.disposeRun(id);
+        await Promise.all([...runsById.keys()].map((id) => sdk.cancel(id)));
+        for (const id of runsById.keys()) runner?.disposeRun(id);
         const cleanup = runner ? await runner.shutdown() : { cleanupSucceeded: true };
         persist(true);
         return cleanup;
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
+        if (demoWorkspace) rmSync(demoWorkspace, { recursive: true, force: true });
       }
     },
   };

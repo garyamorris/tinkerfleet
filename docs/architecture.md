@@ -170,10 +170,10 @@ binding. This app does not use a managed hosted agent service or its session
 storage. Installing the SDK does not deploy the app anywhere.
 
 The browser displays saved messages, activity, sources, and approval choices;
-the server keeps the API key and runs the implementations. Demo mode uses
-[scripted fixtures](../src/server/demo.ts) through that interface and makes no
-model calls. It is useful for learning the flow, while live mode exercises the
-actual SDK loop.
+the server keeps the API key and runs the implementations. Demo mode swaps only
+the model: [a scripted `DemoModel`](../src/server/demo.ts) implements the SDK's
+`Model` interface, so the demo runs the actual SDK loop, tools, and approvals
+against a temporary copy of tiny-project without an API call.
 
 Turn and model-call counts default to unlimited (`0` in configuration, `null`
 for SDK `maxTurns`). Token, response-size, runtime, and tool limits still apply.

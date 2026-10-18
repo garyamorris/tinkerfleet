@@ -4,9 +4,9 @@ Tinkerfleet is a single-user localhost learning app. It uses native files and pr
 
 ## What each mode does
 
-Tinkerfleet has three startup modes: the scripted demo, live chat, and live with workspace tools. The demo makes no model calls and only simulates edits and command output. Both live modes send requests to the configured provider. Only live mode with `TINKERFLEET_WORKSPACE_TOOLS=1` touches real files and processes: reads need no approval, and edits and commands need exact approval. Docker is not part of the active execution path. The [mode table](docs/capabilities.md#modes) compares the modes in detail.
+Tinkerfleet has three startup modes: the scripted demo, live chat, and live with workspace tools. The demo makes no model calls: a scripted model drives the real tools, and its approved edits and test command act on a temporary copy of `examples/tiny-project`, deleted when the server stops. Both live modes send requests to the configured provider. Only live mode with `TINKERFLEET_WORKSPACE_TOOLS=1` touches real files and processes: reads need no approval, and edits and commands need exact approval. Docker is not part of the active execution path. The [mode table](docs/capabilities.md#modes) compares the modes in detail.
 
-Even in the demo, profiles, conversations, and memory notes are real local data. “Simulated” refers to model work and workspace actions, not every UI change.
+Even in the demo, profiles, conversations, and memory notes are real local data. The scripted model only proposes the tiny-project fix and its test command, and each still needs your approval.
 
 ## Files, commands, and approvals
 

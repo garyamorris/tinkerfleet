@@ -27,9 +27,11 @@ npm ci
 npm run dev
 ```
 
-Open **http://localhost:4317**. The default demo is scripted and makes no model
-calls, web searches, project edits, or command executions. It does save your bot
-profiles, chats, and memory notes locally, so you can explore the actual interface.
+Open **http://localhost:4317**. The default demo swaps the language model for a
+small scripted one, so it makes no API calls or web searches. Everything else is
+the real app: the agent loop, tools, approvals, and saved bots, chats, and memory
+notes. Approved edits and commands act on a temporary copy of `examples/tiny-project`
+that is deleted when the server stops; your own files are not touched.
 
 Try this short tour:
 
@@ -38,10 +40,11 @@ Try this short tour:
 3. Choose **Open this bot’s chat** to speak with Nova directly.
 4. Open **Bot library → Memory** beside Nova and save a sample preference.
 5. Return to Orbit and ask **“Fix the failing tests in tiny-project.”** Open the
-   group it creates and inspect the simulated edit and command approvals.
+   group it creates, approve the edit and the test command, then open
+   **Task details** to see the real diff and test output.
 
-The demo recognizes a few teaching examples; it does not understand arbitrary
-requests. Its purpose is to let you see the interaction before paying for a model.
+The scripted model recognizes a few teaching examples; it does not understand
+arbitrary requests. Its purpose is to let you see the interaction before paying for a model.
 The [interface tour](docs/interface.md) explains each step. Use the
 [setup guide](docs/setup.md) when you want live replies.
 
@@ -107,7 +110,7 @@ commands to demonstrate actual execution.
 | Chat UI, profiles, and approval cards | [`src/client/main.tsx`](src/client/main.tsx), then panels such as [`chat-run.tsx`](src/client/chat-run.tsx) and [`approval-card.tsx`](src/client/approval-card.tsx) |
 | HTTP routes and conversation coordination | [`src/server/app.ts`](src/server/app.ts) |
 | Agents, tool definitions, model loop, and SDK events | [`src/server/sdk.ts`](src/server/sdk.ts), a short map of the modules in [`src/server/sdk/`](src/server/sdk/) |
-| Scripted demo behavior | [`src/server/demo.ts`](src/server/demo.ts) |
+| The demo's scripted model | [`src/server/demo.ts`](src/server/demo.ts) |
 | Conversation history and restart behavior | [`src/server/conversations.ts`](src/server/conversations.ts) |
 | Saved facts for each bot | [`src/server/memory.ts`](src/server/memory.ts) |
 | Exact-action decisions | [`src/server/approval.ts`](src/server/approval.ts) |
