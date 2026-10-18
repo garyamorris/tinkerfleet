@@ -1,7 +1,7 @@
 # Learn to build agent tools
 
-These seven short programs walk from watching the agent loop run to approving a
-real local action. Run them from the repository root with Node.js 22.12+ after
+These ten short programs walk from watching the agent loop run to approving a
+real local action, then measuring whether an agent actually works. Run them from the repository root with Node.js 22.12+ after
 `npm ci`. They make no model requests and need no API key. Each uses assertions:
 a successful run prints its explanation and exits normally; a failed assertion
 stops the lesson.
@@ -195,6 +195,81 @@ are rejected.
 **Source:** [06-workspace.ts](06-workspace.ts),
 [native-runner.ts](../src/server/native-runner.ts), and
 [workspace behavior](../docs/workspace.md).
+
+## 7. Add a tool of your own
+
+```sh
+npm run lesson:7
+```
+
+**Learn:** a tool is a name, a description the model reads, an input schema, and
+your code. The model only ever sees the first three.
+
+**What happens:** the lesson defines `count_lines` and passes it to the app's real
+`createFleetAgents` as a read tool. A scripted model calls it on a stand-in file.
+The lesson checks that the model was offered the tool's description and JSON
+Schema, that your code's result (`2`) was sent back on the next model call, and
+that the agent answered with it.
+
+**Expect:** `7. Your tool: the model saw its description and schema, and your code
+did the work.`
+
+**Try:** script a call for `missing.txt`. The tool throws: what text does the model
+receive instead of a result? Then change the description and find where the model
+would see it.
+
+**Source:** [07-your-tool.ts](07-your-tool.ts), then the
+[extension guide](../docs/extending.md) to add a real tool to the app.
+
+## 8. Pause for approval through the SDK
+
+```sh
+npm run lesson:8
+```
+
+**Learn:** `needsApproval` makes the SDK stop before a tool runs and hand the
+decision to your application. The run resumes from its saved state.
+
+**What happens:** a `delete_note` tool needs approval. The lesson runs it twice.
+Approved, the tool runs and the model sees its result. Rejected, the tool never
+runs and the model receives the rejection message as the tool's result. Lessons 4
+and 5 showed the store and runner; this is the SDK side that connects them.
+
+**Expect:** `8. Approvals: the SDK pauses, your app decides, and the run resumes
+from saved state.`
+
+**Try:** find `result.interruptions`, `state.approve`, and `state.reject` in
+[sdk/adapter.ts](../src/server/sdk/adapter.ts), and trace how the app turns them
+into an approval card.
+
+**Source:** [08-sdk-approvals.ts](08-sdk-approvals.ts).
+
+## 9. Measure whether an agent works
+
+```sh
+npm run lesson:9
+npm run eval -- --live --runs 3   # optional: your configured model, costs money
+```
+
+**Learn:** an eval gives the agent a task and grades the outcome with code the
+agent cannot influence. Because a model's behavior varies, run each case several
+times and look at the score.
+
+**What happens:** each attempt gets a fresh copy of tiny-project. The agent works
+through the app's real adapter, approvals, and runner. The eval approves on your
+behalf with a narrow policy: edits, and only the project's test command. After
+the run, a grader runs the tests itself and checks that the agent did not edit
+them. By default the scripted demo model plays the agent, which checks the
+harness itself; `--live` uses the model in your `.env.local`.
+
+**Expect:** `9. Evals: grade the outcome yourself, with a narrow approval policy,
+over many runs.`
+
+**Try:** add a case the scripted model cannot handle, such as `Hello there.`, and
+read the failure. With a live model, compare scores for two models or two
+reasoning-effort settings.
+
+**Source:** [09-eval.ts](09-eval.ts).
 
 ## Connect the pieces
 
