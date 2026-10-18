@@ -53,8 +53,9 @@ OPENAI_API_KEY=your-own-key
 TINKERFLEET_WORKSPACE_TOOLS=0
 ```
 
-The placeholders are not usable credentials. Keep the file out of version
-control; `.env.local` is covered by the repository's ignore rules.
+Replace `your-model-id` with a real model ID; [choosing a model](#choosing-a-model)
+below suggests one. The placeholders are not usable credentials. Keep the file
+out of version control; `.env.local` is covered by the repository's ignore rules.
 
 Stop the demo server with Ctrl+C, then start it again:
 
@@ -74,6 +75,43 @@ start groups. With workspace tools off, agents have no project file or command
 tools. Public web search is enabled by default; set `TINKERFLEET_WEB_SEARCH=0`
 if you want to begin with just conversation. Live requests use the provider and
 can incur charges.
+
+### Choosing a model
+
+The model must support tool calls through OpenAI's Responses API. At the time of
+writing (October 2026), OpenAI's models page lists three main options:
+
+| Model | Listed as |
+| --- | --- |
+| GPT-6 Astra | The flagship model |
+| GPT-6.1 Sol | The balance of capability and cost |
+| GPT-6 Luna (`gpt-6-luna`) | For high-volume, low-cost work |
+
+For this app, a low-cost model is a sensible start:
+
+```dotenv
+TINKERFLEET_MODEL=gpt-6-luna
+TINKERFLEET_REASONING_EFFORT=low
+```
+
+Model names change. Check the current list and exact IDs on
+[OpenAI's models page](https://developers.openai.com/api/docs/models) before you
+set `TINKERFLEET_MODEL`.
+
+Tinkerfleet accepts only `none`, `minimal`, or `low` for
+`TINKERFLEET_REASONING_EFFORT`. Not every model supports every level. For
+example, OpenAI's changelog says GPT-6 Astra does not support `none`. If the
+provider rejects the setting, choose another level or delete the line to use the
+model's default.
+
+### Other providers (untested)
+
+Live mode uses OpenAI-specific features: the Responses API and hosted web search.
+The `openai` client that Tinkerfleet uses reads `OPENAI_BASE_URL`. So a server
+that offers a compatible Responses API **might** work if you also set
+`TINKERFLEET_WEB_SEARCH=0`, because hosted web search runs only at OpenAI. The
+app still needs `OPENAI_API_KEY` to be set; use the key that server expects.
+Nobody has tested this path, so start with workspace tools off.
 
 ## 3. Add local tools
 
@@ -109,13 +147,14 @@ You do not need to set every option.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `TINKERFLEET_MODE` | `demo` | Set exactly `live` to use the model path |
-| `TINKERFLEET_MODEL` | Unset | Model ID; required for live provider calls |
+| `TINKERFLEET_MODEL` | Unset | Model ID; required for live provider calls. See [choosing a model](#choosing-a-model) |
 | `OPENAI_API_KEY` | Unset | Server-side credential for live provider calls |
+| `OPENAI_BASE_URL` | OpenAI's API | Read by the `openai` client; [other servers are untested](#other-providers-untested) |
 | `TINKERFLEET_PORT` | `4317` | Local port, from 1024 to 65535 |
 | `TINKERFLEET_WORKSPACE_TOOLS` | Off | `1` enables local tools; `0` disables them |
 | `TINKERFLEET_WORKSPACE` | `examples/tiny-project` | Selected folder, resolved from server working directory |
 | `TINKERFLEET_WEB_SEARCH` | On in live mode | `0` disables; `1` enables; demo never searches |
-| `TINKERFLEET_REASONING_EFFORT` | Model default | Optional `none`, `minimal`, or `low`, if supported by the model |
+| `TINKERFLEET_REASONING_EFFORT` | Model default | Optional `none`, `minimal`, or `low`, if the model supports it |
 
 ## Keep runs small
 
