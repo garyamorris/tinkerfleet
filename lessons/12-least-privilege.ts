@@ -4,7 +4,7 @@ import { tool } from '@openai/agents';
 import { ScriptedModel, functionCall } from '@openai/agents/testing';
 import { z } from 'zod';
 import { createFleetAgents, createSdkAdapter, type SdkHarness } from '../src/server/sdk.js';
-import { canLeakWorkspace, createdAgentProblem } from '../src/shared/capabilities.js';
+import { canLeakWorkspace, splitCreatedCapabilities } from '../src/shared/capabilities.js';
 import type { Capability, Persona } from '../src/shared/types.js';
 
 // Synthetic stand-ins with the real tool names. None of them is ever invoked.
@@ -62,9 +62,13 @@ assert.deepEqual(names(build(false), 'scout'), ['recall_memory']);
 assert.ok(team.slice(0, 3).every((p) => !canLeakWorkspace(p.capabilities!)));
 assert.ok(canLeakWorkspace(['read', 'web']));
 
-// D. A bot the primary creates is not reviewed first, so the server refuses edit and run.
-assert.match(createdAgentProblem(['read', 'run'])!, /cannot start with run/);
-assert.equal(createdAgentProblem(['web', 'memory']), undefined);
+// D. A bot the primary creates is not reviewed first. It starts with what is safe to give
+// unasked; run waits until the user grants it from the creation message or the Bot library.
+assert.deepEqual(splitCreatedCapabilities(['read', 'run']), {
+  granted: ['read'],
+  needsUser: ['run'],
+});
+assert.deepEqual(splitCreatedCapabilities(['web', 'memory']).needsUser, []);
 
 // E. Instructions are not enforcement. A model that asks Checker for edit_file gets an error,
 // and the workspace is never touched, because the tool was never given to it.

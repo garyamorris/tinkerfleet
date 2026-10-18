@@ -70,8 +70,8 @@ Each bot's profile chooses its capabilities: `web`, `read`, `edit`, `run`, and
 `memory`. `createFleetAgents` gives an agent a group's tools only when the profile
 asks for it and the server enables it; see
 [capability rules](../src/shared/capabilities.ts). Before each run the server also
-applies the library's current choice, so removing a capability reaches conversations
-that captured an older copy. Roles are not permission classes. Older `scout`,
+applies the library's current capabilities, so granting or removing one reaches
+conversations that captured an older copy (their names and purposes stay as captured). Roles are not permission classes. Older `scout`,
 `maker`, and `checker` role values remain compatible profile data. The primary's
 special ability is coordination. Internally its SDK agent and message author
 are named `coordinator`; its saved profile ID still determines its memory owner.

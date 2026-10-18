@@ -4,7 +4,7 @@ import { safeSources } from './sources.js';
 import { runtimeConfig, type RuntimeOptions } from './config.js';
 import type { Model } from '@openai/agents';
 import { validateParticipants, validateAvailableBots, validateProfiles } from './personas.js';
-import { createdAgentProblem, withLibraryLimit } from '../shared/capabilities.js';
+import { splitCreatedCapabilities, withLibraryCapabilities } from '../shared/capabilities.js';
 import {
   ConversationStore,
   CONVERSATION_LIMITS,
@@ -536,15 +536,15 @@ export function createApp(
         }
         if (runner) await runner.snapshot(id);
         if (closing || (run.status as string) === 'cancelled') return;
-        const limit = (p: Persona) => withLibraryLimit(p, profiles);
+        const current = (p: Persona) => withLibraryCapabilities(p, profiles);
         sync(
           await sdk.start({
             runId: id,
             prompt,
-            team: team.map(limit),
+            team: team.map(current),
             history,
             availableBots:
-              chat.availableBots?.map(limit) ??
+              chat.availableBots?.map(current) ??
               (chat.participants.length === 1 &&
               chat.participants[0].role === 'coordinator' &&
               !chat.startedBy
@@ -593,16 +593,18 @@ export function createApp(
       throw new Error('Only name, personality and capabilities are accepted.');
     // Capabilities are required here: a created bot never silently gets every tool.
     if (!Array.isArray(request.capabilities)) throw new Error('Choose capabilities.');
-    const candidate = validateParticipants([
+    const asked = validateParticipants([
       { ...request, role: 'agent', id: randomUUID(), ...randomAppearance() },
     ])[0];
-    const problem = createdAgentProblem(candidate.capabilities!);
-    if (problem) throw new Error(problem);
+    // The bot starts with what is safe to give unasked. The rest waits for the user's OK, which
+    // they give from the creation message (or later in the Bot library).
+    const { granted, needsUser } = splitCreatedCapabilities(asked.capabilities!);
+    const candidate = validateParticipants([{ ...asked, capabilities: granted }])[0];
     const key = canonicalJson({
       name: candidate.name,
       purpose: candidate.purpose,
       role: candidate.role,
-      capabilities: candidate.capabilities,
+      capabilities: asked.capabilities,
     });
     const cache = createdAgents.get(runId) ?? new Map<string, Persona>();
     const previous = cache.get(key);
@@ -634,6 +636,7 @@ export function createApp(
       id: messageId,
       author: 'coordinator',
       createdAgentId: candidate.id,
+      ...(needsUser.length ? { requestedCapabilities: needsUser } : {}),
       conversationId: direct.id,
       text: `Created ${candidate.name}: ${candidate.purpose}`,
       kind: 'result',

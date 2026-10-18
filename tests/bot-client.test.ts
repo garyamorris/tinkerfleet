@@ -112,3 +112,44 @@ test('capability summary marks switched-off groups, legacy profiles and read wit
     /read \+ web/,
   );
 });
+
+test('a created bot’s message offers to grant only the capabilities still waiting', async () => {
+  const { CreatedBotCapabilities } = await import('../src/client/bot-dialogs');
+  const server = { web: true, workspace: true, memory: true };
+  const html = (capabilities: Persona['capabilities'], requested: Persona['capabilities']) =>
+    renderToStaticMarkup(
+      React.createElement(CreatedBotCapabilities, {
+        bot: { ...bot, capabilities },
+        requested: requested!,
+        server,
+        onGrant: async () => {},
+      }),
+    );
+  const waiting = html(['read', 'memory'], ['web', 'run']);
+  assert.match(waiting, /Ada can use: .*Read files · Memory/);
+  assert.match(waiting, /Grant Web and Run commands/);
+  // Granting web next to read would create the leak path, so the card warns first.
+  assert.match(waiting, /Read files and Web together can leak workspace files/);
+  const granted = html(['read', 'run', 'memory', 'web'], ['web', 'run']);
+  assert.doesNotMatch(granted, /Grant/);
+  assert.doesNotMatch(html(['memory'], []), /Grant/);
+});
+
+test('the bot picker shows what each bot can do', async () => {
+  const { NewConversationDialog } = await import('../src/client/conversation-dialogs');
+  const markup = renderToStaticMarkup(
+    React.createElement(NewConversationDialog, {
+      profiles: [{ ...bot, capabilities: ['web', 'memory'] }],
+      server: { web: true, workspace: false, memory: true },
+      chosen: [],
+      title: '',
+      error: '',
+      creating: false,
+      onChoose: () => {},
+      onTitle: () => {},
+      onSubmit: () => {},
+      onClose: () => {},
+    }),
+  );
+  assert.match(markup, /Web · Memory/);
+});

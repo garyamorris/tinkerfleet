@@ -1,11 +1,14 @@
 /** Dialogs for starting a conversation with one bot and for renaming a conversation. */
 import React from 'react';
 import type { Persona } from '../shared/types';
+import type { ServerCapabilities } from '../shared/capabilities';
+import { CapabilitySummary } from './bot-dialogs';
 import { character } from './profiles';
 import { Avatar, Modal } from './ui';
 
 export function NewConversationDialog({
   profiles,
+  server,
   chosen,
   title,
   error,
@@ -16,6 +19,7 @@ export function NewConversationDialog({
   onClose,
 }: {
   profiles: Persona[];
+  server: ServerCapabilities;
   chosen: string[];
   title: string;
   error: string;
@@ -60,6 +64,7 @@ export function NewConversationDialog({
                     ? 'Primary agent · Can create and message agents'
                     : p.purpose}
                 </small>
+                <CapabilitySummary profile={p} server={server} />
               </span>
             </label>
           ))}

@@ -5,12 +5,24 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { AppState, Run, Approval, AgentId, Persona, Conversation } from '../shared/types';
+import type {
+  AppState,
+  Run,
+  Approval,
+  AgentId,
+  Capability,
+  Persona,
+  Conversation,
+} from '../shared/types';
 import './style.css';
 import { randomAppearance } from '../shared/appearance';
 import { api, setCsrf } from './api';
 import { BotLibraryDialog, CapabilitySummary, PersonaEditorDialog } from './bot-dialogs';
-import { CAPABILITIES, withLibraryLimit, type ServerCapabilities } from '../shared/capabilities';
+import {
+  CAPABILITIES,
+  withLibraryCapabilities,
+  type ServerCapabilities,
+} from '../shared/capabilities';
 import { directBotChat } from './bot-chat';
 import { ChatList } from './chat-list';
 import { ChatRun } from './chat-run';
@@ -351,6 +363,11 @@ function App() {
       markBusy(id, false);
     }
   }
+  // Granting from a "Created …" message is the same edit as ticking the boxes in the library.
+  async function grantCapabilities(bot: Persona, capabilities: Capability[]) {
+    await api(`/profiles/${bot.id}`, { capabilities });
+    setState(await api<AppState>('/state'));
+  }
   async function saveProfile() {
     if (savingProfile) return;
     setFormError('');
@@ -516,7 +533,7 @@ function App() {
                 {chat.participants.length === 1 ? (
                   <p className="chat-capabilities">
                     <CapabilitySummary
-                      profile={withLibraryLimit(chat.participants[0], library.profiles)}
+                      profile={withLibraryCapabilities(chat.participants[0], library.profiles)}
                       server={server}
                     />
                   </p>
@@ -528,7 +545,7 @@ function App() {
                         <li key={p.id}>
                           <strong>{p.name}: </strong>
                           <CapabilitySummary
-                            profile={withLibraryLimit(p, library.profiles)}
+                            profile={withLibraryCapabilities(p, library.profiles)}
                             server={server}
                           />
                         </li>
@@ -643,7 +660,9 @@ function App() {
                     workspaceRoot={state?.workspaceRoot ?? ''}
                     busy={busyChats.includes(chat.id)}
                     creating={creating}
+                    server={server}
                     onDecide={decide}
+                    onGrant={grantCapabilities}
                     onOpenBot={(bot, conversationId) => void openBot(bot, conversationId)}
                     onChooseChat={chooseChat}
                     onShowDetails={(id, nextTab) => {
@@ -717,6 +736,7 @@ function App() {
       {modal === 'new' && (
         <NewConversationDialog
           profiles={orderedProfiles}
+          server={server}
           chosen={chosen}
           title={chatTitle}
           error={formError}

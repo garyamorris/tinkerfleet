@@ -2489,3 +2489,39 @@ p.capability-warning {
     margin-left: auto;
   }
 }
+.created-capabilities {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 100%;
+}
+.created-capabilities .capability-summary {
+  display: inline;
+  margin: 0;
+}
+.capability-request {
+  margin-top: 8px;
+  border: 1px solid #dcd2e7;
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.capability-request p {
+  margin: 0;
+  line-height: 1.6;
+  color: #4d4458;
+  overflow-wrap: anywhere;
+}
+.capability-request p[role='alert'] {
+  color: #8b4539;
+}
+.capability-request strong {
+  font-weight: 570;
+}
+.bot-option-copy .capability-summary {
+  margin-top: 4px;
+}

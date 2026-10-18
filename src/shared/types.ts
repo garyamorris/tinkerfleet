@@ -55,6 +55,8 @@ export interface Message {
   recipientRunId?: string;
   sources?: MessageSource[];
   createdAgentId?: string;
+  /** Capabilities a created bot asked for that wait for the user to grant them. */
+  requestedCapabilities?: Capability[];
   conversationId?: string;
   id: string;
   author: AgentId | 'user';

@@ -43,6 +43,10 @@ const message = z
       .transform((value) => safeSources(value))
       .optional(),
     createdAgentId: id.optional(),
+    requestedCapabilities: z
+      .array(z.enum(['web', 'read', 'edit', 'run', 'memory']))
+      .max(5)
+      .optional(),
     conversationId: id.optional(),
     author: id,
     text: text(256000),
@@ -312,7 +316,9 @@ function normalize(input: unknown, restart: boolean): ConversationState {
         )
           throw new Error('Invalid agent reply provenance.');
       }
-    for (const message of run.messages)
+    for (const message of run.messages) {
+      if (message.requestedCapabilities && !message.createdAgentId)
+        throw new Error('Requested capabilities belong to a created agent.');
       if (message.conversationId) {
         const target = conversations.find((c) => c.id === message.conversationId);
         if (message.author !== 'coordinator') throw new Error('Invalid conversation link.');
@@ -350,6 +356,7 @@ function normalize(input: unknown, restart: boolean): ConversationState {
         )
           throw new Error('Invalid conversation link.');
       }
+    }
   }
 
   const profiles =
