@@ -16,7 +16,7 @@ learn the interaction, or follow [setup](setup.md) to connect a live model.
 ## The app will not start
 
 From the repository root, check `node --version`; this project needs Node.js
-24 or later. Run `npm ci` to install the locked dependencies. Read the first
+22.12 or later. Run `npm ci` to install the locked dependencies. Read the first
 terminal error before retrying.
 
 If port 4317 is busy, stop the server you started earlier or set
@@ -26,14 +26,17 @@ your browser. Invalid configuration values also stop startup; compare them with
 
 ## I edited the env file, but the app still uses the old settings
 
-The Node server reads its environment at startup. The regular dev command does
-not automatically load `.env.local`.
-
-Stop the old server, then start from the repository root with:
+The Node server reads its environment only at startup. Stop the old server with
+Ctrl+C, then start it again from the repository root:
 
 ```sh
-node --env-file=.env.local --import tsx src/server/index.ts
+npm run dev
 ```
+
+`npm run dev` loads `.env.local` from the repository root, next to
+`package.json`. If the terminal prints `.env.local not found. Continuing without
+it.`, the file is missing or misnamed. A variable already set in your shell wins
+over the same name in the file; unset it in the shell or change it there too.
 
 Check the mode, model, and tools in **Workspace & safety**. Do not print the API
 key as a diagnostic. Live mode requires `TINKERFLEET_MODE=live`, a model ID in

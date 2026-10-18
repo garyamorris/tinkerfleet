@@ -6,7 +6,7 @@ want the bigger picture first, read [Build an agent app](build-an-agent-app.md).
 
 ## 1. Run the no-key demo
 
-Install **Node.js 24 or later** and npm. In the repository root, run:
+Install **Node.js 22.12 or later** and npm. In the repository root, run:
 
 ```sh
 npm ci
@@ -15,7 +15,9 @@ npm run dev
 
 Open **http://localhost:4317** and leave the terminal running. No Docker or API
 key is needed. `npm ci` installs the versions in the lockfile; `npm run dev`
-starts the Node server and serves the browser app through Vite.
+starts the Node server and serves the browser app through Vite. The terminal may
+print `.env.local not found. Continuing without it.` That is expected: the demo
+needs no settings file.
 
 Talk to Orbit, the primary agent. Ask it to fix the failing tests in tiny-project,
 then open its group conversation and review the proposed actions. Try denying
@@ -52,18 +54,20 @@ TINKERFLEET_WORKSPACE_TOOLS=0
 ```
 
 The placeholders are not usable credentials. Keep the file out of version
-control; `.env.local` is covered by the repository's ignore rules. You can also
-supply these values through your existing server environment.
+control; `.env.local` is covered by the repository's ignore rules.
 
-Stop the demo server with Ctrl+C, then **load the file explicitly**:
+Stop the demo server with Ctrl+C, then start it again:
 
 ```sh
-node --env-file=.env.local --import tsx src/server/index.ts
+npm run dev
 ```
 
-`npm run dev` does not load `.env.local` for you. Restart after configuration
-changes. Open the app's **Workspace & safety** panel to inspect the model and
-enabled tools without displaying the key.
+`npm run dev` and `npm start` load `.env.local` automatically when the file
+exists. The server reads settings only at startup, so restart after every change.
+Open the app's **Workspace & safety** panel to check the model and enabled tools.
+The panel never shows the key.
+
+You can also set these values as ordinary environment variables.
 
 Live conversations can create bots, delegate messages, use saved memory, and
 start groups. With workspace tools off, agents have no project file or command
@@ -80,7 +84,7 @@ TINKERFLEET_WORKSPACE_TOOLS=1
 TINKERFLEET_WORKSPACE=/absolute/path/to/your/practice-project
 ```
 
-Restart using the same explicit env-file command. Choose a small folder you are
+Restart with `npm run dev`. Choose a small folder you are
 prepared to modify. If no workspace path is supplied, the server selects
 `examples/tiny-project` relative to its working directory. Run the server from
 the repository root so that default is predictable.
@@ -162,11 +166,9 @@ npm run build
 npm start
 ```
 
-To use the same local env file with that build, replace `npm start` with:
-
-```sh
-node --env-file=.env.local --import tsx src/server/index.ts --production
-```
+`npm start` also loads `.env.local` when it exists. To use a different file, run
+the server directly, for example
+`node --env-file=.env.other --import tsx src/server/index.ts --production`.
 
 Next, follow [Build an agent app](build-an-agent-app.md), run the
 [seven lessons](../lessons/README.md), or read [Testing](testing.md) before changing
