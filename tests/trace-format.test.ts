@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  argsOf,
   contextSummary,
   outcomeText,
   readableText,
   resendShare,
+  verdict,
   totalTokens,
 } from '../src/client/trace-format.js';
-import type { TraceCall, TraceItem } from '../src/shared/types.js';
+import { compareTraces } from '../src/shared/trace-diff.js';
+import type { RunTrace, TraceCall, TraceItem } from '../src/shared/types.js';
 
 const item = (kind: TraceItem['kind'], extra: Partial<TraceItem> = {}): TraceItem => ({
   kind,
@@ -128,4 +131,51 @@ test('tool-call arguments are indented only when the whole text is intact JSON',
   assert.equal(readableText(args('42')), '42');
   assert.equal(readableText({ kind: 'tool_result', text: '{"a":1}', chars: 7 }), '{"a":1}');
   assert.equal(readableText({ kind: 'reasoning', chars: 0 }), '');
+});
+
+test('the comparison verdict names the first call where two tasks parted ways', () => {
+  const trace = (...calls: TraceCall[]): RunTrace => ({
+    runId: 'r',
+    available: true,
+    calls,
+    truncated: false,
+  });
+  const reads = (index: number, path: string) =>
+    call({
+      index,
+      output: [item('tool_call', { name: 'read_file', text: JSON.stringify({ path }) })],
+    });
+  const replies = (index: number, text: string) =>
+    call({ index, output: [item('assistant', { text })] });
+
+  assert.equal(
+    verdict(compareTraces(trace(reads(1, 'a')), trace(reads(1, 'a')))),
+    'Both tasks made the same moves.',
+  );
+  assert.equal(
+    verdict(
+      compareTraces(
+        trace(reads(1, 'a'), replies(2, 'Hi.')),
+        trace(reads(1, 'a'), replies(2, 'Hello!')),
+      ),
+    ),
+    'Both tasks made the same moves, though their replies were worded differently.',
+  );
+  assert.equal(
+    verdict(compareTraces(trace(reads(1, 'a')), trace(reads(1, 'b')))),
+    'They first differ at call 1: both called read_file, but with different arguments.',
+  );
+  assert.equal(argsOf(reads(1, 'a.js')), 'read_file {"path":"a.js"}');
+  assert.equal(argsOf(reads(1, 'x'.repeat(200)), 30).length, 30, 'long arguments are shortened');
+  assert.equal(argsOf(replies(1, 'hi')), '', 'a reply has no arguments');
+  assert.equal(
+    verdict(
+      compareTraces(trace(reads(1, 'a'), replies(2, 'x')), trace(reads(1, 'a'), reads(2, 'b'))),
+    ),
+    'They first differ at call 2: this task replied, the other called read_file.',
+  );
+  assert.equal(
+    verdict(compareTraces(trace(reads(1, 'a'), replies(2, 'x')), trace(reads(1, 'a')))),
+    'They first differ at call 2: this task replied, the other made no call.',
+  );
 });

@@ -27,10 +27,10 @@ node --import tsx --test tests/approval.test.ts
 node --import tsx --test tests/sdk.test.ts
 node --import tsx --test tests/native-runner.test.ts
 node --import tsx --test tests/http.test.ts tests/memory-http.test.ts
-node --import tsx --test tests/trace.test.ts tests/trace-format.test.ts
+node --import tsx --test tests/trace.test.ts tests/trace-format.test.ts tests/trace-diff.test.ts
 ```
 
-Run the eleven executable lessons separately; they are not included in `npm run check`:
+Run the twelve executable lessons separately; they are not included in `npm run check`:
 
 ```sh
 npm run lesson:0
@@ -44,6 +44,7 @@ npm run lesson:7
 npm run lesson:8
 npm run lesson:9
 npm run lesson:10
+npm run lesson:11
 ```
 
 Each lesson prints the behavior it establishes and exits unsuccessfully if an
@@ -96,8 +97,9 @@ or tool results matters. Use temporary fixtures instead of personal projects.
 ## Evals: does the agent actually work?
 
 Tests check that the application follows its own rules. An eval asks a different
-question: given a real task, does the agent finish it? [Lesson 9](../lessons/09-eval.ts)
-is a small one. Three ideas carry over to bigger evals:
+question: given a real task, does the agent finish it, and does it behave? The
+[eval workbench](evals.md) in `evals/` is the full tool, and
+[lesson 9](../lessons/09-eval.ts) is a short tour of it. Three ideas carry over to bigger evals:
 
 - **Grade the outcome yourself.** The grader runs the tests on its own and checks
   that the agent did not edit them. The agent's own report is not evidence.
@@ -107,9 +109,10 @@ is a small one. Three ideas carry over to bigger evals:
 - **Run each case several times.** Models vary. Report a score such as 5/6, and
   compare scores when you change a model, a prompt, or a tool.
 
-`npm run lesson:9` uses the scripted demo model, which checks the harness, not a
-model. `npm run eval -- --live --runs 3` grades your configured model and costs
-a few model calls per attempt.
+`npm run lesson:9` and `npm run eval` use the scripted demo model, which checks the
+harness, not a model. `npm run eval -- --live --runs 5` grades your configured model
+and costs several model calls per attempt; [Measure an agent with evals](evals.md)
+explains the report and how to compare two models.
 
 ## Browser checks answer different questions
 

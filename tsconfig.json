@@ -12,5 +12,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["src", "tests", "lessons", "vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "tests", "lessons", "evals", "vite.config.ts", "playwright.config.ts"]
 }

@@ -1,7 +1,9 @@
 /** The trace viewer: every model call in a run, with what it sent and what came back. */
 import React, { useEffect, useState } from 'react';
 import type { AgentId, Run, RunTrace, TraceCall, TraceItem } from '../shared/types';
+import { compareTraces } from '../shared/trace-diff';
 import { api } from './api';
+import { TraceCompare } from './trace-compare';
 import {
   contextSummary,
   kindLabel,
@@ -117,9 +119,39 @@ function Call({ call, name, open }: { call: TraceCall; name: string; open: boole
   );
 }
 
-export function TraceView({ run, nameFor }: { run: Run; nameFor: (id: AgentId) => string }) {
+export function TraceView({
+  run,
+  nameFor,
+  others,
+}: {
+  run: Run;
+  nameFor: (id: AgentId) => string;
+  /** Other tasks this server has run, to compare with. Their traces are fetched when chosen. */
+  others: { run: Run; label: string }[];
+}) {
   const [trace, setTrace] = useState<RunTrace | null>(null);
   const [error, setError] = useState('');
+  const [otherId, setOtherId] = useState('');
+  const [other, setOther] = useState<RunTrace | null>(null);
+  const [otherError, setOtherError] = useState('');
+  const chosen = others.find((o) => o.run.id === otherId);
+  useEffect(() => {
+    setOther(null);
+    setOtherError('');
+    if (!chosen?.run.conversationId) return;
+    let current = true;
+    api<RunTrace>(`/conversations/${chosen.run.conversationId}/runs/${chosen.run.id}/trace`)
+      .then(
+        (t) =>
+          current &&
+          (t.available ? setOther(t) : setOtherError('This server has no trace for that task.')),
+      )
+      .catch((e: Error) => current && setOtherError(e.message));
+    return () => {
+      current = false;
+    };
+    // A finished task's trace does not change, so fetch it once per choice.
+  }, [chosen?.run.id, chosen?.run.conversationId]);
   const modelCalls = run.usage?.modelCalls ?? 0;
   useEffect(() => {
     if (!run.conversationId) return;
@@ -168,6 +200,24 @@ export function TraceView({ run, nameFor }: { run: Run; nameFor: (id: AgentId) =
         <p className="trace-note">
           The trace reached its size limit, so later calls are not shown.
         </p>
+      )}
+      {others.length > 0 && (
+        <div className="trace-compare-pick">
+          <label>
+            Compare with another task
+            <select value={otherId} onChange={(e) => setOtherId(e.target.value)}>
+              <option value="">Choose a task…</option>
+              {others.map((o) => (
+                <option value={o.run.id} key={o.run.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {otherError && <p className="trace-note">{otherError}</p>}
+          {chosen && !other && !otherError && <p className="trace-note">Loading that trace…</p>}
+          {other && <TraceCompare diff={compareTraces(trace, other)} otherLabel={chosen!.label} />}
+        </div>
       )}
       <ol className="trace-calls">
         {trace.calls.map((call, i) => (

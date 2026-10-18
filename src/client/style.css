@@ -2277,3 +2277,99 @@ fieldset.participant-picker {
   color: #8a2f2a;
   font-size: 13px;
 }
+.trace-compare-pick {
+  margin: 4px 0 16px;
+}
+.trace-compare-pick label {
+  display: block;
+  font-size: 12px;
+  font-weight: 550;
+  color: #776586;
+}
+.trace-compare-pick select {
+  width: 100%;
+  margin-top: 6px;
+}
+.trace-compare {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfaf8;
+}
+.trace-verdict {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.6;
+  color: #645271;
+}
+.trace-totals,
+.trace-pairs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.trace-totals th,
+.trace-totals td,
+.trace-pairs th,
+.trace-pairs td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-top: 1px solid #efecf2;
+  overflow-wrap: anywhere;
+}
+.trace-totals thead th,
+.trace-pairs thead th {
+  border-top: 0;
+  color: var(--muted);
+  font-weight: 550;
+}
+.trace-totals tbody th,
+.trace-pairs tbody th {
+  font-weight: 550;
+  color: #645271;
+  white-space: nowrap;
+}
+.trace-pairs {
+  margin-top: 14px;
+}
+.trace-pairs small {
+  color: var(--muted);
+}
+.trace-pairs tr.differs td,
+.trace-pairs tr.differs th {
+  background: #fdf3df;
+}
+.trace-changes {
+  margin: 12px 0 0;
+  padding: 0 0 0 18px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.trace-changes summary {
+  cursor: pointer;
+  color: #5c498d;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.trace-args {
+  display: block;
+  margin-top: 3px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+  color: #4d4638;
+  overflow-wrap: anywhere;
+}
+.trace-pairs thead th:first-child {
+  white-space: nowrap;
+}

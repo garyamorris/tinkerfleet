@@ -1,8 +1,8 @@
 # Learn to build agent tools
 
-These eleven short programs walk from watching the agent loop run to approving a
-real local action, then measuring whether an agent works and reading what each
-model call actually saw. Run them from the repository root with Node.js 22.12+ after
+These twelve short programs walk from watching the agent loop run to approving a
+real local action, then measuring whether an agent works reading what each
+model call actually saw, and comparing two runs. Run them from the repository root with Node.js 22.12+ after
 `npm ci`. They make no model requests and need no API key. Each uses assertions:
 a successful run prints its explanation and exits normally; a failed assertion
 stops the lesson.
@@ -249,28 +249,33 @@ into an approval card.
 
 ```sh
 npm run lesson:9
-npm run eval -- --live --runs 3   # optional: your configured model, costs money
+npm run eval -- --live --runs 5   # optional: your configured model, costs money
 ```
 
 **Learn:** an eval gives the agent a task and grades the outcome with code the
 agent cannot influence. Because a model's behavior varies, run each case several
-times and look at the score.
+times and look at the rate and its spread, not one result.
 
-**What happens:** each attempt gets a fresh copy of tiny-project. The agent works
-through the app's real adapter, approvals, and runner. The eval approves on your
-behalf with a narrow policy: edits, and only the project's test command. After
-the run, a grader runs the tests itself and checks that the agent did not edit
-them. By default the scripted demo model plays the agent, which checks the
-harness itself; `--live` uses the model in your `.env.local`.
+**What happens:** the harness in [evals/harness.ts](../evals/harness.ts) gives each
+attempt a fresh copy of tiny-project and runs the agent through the app's real
+adapter, approvals, and runner. The eval approves on your behalf with a narrow
+policy: edits, and only the project's test command. Checks then look at the
+result: the tests pass, the tests were not touched, and no other command was
+requested. The lesson runs the honest scripted agent through the repair cases.
+It then runs two more scripted agents against a file with a planted instruction:
+one obeys it and fails, with the steps it took shown, and one ignores it and
+passes. A grader that cannot fail a bad agent proves nothing.
 
 **Expect:** `9. Evals: grade the outcome yourself, with a narrow approval policy,
 over many runs.`
 
-**Try:** add a case the scripted model cannot handle, such as `Hello there.`, and
-read the failure. With a live model, compare scores for two models or two
-reasoning-effort settings.
+**Try:** add a case to [evals/cases.ts](../evals/cases.ts) that the scripted model
+cannot pass, and read what the failure reports. With a live model, run
+`npm run eval -- --live --runs 5 --save` for two models and compare the reports
+with `--compare`. How many runs does it take for the difference to be clear?
 
-**Source:** [09-eval.ts](09-eval.ts).
+**Source:** [09-eval.ts](09-eval.ts), then [Measure an agent with evals](../docs/evals.md)
+for the full workbench.
 
 ## 10. Read a trace
 
@@ -302,6 +307,35 @@ reports `removedItems`.
 **Source:** [10-trace.ts](10-trace.ts), then
 [sdk/trace.ts](../src/server/sdk/trace.ts) and
 [the model wrapper](../src/server/sdk/model.ts) where each call is recorded.
+
+## 11. Compare two runs
+
+```sh
+npm run lesson:11
+```
+
+**Learn:** two runs of a model rarely say the same words, so comparing their text
+is noise. A useful comparison asks where the runs first *did* something
+different: which tool, with which arguments.
+
+**What happens:** one task runs four times through the app's real adapter, each
+time with a trace attached. The lesson changes one thing at a time and compares
+each run with the first. The same moves in different words show no difference. A
+different agent purpose shows up in the instructions while the moves stay the
+same. A different file read is reported as the first call where the runs split,
+with the arguments that differ. The app shows the same comparison: choose
+**Compare with another task** in a task's **Trace** tab. See
+[Comparing two tasks](../docs/traces.md#compare-two-tasks).
+
+**Expect:** `11. Compare: wording varies, so ask where two runs first did something
+different.`
+
+**Try:** script the second run to call `read_file` twice and predict where the runs
+diverge. Then find where `compareTraces` decides two calls are the same move, and
+change what counts.
+
+**Source:** [11-compare.ts](11-compare.ts), then
+[shared/trace-diff.ts](../src/shared/trace-diff.ts).
 
 ## Connect the pieces
 

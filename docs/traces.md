@@ -28,6 +28,18 @@ Each row is one model call. The row says which agent made it and what the model 
 
 When an agent coordinates others, calls from each agent in the same run appear in order, labelled by agent. Work in another conversation, such as a bot you messaged, has its own run and its own trace.
 
+## Compare two tasks
+
+Change one thing, run the task again, and compare. The Trace tab of any task has a **Compare with another task** picker. It lists up to 25 of the most recent tasks this server has run, and shows:
+
+- **Where the two first differ.** Two runs of a model rarely use the same words, so the comparison looks at what the agent *did*: which tools it called and with what arguments, or that it replied. A reply counts as a reply whatever its wording. The first call where the two differ is highlighted, with the arguments that differ.
+- **Totals.** Calls, tokens, time, and which tools each task called.
+- **What else changed.** Whether the first call's instructions, the tools offered, or the settings differ. A different personality, a new saved memory, or a bot added to the roster all show up in the instructions.
+
+To see the effect of a change with what the app already has, run a task, edit the bot in the Bot library, then start a *new* conversation with it and send the same message. A conversation keeps the bot as it was when the conversation began, so a new one is needed. Open the new task's Trace tab and compare it with the first. To compare models or reasoning effort, restart the server with the other setting and run the task again; the first task's trace is gone by then, since traces live in memory only, so compare tasks from the same server session. For a measured comparison over many runs, use the [eval workbench](evals.md).
+
+A match is not proof that two runs are equivalent, and a difference does not mean one is wrong. Two correct solutions can differ. The comparison tells you where to look. [Lesson 11](../lessons/README.md#11-compare-two-runs) shows it from code.
+
 ## What a trace is not
 
 A trace is a bounded summary, held for readers, not a recording.
@@ -49,3 +61,4 @@ Run [lesson 10](../lessons/README.md#10-read-a-trace) to produce a trace from co
 - Ask a bot to read a file, then find the tool result in the next call. Is it the whole file?
 - Compare a one-line question with a task that uses tools. How does the share of re-sent items change?
 - Lower `TINKERFLEET_MAX_TOTAL_TOKENS` and watch where a run stops. Which call was the last one?
+- Run the same task twice and compare them. Do they make the same moves? Change the bot's purpose and compare again: what moved?

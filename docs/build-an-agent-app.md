@@ -274,7 +274,7 @@ work with these tools and produce useful results? Separate that evidence from
 unit tests and scripted browser demonstrations.
 
 **Run:** `npm run check`, then `npm run lesson:9` for a small eval. With a model
-configured, `npm run eval -- --live --runs 3` grades it on the tiny-project fix.
+configured, `npm run eval -- --live --runs 5` grades it ([evals](evals.md)).
 **Read:** [testing an agent application](testing.md).
 **Exercise:** invent one failure test for each feature you have added. For
 memory, try the wrong bot’s entry ID. For approvals, try replaying a used decision.
