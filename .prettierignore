@@ -1,0 +1,11 @@
+# Generated or vendored
+dist/
+node_modules/
+package-lock.json
+.tinkerfleet/
+
+# Prose and fixtures keep their hand-written layout
+*.md
+docs/
+examples/
+HANDOVER.txt
