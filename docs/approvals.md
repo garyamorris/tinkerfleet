@@ -51,7 +51,7 @@ pending → approved → consumed
 pending / approved → expired
 ```
 
-The default approval lifetime is five minutes. An expired, denied, changed, consumed, or unknown approval cannot execute. Replacing a command executable or changing an included workspace file after review also invalidates the prepared action. Request a fresh proposal rather than reusing an old card.
+An approval expires after a few minutes ([Limits](capabilities.md#limits)). An expired, denied, changed, consumed, or unknown approval cannot execute. Replacing a command executable or changing an included workspace file after review also invalidates the prepared action. Request a fresh proposal rather than reusing an old card.
 
 The grant stays spent if execution fails. A retry is another operation and needs another decision. The SDK interruption state and application approval record complement each other: the SDK pauses model execution, while the application binds the concrete local effect.
 

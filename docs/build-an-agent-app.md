@@ -50,8 +50,8 @@ Tinkerfleet uses three different objects:
 | Object | What it owns | Example |
 | --- | --- | --- |
 | Bot profile | Name, personality, appearance, stable identity | Nova, a patient astronomy tutor |
-| Conversation | Participants, messages through its runs, title, unsent draft | “Learning about planets” |
-| Run | One submitted request, activity, approvals, result, usage | “Explain why seasons happen” |
+| Conversation | Captured participants, messages through its runs, title, unsent draft | “Learning about planets” |
+| Run | One submitted request and the work it triggers, possibly several model calls: activity, approvals, result, usage | “Explain why seasons happen” |
 
 A new message starts a new run inside the same conversation. One bot can take part
 in many conversations. Changing a conversation title should not change the bot’s
@@ -135,9 +135,10 @@ needs that information to choose its next step; the user needs it to judge progr
 
 Tinkerfleet’s file tools stay within a selected project. Native commands run with
 the host user’s permissions; their arguments can address other locations. The
-current 15-second command timeout is useful to study because it exposes a real
-product tradeoff: simple short-lived tools are easy to manage, but long builds
-need background job IDs, progress, cancellation, and result collection.
+short, fixed command timeout ([Limits](capabilities.md#limits)) is useful to study
+because it exposes a real product tradeoff: simple short-lived tools are easy to
+manage, but long builds need background job IDs, progress, cancellation, and
+result collection.
 
 **Read:** [workspace tools](workspace.md) and [native-runner.ts](../src/server/native-runner.ts).
 **Run:** `npm run lesson:5` to approve a real edit and command in a temporary

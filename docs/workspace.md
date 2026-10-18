@@ -12,7 +12,7 @@ Enable it with `TINKERFLEET_WORKSPACE_TOOLS=1` and select a small practice folde
 | `edit_file` | Selected workspace, permitted path/content, unchanged prepared snapshot | Write the reviewed content to a real file, creating safe missing parents if needed |
 | `run_command` | Validated executable/argv/cwd, resolved executable binding, timeout and output limits | Start a real host process with the reviewed arguments |
 
-**A command's working directory is not an OS access boundary.** File tools have a workspace path policy; an approved program has the server user's OS permissions. A program can read other paths, use the network, load credentials from ordinary host files, or start subprocesses where those permissions allow it. The app does not claim container or VM isolation.
+**A command's working directory is not a sandbox or an OS access boundary.** File tools have a workspace path policy; an approved program has the server user's OS permissions. A program can read other paths, use the network, load credentials from ordinary host files, or start subprocesses where those permissions allow it. The app does not claim container or VM isolation.
 
 All ordinary agents receive the same enabled local tools. The primary can use them directly too. Names and personalities do not restrict an agent to a particular coding job.
 
@@ -20,7 +20,7 @@ All ordinary agents receive the same enabled local tools. The primary can use th
 
 The runner captures permitted UTF-8 text files and a digest of their current state. This “snapshot” is a bounded view of the real folder, not a disposable copied checkout.
 
-The current policy excludes hidden paths, dependency/build directories such as `node_modules` and `dist`, credential-like filenames and content, binary files, and symlinks or multiply linked files. Supported text extensions are listed in [runner-policy.ts](../src/server/runner-policy.ts). File-tool paths are relative, use a restricted segment syntax, and reject traversal. Limits include 256 files, 256 KiB per file, and 2 MiB of included text per capture.
+The current policy excludes hidden paths, dependency/build directories such as `node_modules` and `dist`, credential-like filenames and content, binary files, and symlinks or multiply linked files. Supported text extensions are listed in [runner-policy.ts](../src/server/runner-policy.ts). File-tool paths are relative, use a restricted segment syntax, and reject traversal. Each capture has caps on file count, file size, and total text; see [Limits](capabilities.md#limits).
 
 These checks reduce accidental exposure through file tools. They are not a complete secret detector, and they do not restrict what an approved native program can access independently.
 
@@ -54,11 +54,11 @@ An argument is different. An explicitly proposed absolute path in `args` may ref
 
 ### Process lifetime and environment
 
-Each command has a **15-second timeout** and a **64 KiB combined output limit**. Output is bounded and redacted before returning to the model. Timeout, cancellation, and normal exit trigger process-group cleanup, including ordinary children left behind by the main process. This is not a persistent terminal or background-server launcher; programs that deliberately escape process-group control are not securely confined.
+Each command has a short, fixed timeout and a combined output limit ([Limits](capabilities.md#limits)). Output is bounded and redacted before returning to the model. Timeout, cancellation, and normal exit trigger process-group cleanup, including ordinary children left behind by the main process. This is not a persistent terminal or background-server launcher; programs that deliberately escape process-group control are not securely confined.
 
 The child receives `HOME`, a filtered `PATH`, `TMPDIR`, `LANG`, and permitted `LC_ALL`/`LC_CTYPE` values. It does not inherit arbitrary server variables, the server API key, or loader-hook environment variables. The OS or program may add its own environment values. `HOME` still points at the user's home directory: minimal environment inheritance is not filesystem isolation.
 
-Changing model-turn or model-call limits does not change the 15-second local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk.ts](../src/server/sdk.ts).
+Changing model-turn or model-call limits does not change the local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk.ts](../src/server/sdk.ts).
 
 ## Several chats, one real folder
 

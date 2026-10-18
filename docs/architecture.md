@@ -55,11 +55,11 @@ Start reading at `startRun` in [app.ts](../src/server/app.ts), then
 
 ## A bot, a conversation, and a run are different things
 
-| Object | What it represents | Example |
-| --- | --- | --- |
-| Bot profile | Reusable identity, name, personality, and appearance | Ada, a patient programming tutor |
-| Conversation | A particular chat with captured participants | Your Python questions for Ada |
-| Run | One submitted request and the work it triggers | Explaining a loop, possibly using several model calls |
+A bot profile is a reusable identity. A conversation is one chat with the
+participants it captured. A run is one submitted request and all the work it
+triggers, possibly several model calls. The
+[build guide's table](build-an-agent-app.md#2-build-the-chat-before-adding-autonomy)
+compares the three with examples.
 
 A bot's persistent identity is its profile `id`, not its display name. Two bots
 named Ada can have different IDs and different memories. Existing conversations
@@ -103,11 +103,11 @@ memories can still apply. A new group starts fresh history. Its child run has
 separate budgets and a separate stop control from the originating direct run.
 Stopping the source does not stop an already-created child.
 
-Current coordination bounds are three new bots and three distinct individual
-messages per primary run, and one group with up to eight participants including
-the primary. The library holds up to 32 profiles. Only a direct primary gets
-creation, messaging, and group-start tools. A group primary gets its selected
-`ask_*` tools; ordinary bots cannot recursively create more collaborations.
+Each primary run can create only a few bots, send only a few messages, and
+start one group. Groups and the bot library have size caps. The numbers are in
+[Limits](capabilities.md#limits). Only a direct primary gets creation, messaging,
+and group-start tools. A group primary gets its selected `ask_*` tools; ordinary
+bots cannot recursively create more collaborations.
 The adapter also supports groups without a primary by running each selected bot
 sequentially, sharing earlier replies from that run.
 
@@ -119,10 +119,10 @@ sequentially, sharing earlier replies from that run.
 | Saved memory | Explicit notes belonging to one profile ID, reused across its chats | [memory.ts](../src/server/memory.ts) and [memory guide](memory.md) |
 | SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk.ts](../src/server/sdk.ts) |
 
-The server selects history from the current conversation. The SDK builds a
-recent-history context of at most 8,000 characters. Outgoing context management
-also shortens long tool output and removes older exchanges while preserving
-required tool-call/result pairs. It does not rewrite approval arguments. See
+The server selects history from the current conversation. The SDK adapter
+builds a bounded recent-history context from it; [Limits](capabilities.md#limits)
+gives the size. Outgoing context management also shortens long tool output and
+removes older exchanges while preserving required tool-call/result pairs. It does not rewrite approval arguments. See
 [context-budget.ts](../src/server/context-budget.ts).
 
 Saved memory is loaded for each selected bot at run start and included only in
@@ -147,9 +147,9 @@ cannot read or change local files through workspace tools.
 the pause; Tinkerfleet's [approval store](../src/server/approval.ts) binds the
 reviewed action to execution. See [approvals](approvals.md) for the full flow.
 
-Approved native commands run with the host user's permissions. The selected
-working directory is not a sandbox. An explicit command can use user-requested
-absolute paths, and completed effects are not undone by cancellation. The
+Approved native commands run with the host user's permissions, so the selected
+folder does not confine them. An explicit command can use user-requested
+absolute paths, and cancellation does not undo completed effects. The
 runner supplies bounded output, command timeouts, and a minimal environment.
 See [local workspace tools](workspace.md) for paths and command behavior.
 

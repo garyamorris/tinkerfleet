@@ -4,13 +4,9 @@ Tinkerfleet is a single-user localhost learning app. It uses native files and pr
 
 ## What each mode does
 
-| Mode | Model calls | Workspace effects |
-| --- | --- | --- |
-| Demo | None; scripted responses | Edits and command output are simulated |
-| Live chat | Requests to the configured provider | Workspace tools are off by default |
-| Live with workspace tools | Requests to the configured provider | Reads are enabled; edits and commands require exact approval |
+Tinkerfleet has three startup modes: the scripted demo, live chat, and live with workspace tools. The demo makes no model calls and only simulates edits and command output. Both live modes send requests to the configured provider. Only live mode with `TINKERFLEET_WORKSPACE_TOOLS=1` touches real files and processes: reads need no approval, and edits and commands need exact approval. Docker is not part of the active execution path. The [mode table](docs/capabilities.md#modes) compares the modes in detail.
 
-`TINKERFLEET_WORKSPACE_TOOLS=1` enables local workspace tools. Docker is not part of the active execution path. Demo profile and memory controls still save local app data; “simulated” refers to model work and workspace actions, not every UI change.
+Even in the demo, profiles, conversations, and memory notes are real local data. “Simulated” refers to model work and workspace actions, not every UI change.
 
 ## Files, commands, and approvals
 
@@ -28,7 +24,7 @@ Stopping a run does not undo completed edits or command effects. See [Workspace]
 
 A profile’s personality does not grant new tools. Ordinary agents share the configured capabilities. The primary has additional coordination tools for creating agents, messaging them, and starting groups. A message or group brief supplies context to another conversation; it is not authorization for that agent to bypass a workspace approval.
 
-Conversation history is scoped to its chat. Per-bot memory deliberately crosses conversations for the same bot. Memory handlers bind the owner on the server; ordinary agents cannot select another bot’s memory ID as their owner. Notes are bounded, viewable, and deletable in **Bot library → Memory**. They are model context, not privileged instructions. See [Memory](docs/memory.md) for the exact lifecycle and limits.
+Conversation history is scoped to its chat. Per-bot memory deliberately crosses conversations for the same bot. Memory handlers bind the owner on the server; ordinary agents cannot select another bot’s memory ID as their owner. Notes are bounded, viewable, and deletable in **Bot library → Memory**. They are model context, not privileged instructions. See [Memory](docs/memory.md) for the lifecycle and [Limits](docs/capabilities.md#limits) for the caps.
 
 These are application context boundaries, not OS isolation. Chats using one folder can see each other’s real file changes. A child conversation may continue independently after it starts; use its own stop control when needed.
 

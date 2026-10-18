@@ -158,16 +158,12 @@ You do not need to set every option.
 
 ## Keep runs small
 
-A *run* is the work started by one submitted message. Count limits are optional;
-token, output, and active runtime limits remain even when counts are unlimited.
-
-| Variable | Default | Allowed range |
-| --- | --- | --- |
-| `TINKERFLEET_MAX_TURNS` | `0` | `0` for no SDK turn cap, or 1–64 |
-| `TINKERFLEET_MAX_MODEL_CALLS` | `0` | `0` for no model-call cap, or 1–64 |
-| `TINKERFLEET_MAX_OUTPUT_TOKENS` | `2048` | 1–16,384 per response |
-| `TINKERFLEET_MAX_TOTAL_TOKENS` | `64000` | 1–1,000,000 reported tokens per run |
-| `TINKERFLEET_MAX_RUN_MS` | `120000` | 1–600,000 milliseconds of active runtime |
+A *run* is the work started by one submitted message. Five settings bound each
+run: `TINKERFLEET_MAX_TURNS`, `TINKERFLEET_MAX_MODEL_CALLS`,
+`TINKERFLEET_MAX_OUTPUT_TOKENS`, `TINKERFLEET_MAX_TOTAL_TOKENS`, and
+`TINKERFLEET_MAX_RUN_MS`. Their defaults and allowed ranges are in the
+[run budgets table](capabilities.md#run-budgets). The two count limits default to
+`0`, which means no cap. Token, output, and active runtime limits stay on even then.
 
 Invalid limit settings fail startup. A completed response can cross the usage
 threshold; the app keeps the answer and blocks further work. These are execution
@@ -177,8 +173,8 @@ budgets. Nested `ask_*` agent calls within a group share that group run’s
 model-call, token, and runtime budgets. Stopping the primary does not stop an
 already-created child conversation run.
 
-A native command has a separate **15-second timeout**. Removing turn limits or
-raising the run budget does not extend that command timeout.
+A native command has its own fixed timeout ([Limits](capabilities.md#limits)).
+Removing turn limits or raising the run budget does not extend it.
 
 ## Saved state and model context
 

@@ -1,15 +1,12 @@
 # Learn the app by using it
 
-The interface makes an agent application's moving parts visible: a reusable
-bot, a conversation with that bot, and a run of work within that conversation.
-Use this tour alongside [Build an agent app](build-an-agent-app.md).
-
-| Thing you see | What it represents |
-| --- | --- |
-| A bot in the library | A saved identity, personality, and appearance |
-| A conversation in the sidebar | Participants, messages, draft, and status |
-| A submitted message and its result | A run, including activity, approvals, and output |
-| A memory note | A fact saved for that bot across its conversations |
+The interface makes an agent application's moving parts visible. Each bot in
+the library is a saved bot profile. Each entry in the sidebar is a conversation,
+with its participants, messages, draft, and status. Each submitted message and
+its result is a run, with its activity, approvals, and output. The
+[build guide's table](build-an-agent-app.md#2-build-the-chat-before-adding-autonomy)
+compares these three objects. A memory note is a fact saved for one bot across
+its conversations. Use this tour alongside [Build an agent app](build-an-agent-app.md).
 
 ## Start with the primary
 
@@ -59,8 +56,9 @@ opens the new conversation; you remain in the source chat until you choose that
 link. The group shows **Started by** and an **Original conversation** backlink.
 There is no manual group-start chooser.
 
-A group can include the primary and up to seven ordinary agents. The shared
-brief does not automatically include the source chat's private history. The
+A group can include the primary and a limited number of ordinary agents
+([Limits](capabilities.md#limits)). The shared brief does not automatically
+include the source chat's private history. The
 source and child conversations have separate runs, approvals, and stop controls.
 If you stop the primary, open and stop any child run you also want to end.
 Agents called inside a group share the group run’s model-call, token, and runtime
@@ -73,8 +71,8 @@ Open **Memory** beside a bot in the library. Add a harmless preference such as
 memory**. You can inspect saved notes and use **Delete** to remove one.
 
 The same bot receives these notes on its next turn across chats. Another bot
-does not receive them merely because it is in your library. Each bot can hold
-20 notes, up to 2,000 characters each and 8,000 characters total. Personality
+does not receive them merely because it is in your library. Each bot has a cap
+on notes and characters ([Limits](capabilities.md#limits)). Personality
 edits do not erase notes, and old chat transcripts are not imported automatically.
 
 Notes are stored locally and sent to the provider when that bot replies. Keep

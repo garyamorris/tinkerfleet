@@ -2,6 +2,10 @@
 
 Tinkerfleet is a small agent application you can run, inspect, and change. A model chooses among tools supplied by the application; server code decides what those tools can actually do. An agent's personality changes its instructions. It does not grant new permissions.
 
+This page is the reference for what each mode can do and for every numeric limit. Other documents link to [Limits](#limits) instead of repeating the numbers.
+
+## Modes
+
 Start with the [setup guide](setup.md). These are startup modes, not three different agent implementations:
 
 | Capability | Demo | Live chat | Live with workspace tools |
@@ -28,7 +32,7 @@ The primary has additional coordination tools:
 - `message_agent` sends an explicit brief to a registered agent's own chat. The recipient can use its own chat history and memory. The primary's private transcript is not copied. A bounded reply or status is relayed to the primary chat and is available on its next turn; the relay does not automatically buy another model call.
 - `start_group_conversation` starts a separate group with the primary and selected agents. The supplied brief is its initial context. Within a group, the primary can use the selected agents' `ask_*` tools.
 
-IDs, rather than names, route these operations. Two agents can have similar personalities without being the same participant. Existing conversation identities remain frozen when a library profile is edited. The library allows 32 profiles; a group allows the primary plus up to seven agents. Per primary turn, creation and direct messaging each allow three distinct requests, and group creation allows one group. Exact retries reuse the recorded result.
+IDs, rather than names, route these operations. Two agents can have similar personalities without being the same participant. Existing conversation identities remain frozen when a library profile is edited. The library and each group have a size cap. In one run, the primary can create only a few agents, send only a few messages, and start one group; see [Limits](#limits). Exact retries reuse the recorded result.
 
 **Trace the implementation:** [profile validation](../src/server/personas.ts), [SDK tools and agent construction](../src/server/sdk.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
 
@@ -38,7 +42,7 @@ IDs, rather than names, route these operations. Two agents can have similar pers
 
 Saved memory is a small, explicit collection of entries scoped to one profile ID. The live agent can recall, save, or forget its own entries, and you can inspect and manage them in the UI. It is distinct from conversation history and from the shortened context sent in a particular model request.
 
-Memory persists locally across restarts. It is not model training, unlimited recall, or access to another agent's private memories. Each agent has limits of 20 entries, 2,000 characters per entry, and 8,000 characters total. Local files are not encrypted by this application, and secret-like content is rejected rather than treated as appropriate memory.
+Memory persists locally across restarts. It is not model training, unlimited recall, or access to another agent's private memories. Each agent has a cap on entries and characters; see [Limits](#limits). Local files are not encrypted by this application, and secret-like content is rejected rather than treated as appropriate memory.
 
 **Trace it:** [memory storage](../src/server/memory.ts), memory tool construction in [sdk.ts](../src/server/sdk.ts), and [context budgeting](../src/server/context-budget.ts). Read [architecture](architecture.md) for the distinction between saved state and model context.
 
@@ -52,11 +56,55 @@ This is not an interactive browser. It does not provide your logged-in browser s
 
 ## Local work has real effects
 
-With workspace tools enabled, any agent, including the primary, can propose an edit or installed command. The UI pauses that action for review. Approved edits change real files; approved commands run with the server user's OS permissions. The starting folder is not an OS sandbox. Command arguments can refer to other host paths, and an explicitly proposed shell can run a script.
+With workspace tools enabled, any agent, including the primary, can propose an edit or installed command. The UI pauses that action for review. Approved edits change real files; approved commands run with the server user's OS permissions, so the starting folder does not confine them. Command arguments can refer to other host paths, and an explicitly proposed shell can run a script.
 
-Commands have a **15-second timeout** and bounded output. This runner is not a persistent terminal, interactive login session, or background-job supervisor. A long build, package installation, or development server can exceed its lifetime. There is no dedicated installer tool, but an installed package manager can be proposed through the ordinary approved-command path. There is no automatic undo for effects already performed.
+Each command has a short, fixed timeout and bounded output; see [Limits](#limits). This runner is not a persistent terminal, interactive login session, or background-job supervisor. A long build, package installation, or development server can exceed its lifetime. There is no dedicated installer tool, but an installed package manager can be proposed through the ordinary approved-command path. There is no automatic undo for effects already performed.
 
 Read [workspace tools](workspace.md) for file-policy versus process permissions, and [approvals](approvals.md) for the decision flow.
+
+## Limits
+
+These are the limits in the current code. If you change one, update this table.
+
+### Run budgets
+
+A *run* is the work started by one submitted message. You can change these settings; [setup](setup.md#keep-runs-small) explains how they interact.
+
+| Variable | Default | Allowed range |
+| --- | --- | --- |
+| `TINKERFLEET_MAX_TURNS` | `0` (no cap) | `0`, or 1–64 SDK turns |
+| `TINKERFLEET_MAX_MODEL_CALLS` | `0` (no cap) | `0`, or 1–64 model calls |
+| `TINKERFLEET_MAX_OUTPUT_TOKENS` | `2048` | 1–16,384 tokens per response |
+| `TINKERFLEET_MAX_TOTAL_TOKENS` | `64000` | 1–1,000,000 reported tokens per run |
+| `TINKERFLEET_MAX_RUN_MS` | `120000` (2 minutes) | 1–600,000 milliseconds of active runtime |
+
+Defaults and ranges are in [config.ts](../src/server/config.ts) and `DEFAULT_SDK_LIMITS` in [sdk.ts](../src/server/sdk.ts).
+
+### Fixed limits
+
+These are not configurable. Raising a run budget does not change them.
+
+| Area | Limit | Value | Set in |
+| --- | --- | --- | --- |
+| Local commands | Time per command | 15 seconds | [runner-policy.ts](../src/server/runner-policy.ts) |
+| Local commands | Combined stdout and stderr returned | 64 KiB | [runner-policy.ts](../src/server/runner-policy.ts) |
+| File tools | Files in one workspace capture | 256 | [runner-policy.ts](../src/server/runner-policy.ts) |
+| File tools | Size of one file | 256 KiB | [runner-policy.ts](../src/server/runner-policy.ts) |
+| File tools | Included text in one capture | 2 MiB | [runner-policy.ts](../src/server/runner-policy.ts) |
+| Approvals | Lifetime of an approval | 5 minutes | [approval.ts](../src/server/approval.ts) |
+| Approvals | A run left waiting for approval is stopped after | 10 minutes | [sdk.ts](../src/server/sdk.ts) |
+| Model context | Recent same-chat history sent with a run | 8,000 characters | [sdk.ts](../src/server/sdk.ts) |
+| Memory (per bot) | Saved notes | 20 | [memory.ts](../src/server/memory.ts) |
+| Memory (per bot) | Characters in one note | 2,000 | [memory.ts](../src/server/memory.ts) |
+| Memory (per bot) | Characters across all its notes | 8,000 | [memory.ts](../src/server/memory.ts) |
+| Coordination (per primary run) | New bots created | 3 | [app.ts](../src/server/app.ts) |
+| Coordination (per primary run) | Distinct messages sent to agents | 3 | [app.ts](../src/server/app.ts) |
+| Coordination (per primary run) | Groups started | 1 | [sdk.ts](../src/server/sdk.ts) |
+| Coordination | Ordinary agents in one group | 7, plus the primary | [conversations.ts](../src/server/conversations.ts) |
+| Bot library | Saved profiles | 32 | [personas.ts](../src/server/personas.ts) |
+| Saved conversations | Chats | 100 | [conversations.ts](../src/server/conversations.ts) |
+| Saved conversations | Runs | 200 | [conversations.ts](../src/server/conversations.ts) |
+| Saved conversations | Size of the store file | 8 MiB | [conversations.ts](../src/server/conversations.ts) |
 
 ## Learn one boundary at a time
 

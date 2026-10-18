@@ -24,17 +24,12 @@ text saying “I'll remember” by itself does not. The memory panel shows what 
 actually stored. Demo mode still lets you manage notes manually, but its scripted
 replies do not demonstrate model-driven recall.
 
-The UI displays the entry count and total saved characters. Each bot can hold:
-
-| Limit | Value |
-| --- | --- |
-| Saved entries | 20 |
-| Characters in one entry | 2,000 |
-| Characters across all its entries | 8,000 |
-
-When full, delete an outdated entry before saving another. Identical normalized
-text for the same bot returns the existing entry instead of creating a duplicate.
-The store trims surrounding whitespace and normalizes CRLF/CR newlines to LF.
+The UI displays the entry count and total saved characters. Each bot has a cap
+on entries, on characters in one entry, and on characters across all its
+entries; [Limits](capabilities.md#limits) lists the numbers. When full, delete
+an outdated entry before saving another. Identical normalized text for the same
+bot returns the existing entry instead of creating a duplicate. The store trims
+surrounding whitespace and normalizes CRLF/CR newlines to LF.
 
 ## Identity determines who remembers
 
@@ -156,7 +151,7 @@ memories, and other supplied context still consume input tokens.
 - **Suggest summaries for review.** Generate candidate notes from one selected
   transcript, show them to the user, and save only the chosen notes. Keep this
   explicit rather than silently converting every conversation into memory.
-- **Try selective retrieval.** If you outgrow 20 notes, compare a simple tag or
+- **Try selective retrieval.** If you outgrow the note cap, compare a simple tag or
   keyword filter with embeddings. Preserve ownership checks before retrieval,
   inspect which notes were selected, and account for the extra model input.
 

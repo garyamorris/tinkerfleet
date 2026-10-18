@@ -137,11 +137,12 @@ Live requests can send conversation context, saved memories, and tool results to
 the model provider. These are useful design decisions to understand when building
 your own agent app; [the execution and data boundaries](SECURITY.md) explain them.
 
-There is no fixed turn or model-call count limit by default. Token and runtime
-budgets remain, and each local command currently has a 15-second timeout. This
-small teaching implementation is therefore best suited to short experiments;
-long coding jobs need a different command lifecycle. The
-[capability guide](docs/capabilities.md) separates what works today from extension ideas.
+There is no turn or model-call cap by default. Token and runtime budgets remain,
+and each local command has a short, fixed timeout. So this small teaching app
+suits short experiments; long coding jobs need a different command lifecycle.
+The [capability guide](docs/capabilities.md) separates what works today from
+extension ideas, and its [Limits](docs/capabilities.md#limits) section lists
+every number.
 
 ## Continue learning
 
