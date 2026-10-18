@@ -163,8 +163,13 @@ Submit a fresh message to continue.
 If loading or saving fails, check access to `.tinkerfleet/conversations.json`
 and its `.memories.json` companion. Conversation storage has caps on chats,
 runs, and file size ([Limits](capabilities.md#limits)). Corrupt stores fail
-startup rather than silently replacing your history. Preserve a private backup
-before repair; do not attach these files to a public issue.
+startup rather than silently replacing your history: the server prints one line
+saying which file could not be read and exits without changing it. Preserve a
+private backup before repair; do not attach these files to a public issue.
+
+Other startup problems are reported the same way, in one line: an invalid
+setting names the variable, and a port that is already in use tells you to stop
+the other program or choose another with `TINKERFLEET_PORT`.
 
 ## A reply's formatting or activity looks unexpected
 

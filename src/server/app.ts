@@ -31,6 +31,10 @@ import {
 } from './sdk.js';
 import type { AppState, Run, AgentId, Action, Conversation, Persona } from '../shared/types.js';
 
+const isPrimary = (p: Persona) => p.role === 'coordinator';
+const ONE_PRIMARY =
+  'There is already a primary agent. Edit it, or create an ordinary agent instead.';
+
 export function createApp(
   options: RuntimeOptions & {
     sdkModel?: Model;
@@ -880,6 +884,15 @@ export function createApp(
         )
       )
         throw new HttpError(400, 'An existing coordinator must keep its coordinator role.');
+      // Saved libraries from before this rule may hold several primaries and keep loading; only
+      // an import that would add another is refused.
+      const newPrimaries = incoming.filter(
+        (p) =>
+          p.role === 'coordinator' &&
+          !profiles.some((old) => old.id === p.id && old.role === 'coordinator'),
+      );
+      if (newPrimaries.length > 1 || (newPrimaries.length && profiles.some(isPrimary)))
+        throw new HttpError(400, ONE_PRIMARY);
       const previous = profiles,
         previousImported = libraryImported;
       profiles = validateProfiles([
@@ -935,6 +948,11 @@ export function createApp(
         ])[0];
         if (existing?.role === 'coordinator' && profile.role !== 'coordinator')
           throw new HttpError(400, 'An existing coordinator must keep its coordinator role.');
+        if (
+          profile.role === 'coordinator' &&
+          profiles.some((p) => isPrimary(p) && p.id !== profile!.id)
+        )
+          throw new HttpError(400, ONE_PRIMARY);
         profiles = validateProfiles(
           id ? profiles.map((p) => (p.id === id ? profile! : p)) : [...profiles, profile],
         );
