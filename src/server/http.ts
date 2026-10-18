@@ -25,6 +25,8 @@ export function createSecurity(port: number) {
     session = randomBytes(32).toString('hex');
   const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
   const origins = new Set([...hosts].map((h) => `http://${h}`));
+  // Browsers share cookies across localhost ports, so name the cookie per port to keep two servers apart.
+  const cookieName = `tinkerfleet_session_${port}`;
   return {
     headers(res: ServerResponse, production: boolean) {
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -57,8 +59,8 @@ export function createSecurity(port: number) {
         (req.headers.cookie ?? '')
           .split(';')
           .map((s) => s.trim())
-          .find((s) => s.startsWith('tinkerfleet_session='))
-          ?.slice('tinkerfleet_session='.length) ?? '';
+          .find((s) => s.startsWith(`${cookieName}=`))
+          ?.slice(cookieName.length + 1) ?? '';
       if (!safeEqual(cookie, session))
         throw new HttpError(401, 'Session expired. Reload the page.');
       if (
@@ -68,10 +70,7 @@ export function createSecurity(port: number) {
         throw new HttpError(403, 'A same-origin approval is required.');
     },
     bootstrap(res: ServerResponse) {
-      res.setHeader(
-        'Set-Cookie',
-        `tinkerfleet_session=${session}; HttpOnly; SameSite=Strict; Path=/api`,
-      );
+      res.setHeader('Set-Cookie', `${cookieName}=${session}; HttpOnly; SameSite=Strict; Path=/api`);
       return { csrf };
     },
   };

@@ -175,6 +175,31 @@ test('local API authenticates same-origin sessions and exact single-use approval
     if (app.server.listening) await app.close();
   }
 });
+test('servers on different localhost ports keep separate sessions', async () => {
+  // Browsers do not scope cookies by port, so one jar holds both servers' cookies.
+  const ports = [45371, 45372];
+  const apps = ports.map((port) => createApp({ port, mode: 'demo' }));
+  await Promise.all(
+    apps.map((app, i) => new Promise<void>((r) => app.server.listen(ports[i], '127.0.0.1', r))),
+  );
+  try {
+    const jar = new Map<string, string>();
+    for (const port of ports) {
+      const res = await fetch(`http://127.0.0.1:${port}/api/session`);
+      const [name, value] = res.headers.get('set-cookie')!.split(';')[0].split('=');
+      assert.equal(name, `tinkerfleet_session_${port}`);
+      jar.set(name, value);
+    }
+    const Cookie = [...jar].map(([name, value]) => `${name}=${value}`).join('; ');
+    for (const port of ports)
+      assert.equal(
+        (await fetch(`http://127.0.0.1:${port}/api/state`, { headers: { Cookie } })).status,
+        200,
+      );
+  } finally {
+    await Promise.all(apps.map((app) => app.close()));
+  }
+});
 test('live startup reserves one run and remains stoppable before preflight ends', async () => {
   const port = 45319;
   const base = `http://127.0.0.1:${port}`;
