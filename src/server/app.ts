@@ -289,7 +289,7 @@ export function createApp(
             });
           if (a?.kind === 'command')
             run.output = redactSdkText(
-              `$ ${a.executable} ${a.args.join(' ')}\n${result.stdout}\n${result.stderr}\nStatus: ${result.status} · exit code ${result.exitCode ?? 'none'}\nCleanup confirmed: ${result.cleanupSucceeded}`,
+              `$ ${a.executable} ${a.args.join(' ')}\n${result.stdout}\n${result.stderr}\nStatus: ${result.status} · exit code ${result.exitCode ?? 'none'}\nProcess group stopped: ${result.cleanupSucceeded ? 'yes' : 'no'}`,
             );
         }
         return result;

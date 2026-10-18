@@ -196,13 +196,7 @@ function safeOutput(
 ): { stdout: string; stderr: string } {
   let remaining = limit;
   const take = (value: string) => {
-    const redacted = redactSdkText(value)
-      .replace(/\bAKIA[A-Z0-9]{16}\b/g, '[REDACTED]')
-      .replace(/\b(?:gho|ghu|ghs)_[A-Za-z0-9_]{8,}/g, '[REDACTED]')
-      .replace(
-        /-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?(?:-----END [^-]*PRIVATE KEY-----|$)/g,
-        '[REDACTED PRIVATE KEY]',
-      );
+    const redacted = redactSdkText(value);
     let result = Buffer.from(redacted).subarray(0, remaining).toString('utf8');
     while (Buffer.byteLength(result) > remaining) result = result.slice(0, -1);
     remaining -= Buffer.byteLength(result);

@@ -20,7 +20,7 @@ The app binds approval to the run and exact action, including a command’s reso
 
 An approval is bound to a digest of the workspace’s included files only. Excluded files and folders, such as `.env`, `.npmrc`, and `node_modules`, are not part of it. So an approved `npm test` is bound to npm’s resolved executable and to the included source files, but not to the installed dependencies or npm’s configuration. Review what a command will load, not only its name.
 
-When a command ends, times out, or is stopped, the runner stops the command’s whole process group. A process that detaches itself, for example with `setsid ... &`, leaves that group and can keep running afterwards. `Cleanup confirmed: true` in the command output means the process group was stopped, not that every descendant is gone.
+When a command ends, times out, or is stopped, the runner stops the command’s whole process group. A process that detaches itself, for example with `setsid ... &`, leaves that group and can keep running afterwards. `Process group stopped: yes` in the command output means exactly that; it does not mean every descendant is gone.
 
 Stopping a run does not undo completed edits or command effects. See [Workspace](docs/workspace.md) and [Approvals](docs/approvals.md) for the execution path.
 
