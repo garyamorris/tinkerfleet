@@ -1,9 +1,10 @@
 # Learn to build agent tools
 
 These seven short programs walk from watching the agent loop run to approving a
-real local action. Run them from the repository root with Node.js 22.12+ after `npm ci`.
-They make no model requests and need no API key. Each uses assertions: a successful
-run prints its explanation and exits normally; a failed assertion stops the lesson.
+real local action. Run them from the repository root with Node.js 22.12+ after
+`npm ci`. They make no model requests and need no API key. Each uses assertions:
+a successful run prints its explanation and exits normally; a failed assertion
+stops the lesson.
 
 Read a source file, predict its result, run it, then try the suggested change.
 Lessons 5 and 6 create and remove their own temporary folders. They do not edit

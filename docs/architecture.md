@@ -119,10 +119,11 @@ sequentially, sharing earlier replies from that run.
 | Saved memory | Explicit notes belonging to one profile ID, reused across its chats | [memory.ts](../src/server/memory.ts) and [memory guide](memory.md) |
 | SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk.ts](../src/server/sdk.ts) |
 
-The server selects history from the current conversation. The SDK adapter
-builds a bounded recent-history context from it; [Limits](capabilities.md#limits)
-gives the size. Outgoing context management also shortens long tool output and
-removes older exchanges while preserving required tool-call/result pairs. It does not rewrite approval arguments. See
+The server selects history from the current conversation. The SDK adapter builds
+a bounded recent-history context from it; [Limits](capabilities.md#limits) gives
+the size. Outgoing context management also shortens long tool output and removes
+older exchanges while preserving required tool-call/result pairs. It does not
+rewrite approval arguments. See
 [context-budget.ts](../src/server/context-budget.ts).
 
 Saved memory is loaded for each selected bot at run start and included only in

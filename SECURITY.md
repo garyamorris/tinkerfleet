@@ -18,7 +18,7 @@ The command launcher uses separate executable and argument fields with `shell: f
 
 The app binds approval to the run and exact action, including a command’s resolved executable identity, and rechecks that identity before launch. Decisions expire and are single-use. Denial, cancellation, or an invalid decision does not authorize the action. SDK edits and commands also pause for approval. Time and output limits and a reduced child-process environment limit exposure, but do not remove a process’s ability to read accessible files or launch subprocesses. Server API keys are not deliberately inherited in that child environment; accessible credentials on disk remain accessible to commands run as the user. [Credentials and approved commands](#credentials-and-approved-commands) explains how to keep your API key safer.
 
-The approval digest covers only the workspace’s included files. Excluded files and folders, such as `.env`, `.npmrc`, and `node_modules`, are not part of it. So an approved `npm test` is bound to npm’s resolved executable and to the included source files, but not to the installed dependencies or npm’s configuration. Review what a command will load, not only its name.
+An approval is bound to a digest of the workspace’s included files only. Excluded files and folders, such as `.env`, `.npmrc`, and `node_modules`, are not part of it. So an approved `npm test` is bound to npm’s resolved executable and to the included source files, but not to the installed dependencies or npm’s configuration. Review what a command will load, not only its name.
 
 When a command ends, times out, or is stopped, the runner stops the command’s whole process group. A process that detaches itself, for example with `setsid ... &`, leaves that group and can keep running afterwards. `Cleanup confirmed: true` in the command output means the process group was stopped, not that every descendant is gone.
 
@@ -33,7 +33,7 @@ Approved commands run as your user. The app gives them a reduced environment wit
 
 To reduce the risk:
 
-- Put the key in `.env.local`, which `npm run dev` loads, or pass a file with `node --env-file=...`. Do not export it in your shell. On Linux, values loaded this way do not appear in `/proc/$PPID/environ`.
+- Put the key in `.env.local`, which `npm run dev` and `npm start` load, or pass a file with `node --env-file=...`. Do not export it in your shell. On Linux, values loaded this way do not appear in `/proc/$PPID/environ`.
 - Use a separate API key for experiments, with a low spending limit set in your provider account. Then a leaked key costs little.
 - Read every command before you approve it, especially one that reads files outside the project or sends data over the network.
 
