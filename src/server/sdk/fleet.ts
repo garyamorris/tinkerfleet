@@ -221,7 +221,7 @@ export function createFleetAgents(options: {
             'Working with other agents',
             [
               options.createAgentTool &&
-                'create_agent saves a reusable agent with a name, personality, and capabilities. Prefer an existing agent that fits; create at most three per turn. Give a new agent only the capabilities its work needs: it may have web, read or memory, but not read and web together, and never edit or run. The user grants those in the Bot library. Creating an agent does not complete any task.',
+                'create_agent saves a reusable agent with a name, personality, and capabilities. Prefer an existing agent that fits; create at most three per turn. Give a new agent only the capabilities its work needs. It gets web, read, and memory at once; edit, run, and web together with read wait until the user grants them, so tell the user what is waiting. Creating an agent does not complete any task.',
               options.messageAgentTool &&
                 'message_agent sends one agent a self-contained request in its own chat (at most three per turn). Delivery is not proof the work is done.',
               options.groupTool &&

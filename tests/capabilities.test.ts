@@ -13,9 +13,9 @@ import { createFleetAgents, createSdkAdapter, type SdkHarness } from '../src/ser
 import {
   CAPABILITIES,
   canLeakWorkspace,
-  createdAgentProblem,
+  splitCreatedCapabilities,
   grantedCapabilities,
-  withLibraryLimit,
+  withLibraryCapabilities,
 } from '../src/shared/capabilities.js';
 import type { Capability, Persona } from '../src/shared/types.js';
 
@@ -48,21 +48,23 @@ test('a profile narrows what the server enables and never widens it', () => {
   assert.ok(!canLeakWorkspace(['read', 'edit']));
 });
 
-test('narrowing a library profile reaches captured copies; widening does not', () => {
+test('the library’s current capabilities apply to captured copies in both directions', () => {
   const captured = bot('maker', ['read', 'edit', 'run']);
-  assert.deepEqual(withLibraryLimit(captured, [bot('maker', ['read', 'edit'])]).capabilities, [
-    'read',
-    'edit',
-  ]);
   assert.deepEqual(
-    withLibraryLimit(captured, [bot('maker', ['read', 'edit', 'run', 'web'])]).capabilities,
-    ['read', 'edit', 'run'],
+    withLibraryCapabilities(captured, [bot('maker', ['read', 'edit'])]).capabilities,
+    ['read', 'edit'],
   );
-  // A captured legacy copy has every tool, so the library's choice is the limit.
-  assert.deepEqual(withLibraryLimit(bot('maker'), [bot('maker', ['read'])]).capabilities, ['read']);
-  // No library entry, or a legacy one, changes nothing.
-  assert.equal(withLibraryLimit(captured, []), captured);
-  assert.equal(withLibraryLimit(captured, [bot('maker')]), captured);
+  assert.deepEqual(
+    withLibraryCapabilities(captured, [bot('maker', ['read', 'web'])]).capabilities,
+    ['read', 'web'],
+  );
+  // A legacy library entry means every enabled tool, so the captured list is dropped too.
+  assert.equal('capabilities' in withLibraryCapabilities(captured, [bot('maker')]), false);
+  // Only capabilities follow the library; the captured name and purpose stay.
+  const renamed = { ...bot('maker', ['read']), name: 'Renamed', purpose: 'Changed.' };
+  assert.equal(withLibraryCapabilities(captured, [renamed]).name, 'maker');
+  // A bot deleted from the library keeps what it was captured with.
+  assert.equal(withLibraryCapabilities(captured, []), captured);
 });
 
 test('profile validation stores capabilities in one order and keeps legacy profiles loading', () => {
@@ -81,13 +83,21 @@ test('profile validation stores capabilities in one order and keeps legacy profi
     assert.throws(() => validateParticipants([{ ...bot('bad'), capabilities }]));
 });
 
-test('only a created agent’s safe capabilities pass, and never read with web', () => {
-  assert.equal(createdAgentProblem([]), undefined);
-  assert.equal(createdAgentProblem(['web', 'memory']), undefined);
-  assert.equal(createdAgentProblem(['read', 'memory']), undefined);
-  assert.match(createdAgentProblem(['read', 'edit'])!, /cannot start with edit/);
-  assert.match(createdAgentProblem(['run'])!, /cannot start with run/);
-  assert.match(createdAgentProblem(['read', 'web'])!, /both read and web/);
+test('a created agent starts with web, read or memory; the rest waits for the user', () => {
+  assert.deepEqual(splitCreatedCapabilities([]), { granted: [], needsUser: [] });
+  assert.deepEqual(splitCreatedCapabilities(['memory', 'web']), {
+    granted: ['web', 'memory'],
+    needsUser: [],
+  });
+  assert.deepEqual(splitCreatedCapabilities(['run', 'read', 'edit']), {
+    granted: ['read'],
+    needsUser: ['edit', 'run'],
+  });
+  // Read and web together can leak files, so web waits when read is also asked for.
+  assert.deepEqual(splitCreatedCapabilities(['read', 'web', 'memory']), {
+    granted: ['read', 'memory'],
+    needsUser: ['web'],
+  });
 });
 
 const marker = (name: string): Tool =>
@@ -184,18 +194,12 @@ function noHarness(): SdkHarness {
   } as unknown as SdkHarness;
 }
 
-test('create_agent asks for capabilities and the server refuses edit, run, and read with web', async () => {
+test('create_agent creates the bot with its safe capabilities and reports what waits', async () => {
   const created: unknown[] = [];
-  const request = (capabilities: Capability[]) => ({
-    name: 'Ada',
-    purpose: 'Explain things patiently.',
-    capabilities,
-  });
+  const request = { name: 'Ada', purpose: 'Run the tests.', capabilities: ['run', 'read'] };
   const model = new ScriptedModel([
-    [functionCall('create_agent', request(['read', 'run']), { callId: 'with-run' })],
-    [functionCall('create_agent', request(['read', 'web']), { callId: 'read-web' })],
-    [functionCall('create_agent', request(['memory', 'web']), { callId: 'safe' })],
-    [assistantMessage('Created Ada with web and memory.')],
+    [functionCall('create_agent', request, { callId: 'with-run' })],
+    [assistantMessage('Created Ada; run waits for you.')],
   ]);
   const done = await createSdkAdapter({
     harness: noHarness(),
@@ -203,7 +207,8 @@ test('create_agent asks for capabilities and the server refuses edit, run, and r
     workspaceToolsEnabled: false,
     createAgent: async (_runId, input) => {
       created.push(input);
-      return { ...bot('ada'), ...input };
+      // The server stores only what it grants now.
+      return { ...bot('ada'), name: input.name, purpose: input.purpose, capabilities: ['read'] };
     },
   }).start({
     runId: 'create-with-capabilities',
@@ -212,11 +217,10 @@ test('create_agent asks for capabilities and the server refuses edit, run, and r
     availableBots: [],
   });
   assert.equal(done.status, 'completed');
-  // Refusals are ordinary results, so the model could try again with fewer capabilities.
-  const results = JSON.stringify(model.calls[3].request.input);
-  assert.match(results, /cannot start with run/);
-  assert.match(results, /both read and web/);
-  assert.deepEqual(created, [request(['memory', 'web'])]);
+  assert.deepEqual(created, [request]);
+  const result = JSON.stringify(model.calls[1].request.input);
+  assert.match(result, /\\"capabilities\\":\[\\"read\\"\]/);
+  assert.match(result, /\\"waitingForUser\\":\[\\"run\\"\]/);
   const tool = model.calls[0].request.tools.find((t) => t.name === 'create_agent');
   assert.match(JSON.stringify(tool), /capabilities/);
   model.assertComplete();
@@ -251,7 +255,12 @@ test('a server callback cannot return different capabilities than were asked for
   model.assertComplete();
 });
 
-async function liveApp(t: test.TestContext, port: number, model: ScriptedModel) {
+async function liveApp(
+  t: test.TestContext,
+  port: number,
+  model: ScriptedModel,
+  webSearchEnabled = false,
+) {
   const directory = await mkdtemp(path.join(tmpdir(), 'tinkerfleet-capabilities-'));
   const app = createApp({
     port,
@@ -259,7 +268,7 @@ async function liveApp(t: test.TestContext, port: number, model: ScriptedModel) 
     sdkModel: model,
     statePath: path.join(directory, 'state.json'),
     workspaceToolsEnabled: false,
-    webSearchEnabled: false,
+    webSearchEnabled,
   });
   await new Promise<void>((resolve) => app.server.listen(port, '127.0.0.1', resolve));
   t.after(async () => {
@@ -282,7 +291,7 @@ async function liveApp(t: test.TestContext, port: number, model: ScriptedModel) 
     for (let i = 0; i < 200 && app.state().runs.some((r) => r.status === 'running'); i++)
       await new Promise((resolve) => setTimeout(resolve, 5));
   };
-  return { app, post, settle };
+  return { app, post, settle, statePath: path.join(directory, 'state.json') };
 }
 
 test('the profile API saves capabilities and rejects invalid ones', async (t) => {
@@ -341,18 +350,20 @@ test('removing a capability in the library applies to an existing conversation',
   model.assertComplete();
 });
 
-test('a primary-created agent is saved with the capabilities it asked for', async (t) => {
+test('a created bot gets the rest of what it asked for only when the user grants it', async (t) => {
   const model = new ScriptedModel([
     [
       functionCall(
         'create_agent',
-        { name: 'Ada', purpose: 'Explain.', capabilities: ['memory'] },
-        { callId: 'ok' },
+        { name: 'Ada', purpose: 'Research.', capabilities: ['web', 'read', 'memory'] },
+        { callId: 'create-ada' },
       ),
     ],
-    [assistantMessage('Done.')],
+    [assistantMessage('Created Ada; web waits for you.')],
+    [assistantMessage('Before the grant.')],
+    [assistantMessage('After the grant.')],
   ]);
-  const { app, post, settle } = await liveApp(t, 45363, model);
+  const { app, post, settle, statePath } = await liveApp(t, 45363, model, true);
   const primary = (await (
     await post('/api/profiles', { name: 'Orbit', purpose: 'Coordinate.', role: 'coordinator' })
   ).json()) as Persona;
@@ -365,6 +376,37 @@ test('a primary-created agent is saved with the capabilities it asked for', asyn
   );
   await settle();
   const ada = app.state().profiles.find((p) => p.name === 'Ada')!;
-  assert.deepEqual(ada.capabilities, ['memory']);
+  assert.deepEqual(ada.capabilities, ['read', 'memory']);
+  const creation = app
+    .state()
+    .runs.flatMap((r) => r.messages)
+    .find((m) => m.createdAgentId === ada.id)!;
+  assert.deepEqual(creation.requestedCapabilities, ['web']);
+
+  // Ada's own chat, before and after the user grants web from the creation message.
+  const hasWeb = (call: number) =>
+    model.calls[call].request.tools.some((tool) => JSON.stringify(tool).includes('web_search'));
+  const ask = async () => {
+    assert.equal(
+      (await post(`/api/conversations/${creation.conversationId}/runs`, { prompt: 'Hi' })).status,
+      201,
+    );
+    await settle();
+  };
+  await ask();
+  assert.equal(hasWeb(2), false);
+  const granted = await post(`/api/profiles/${ada.id}`, {
+    capabilities: ['web', 'read', 'memory'],
+  });
+  assert.equal(granted.status, 200);
+  await ask();
+  assert.equal(hasWeb(3), true);
+
+  // The request survives a restart of the saved history.
+  const { ConversationStore } = await import('../src/server/conversations.js');
+  const saved = new ConversationStore(statePath).state.runs
+    .flatMap((r) => r.messages)
+    .find((m) => m.createdAgentId === ada.id)!;
+  assert.deepEqual(saved.requestedCapabilities, ['web']);
   model.assertComplete();
 });

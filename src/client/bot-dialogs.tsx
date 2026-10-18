@@ -1,6 +1,6 @@
 /** The bot library, where profiles live, and the editor for one bot's name, purpose and look. */
 import React from 'react';
-import type { Persona } from '../shared/types';
+import type { Capability, Persona } from '../shared/types';
 import {
   appearanceColors as colors,
   appearanceShapes as shapes,
@@ -46,6 +46,64 @@ export function CapabilitySummary({
         </span>
       )}
     </span>
+  );
+}
+
+/**
+ * Under a "Created …" message: what the new bot can do, and the capabilities it asked for that wait
+ * for your OK. Granting saves them on the bot's profile, the same as ticking them in the library.
+ */
+export function CreatedBotCapabilities({
+  bot,
+  requested,
+  server,
+  onGrant,
+}: {
+  bot: Persona;
+  requested: Capability[];
+  server: ServerCapabilities;
+  onGrant: (bot: Persona, capabilities: Capability[]) => Promise<void>;
+}) {
+  const [saving, setSaving] = React.useState(false),
+    [error, setError] = React.useState('');
+  const has = bot.capabilities ?? CAPABILITIES;
+  const waiting = requested.filter((c) => !has.includes(c));
+  const after = normalizeCapabilities([...has, ...waiting]);
+  const names = (list: readonly Capability[]) => list.map((c) => capabilityInfo[c].label);
+  return (
+    <div className="created-capabilities">
+      <span>
+        {bot.name} can use: <CapabilitySummary profile={bot} server={server} />
+      </span>
+      {waiting.length > 0 && (
+        <div className="capability-request" role="group" aria-label="Capabilities waiting for you">
+          <p>
+            {bot.name} also asked for <strong>{names(waiting).join(' and ')}</strong>. A bot your
+            primary creates starts without {waiting.length > 1 ? 'these' : 'it'} until you grant{' '}
+            {waiting.length > 1 ? 'them' : 'it'}.
+          </p>
+          {canLeakWorkspace(after) && <p className="capability-warning">{LEAK_WARNING}</p>}
+          {error && <p role="alert">{error}</p>}
+          <button
+            className="secondary"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setError('');
+              try {
+                await onGrant(bot, after);
+              } catch (e) {
+                setError((e as Error).message);
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {saving ? 'Granting…' : `Grant ${names(waiting).join(' and ')}`}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -156,8 +214,8 @@ export function BotLibraryDialog({
       </div>
       <div className="panel-note">
         Bots are saved with this workspace and stay in sync. Existing conversations keep their
-        original profiles; new conversations use your latest changes. Removing a capability applies
-        at once, in existing conversations too.
+        original names and purposes; new conversations use your latest changes. Capabilities are
+        different: a change applies at once, in existing conversations too.
       </div>
       <div className="actions">
         <button className="secondary" onClick={onCreate}>
@@ -308,8 +366,8 @@ function CapabilityPicker({
     <fieldset className="capabilities full">
       <legend>Capabilities</legend>
       <p className="field-hint">
-        Give this bot only the tools its work needs. Adding one applies to new conversations;
-        removing one applies at once.
+        Give this bot only the tools its work needs. Changes apply at once, in existing
+        conversations too.
       </p>
       {CAPABILITIES.map((c) => (
         <label key={c} className="capability-option">

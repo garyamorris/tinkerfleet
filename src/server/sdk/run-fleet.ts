@@ -6,7 +6,7 @@
 import { tool, type Model, type Tool } from '@openai/agents';
 import { z } from 'zod';
 import type { AgentId, MemoryEntry, Persona } from '../../shared/types.js';
-import { createdAgentProblem, normalizeCapabilities } from '../../shared/capabilities.js';
+import { splitCreatedCapabilities } from '../../shared/capabilities.js';
 import { validateAvailableBots, validateParticipants } from '../personas.js';
 import { requireSafeText } from './actions.js';
 import type { SdkAdapterOptions, SdkEvent, SdkLimits, SdkReasoningEffort } from './contract.js';
@@ -259,7 +259,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
       ? tool({
           name: 'create_agent',
           description:
-            'Create a reusable agent profile with a chosen name, personality, focus, and capabilities (tool groups). Choose the fewest capabilities the work needs: web, read, or memory; never edit or run, and not read with web. Returns the actual new bot identity for this conversation’s roster and future use, or why it was not created; does not execute work.',
+            'Create a reusable agent profile with a chosen name, personality, focus, and capabilities (tool groups). Choose the fewest capabilities the work needs. web, read, and memory are granted at once; edit, run, and web together with read wait until the user grants them. Returns the actual new bot identity, including which capabilities wait for the user; does not execute work.',
           parameters: createAgentSchema,
           errorFunction: null,
           execute: async (input) => {
@@ -267,12 +267,20 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
             const request = createAgentSchema.parse(input);
             requireSafeText(JSON.stringify(request));
             const requestKey = JSON.stringify(request);
+            // The model may ask for any capability, but the server decides which it gets now.
+            const { granted, needsUser } = splitCreatedCapabilities(request.capabilities);
+            const describe = (profile: Persona) =>
+              boundedText(
+                needsUser.length
+                  ? {
+                      ...profile,
+                      waitingForUser: needsUser,
+                      note: 'Created without these. The user can grant them from the creation message or the Bot library; do not claim the agent has them until then.',
+                    }
+                  : profile,
+              );
             const existing = run.createdAgents.get(requestKey);
-            if (existing) return boundedText(existing);
-            // The model may ask for any capability, but the server decides. A refusal is a normal
-            // result, so the model can try again with fewer capabilities.
-            const problem = createdAgentProblem(request.capabilities);
-            if (problem) return boundedText({ created: false, reason: problem });
+            if (existing) return describe(existing);
             if (run.createdAgents.size >= 3)
               throw new SafeSdkError('Only three agents can be created per user turn.');
             if (run.availableBots!.length >= 32)
@@ -284,8 +292,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
             if (
               profile.name !== request.name ||
               profile.purpose !== request.purpose ||
-              JSON.stringify(profile.capabilities) !==
-                JSON.stringify(normalizeCapabilities(request.capabilities)) ||
+              JSON.stringify(profile.capabilities) !== JSON.stringify(granted) ||
               profile.role !== 'agent' ||
               run.team!.some((bot) => bot.id === profile.id) ||
               run.availableBots!.some((bot) => bot.id === profile.id)
@@ -296,7 +303,7 @@ export async function buildRunFleet(run: PrivateRun, context: RunFleetContext) {
             }
             run.availableBots = validateAvailableBots([...run.availableBots!, profile]);
             run.createdAgents.set(requestKey, profile);
-            return boundedText(profile);
+            return describe(profile);
           },
         })
       : undefined;

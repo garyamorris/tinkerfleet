@@ -13,6 +13,7 @@ import {
   type SdkHarness,
   type SdkStatus,
 } from '../src/server/sdk.js';
+import { splitCreatedCapabilities } from '../src/shared/capabilities.js';
 import type { Persona } from '../src/shared/types.js';
 import { customTeam } from './personas.fixture.js';
 
@@ -153,10 +154,11 @@ test('the primary agent creates, messages and groups agents through its real too
   const { adapter } = demoAdapter(t, {
     createAgent: async (_runId, request) => {
       calls.push({ tool: 'create_agent', request });
+      // Like the server, store only what a created bot gets before the user grants more.
       return {
-        ...agent('nova-2', request.name),
+        ...agent(`created-${calls.length}`, request.name),
         purpose: request.purpose,
-        capabilities: request.capabilities,
+        capabilities: splitCreatedCapabilities(request.capabilities).granted,
       };
     },
     messageAgent: async (_runId, request) => {
@@ -172,7 +174,9 @@ test('the primary agent creates, messages and groups agents through its real too
     adapter.start({ runId, prompt, team: [primary], availableBots });
 
   const created = await run('create', 'Create a patient astronomy tutor called Stella.');
-  assert.match(created.output ?? '', /I saved Stella to your bot library/);
+  assert.match(created.output ?? '', /I saved Stella to your bot library\. Try/);
+  const runner = await run('create-runner', 'Create a careful test runner called Rex.');
+  assert.match(runner.output ?? '', /Rex also asked for run, which needs your OK/);
   const asked = await run('ask', 'Ask Nova: What is a light year?');
   assert.match(asked.output ?? '', /sent your message to Nova/);
   const unknown = await run('ask-unknown', 'Ask Zed: Hello');
@@ -187,6 +191,14 @@ test('the primary agent creates, messages and groups agents through its real too
         name: 'Stella',
         purpose: 'Act as a patient astronomy tutor.',
         capabilities: ['memory'],
+      },
+    },
+    {
+      tool: 'create_agent',
+      request: {
+        name: 'Rex',
+        purpose: 'Act as a careful test runner.',
+        capabilities: ['read', 'run', 'memory'],
       },
     },
     { tool: 'message_agent', request: { agentId: 'nova', message: 'What is a light year?' } },

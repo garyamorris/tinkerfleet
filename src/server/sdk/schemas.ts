@@ -58,7 +58,7 @@ export const createAgentSchema = z
       .max(5)
       .refine((list) => new Set(list).size === list.length, 'List each capability once.')
       .describe(
-        'Tool groups for the new agent: web (public web search), read (list and read workspace files), memory (its own notes). edit and run are refused, as is read with web; the user grants those in the Bot library. Use [] for a chat-only agent.',
+        'Tool groups for the new agent: web (public web search), read (list and read workspace files), edit (propose file edits), run (propose commands), memory (its own notes). edit, run, and web together with read wait for the user to grant them. Use [] for a chat-only agent.',
       ),
   })
   .strict();

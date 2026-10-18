@@ -166,8 +166,9 @@ Appearance is another independent field. A random avatar helps distinguish bots
 in the interface. It is not a model setting or an access policy.
 
 The primary can use `create_agent` to request a name, purpose, and capabilities.
-The server validates the request, refuses `edit`, `run`, and `read` with `web`
-for a bot the user has not reviewed, creates a stable profile ID and random
+The server validates the request and grants only `web`, `read`, and `memory` to a
+bot the user has not reviewed; `edit`, `run`, and `web` with `read` wait for the
+user's **Grant** on the creation message. It creates a stable profile ID and random
 appearance, saves them, and creates a direct chat. The message link points to that actual chat.
 
 **Read:** [`createAgent` in app.ts](../src/server/app.ts),

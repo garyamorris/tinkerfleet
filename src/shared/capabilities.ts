@@ -77,25 +77,31 @@ export const canLeakWorkspace = (list: readonly Capability[]): boolean =>
   list.includes('read') && list.includes('web');
 
 /**
- * Bots the primary creates are not reviewed by the user first, so they get a narrower choice:
- * no edit, no run, and not read and web together. The user can grant more in the Bot library.
+ * Bots the primary creates are not reviewed by the user first. They start with what is safe to
+ * give unasked; edit, run, and web together with read wait until the user grants them.
  */
-export function createdAgentProblem(list: readonly Capability[]): string | undefined {
-  const asked = list.filter((c) => c === 'edit' || c === 'run');
-  if (asked.length)
-    return `A created agent cannot start with ${asked.join(' or ')}. Create it without ${asked.length > 1 ? 'them' : 'it'}; the user can grant ${asked.length > 1 ? 'them' : 'it'} in the Bot library.`;
-  if (canLeakWorkspace(list))
-    return 'A created agent cannot have both read and web, because together they can leak workspace files. Choose one; the user can change it in the Bot library.';
-  return undefined;
+export function splitCreatedCapabilities(list: readonly Capability[]): {
+  granted: Capability[];
+  needsUser: Capability[];
+} {
+  const asked = normalizeCapabilities(list);
+  const needsUser = asked.filter(
+    (c) => c === 'edit' || c === 'run' || (c === 'web' && asked.includes('read')),
+  );
+  return { granted: asked.filter((c) => !needsUser.includes(c)), needsUser };
 }
 
 /**
- * A conversation keeps the copy of each profile it started with. Narrowing a bot in the library
- * still applies to those copies at once; widening it applies to new conversations only.
+ * A conversation keeps the copy of each profile it started with, so its name and purpose stay as
+ * they were. Capabilities are different: the library's current choice always applies, so granting
+ * or removing one takes effect in existing conversations too. A bot deleted from the library keeps
+ * the capabilities it was captured with.
  */
-export function withLibraryLimit(profile: Persona, library: readonly Persona[]): Persona {
-  const current = library.find((p) => p.id === profile.id)?.capabilities;
-  if (current === undefined) return profile;
-  const captured = profile.capabilities ?? CAPABILITIES;
-  return { ...profile, capabilities: captured.filter((c) => current.includes(c)) };
+export function withLibraryCapabilities(profile: Persona, library: readonly Persona[]): Persona {
+  const current = library.find((p) => p.id === profile.id);
+  if (!current) return profile;
+  const { capabilities: _captured, ...rest } = profile;
+  return current.capabilities === undefined
+    ? rest
+    : { ...rest, capabilities: current.capabilities };
 }

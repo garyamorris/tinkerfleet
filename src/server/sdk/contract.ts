@@ -130,7 +130,7 @@ export interface SdkStartedGroup {
 export interface SdkCreateAgentRequest {
   name: string;
   purpose: string;
-  /** Asked for by the model; the server refuses edit, run, and read with web. */
+  /** Asked for by the model; edit, run, and web with read wait for the user to grant them. */
   capabilities: Capability[];
 }
 export interface SdkMessageAgentRequest {

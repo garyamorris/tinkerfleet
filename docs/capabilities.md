@@ -41,11 +41,11 @@ The starter bots show least privilege. Orbit can read and remember; Scout can se
 
 A profile saved before capabilities existed has no `capabilities` field. It keeps its old behavior: every enabled tool. Opening it in the editor shows every box ticked; saving stores that choice explicitly. Historical profiles can also retain old role labels so their saved conversations remain readable.
 
-Edit a bot's capabilities in **Bot library → Edit**. The chat header shows what each participant can do now. A conversation keeps the copy of each profile it started with, but removing a capability in the library applies to existing conversations at once. Adding one applies to new conversations only.
+Edit a bot's capabilities in **Bot library → Edit**, and see them in the **Talk to a bot** picker. The chat header shows what each participant can do now. A conversation keeps the name and purpose each profile had when it started, but capabilities always follow the library: granting or removing one applies to existing conversations at once. A bot deleted from the library keeps the capabilities its conversations captured.
 
 The primary has additional coordination tools:
 
-- `create_agent` saves a reusable personality with the capabilities the primary asks for, and provides its direct-chat link. The user has not reviewed that bot, so the server refuses `edit`, `run`, and `read` with `web` together; the refusal is returned to the model so it can try again with less. You can grant more in the Bot library. Creation itself does not ask that agent to perform a task.
+- `create_agent` saves a reusable personality, asks for capabilities, and provides its direct-chat link. You have not reviewed that bot yet, so it starts with only `web`, `read`, and `memory`. `edit`, `run`, and `web` together with `read` wait for you: the **Created …** message lists them with a **Grant** button (with the leak warning when it applies), and the tool result tells the primary what is waiting. You can also grant them later in the Bot library. Creation itself does not ask that agent to perform a task.
 - `message_agent` sends an explicit brief to a registered agent's own chat. The recipient can use its own chat history and memory. The primary's private transcript is not copied. A bounded reply or status is relayed to the primary chat and is available on its next turn; the relay does not automatically buy another model call.
 - `start_group_conversation` starts a separate group with the primary and selected agents. The supplied brief is its initial context. Within a group, the primary can use the selected agents' `ask_*` tools.
 
@@ -55,7 +55,7 @@ IDs, rather than names, route these operations. Two agents can have similar pers
 
 **Trace the implementation:** [capability rules](../src/shared/capabilities.ts), [profile validation](../src/server/personas.ts), [agent construction](../src/server/sdk/fleet.ts), [SDK tools](../src/server/sdk/run-fleet.ts), [server-owned creation and delivery](../src/server/app.ts), and [saved provenance checks](../src/server/conversations.ts).
 
-**Try it without a key:** in demo mode, ask the primary `Create a patient writing coach named Ada`, then `Ask Ada: Hello`. These are explicit scripted patterns, not general language understanding. The created profile starts with memory only and can later be used in live mode. Then ask the primary to fix the failing tests: Scout cannot read files, so Maker inspects and fixes, and Checker runs the tests. [Lesson 12](../lessons/README.md#12-give-each-bot-only-what-it-needs) shows the same rules from code.
+**Try it without a key:** in demo mode, ask the primary `Create a patient writing coach named Ada`, then `Ask Ada: Hello`. These are explicit scripted patterns, not general language understanding. The created profile starts with memory only and can later be used in live mode. Then try `Create a careful test runner called Rex`: Rex starts with read and memory, and the message under it offers to grant run. Then ask the primary to fix the failing tests: Scout cannot read files, so Maker inspects and fixes, and Checker runs the tests. [Lesson 12](../lessons/README.md#12-give-each-bot-only-what-it-needs) shows the same rules from code.
 
 ## What “memory” means here
 

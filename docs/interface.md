@@ -30,7 +30,10 @@ This is a useful way to inspect the interaction before trying real models.
 In live mode, try: **“Create a patient Python tutor called Ada.”** The primary
 can turn that request into a saved name and purpose/personality. Its creation
 card offers **Open this bot’s chat**: the direct conversation already exists,
-so one click opens it.
+so one click opens it. Under the card you see what the new bot can use. If the
+primary asked for edit files, run commands, or web together with read files, the
+bot starts without them and the card offers a **Grant** button; nothing is granted
+until you click it.
 
 You can also open the **Bot library** (**Bots** on a phone), choose **Create persona**, and write the profile
 yourself. Saving a new persona opens its direct chat. New profiles receive a

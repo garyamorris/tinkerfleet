@@ -355,7 +355,7 @@ before capabilities existed, with synthetic tools under the real names. It check
 each agent's tool list, then switches web search off and checks that Scout loses
 it. It checks that no starter has both read and web, which together can leak files
 (see [SECURITY.md](../SECURITY.md#untrusted-text-and-web-search)), and that a bot
-the primary creates cannot start with edit or run. Finally a scripted model asks
+the primary creates starts without edit or run until you grant them. Finally a scripted model asks
 Checker to call `edit_file`. The run fails, and the workspace is never touched,
 because Checker never had that tool.
 

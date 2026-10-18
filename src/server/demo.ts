@@ -133,17 +133,27 @@ function primaryStep(r: RequestView): AgentOutputItem[] {
   if (create) {
     const created = resultOf(r, 'create_agent');
     if (created !== undefined) {
-      const name = parseJson<{ name?: string }>(created)?.name ?? create[2].trim();
+      const result = parseJson<{ name?: string; waitingForUser?: string[] }>(created);
+      const name = result?.name ?? create[2].trim();
+      const waiting = result?.waitingForUser ?? [];
       return say(
-        `I saved ${name} to your bot library. Try “Ask ${name}: Hello”, or open their chat. In live mode their personality shapes real replies; this demo model is scripted.`,
+        `I saved ${name} to your bot library.${waiting.length ? ` ${name} also asked for ${waiting.join(' and ')}, which needs your OK: use the Grant button above.` : ''} Try “Ask ${name}: Hello”, or open their chat. In live mode their personality shapes real replies; this demo model is scripted.`,
       );
     }
+    // Ask for the capabilities the description suggests; the server decides which it gets now.
+    const description = create[1];
+    const capabilities = [
+      /\b(?:research|search|web|news)\w*/i.test(description) && 'web',
+      /\b(?:code|file|fix|edit|test|review)\w*/i.test(description) && 'read',
+      /\b(?:code|fix|edit|write|build)\w*/i.test(description) && 'edit',
+      /\b(?:test|run|command|check)\w*/i.test(description) && 'run',
+      'memory',
+    ].filter(Boolean);
     return [
-      // A created agent starts with only its own notes; the user can grant more in the Bot library.
       call('create_agent', {
         name: create[2].trim(),
-        purpose: `Act as ${create[1].trim()}.`,
-        capabilities: ['memory'],
+        purpose: `Act as ${description.trim()}.`,
+        capabilities,
       }),
     ];
   }

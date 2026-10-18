@@ -1,7 +1,9 @@
 /** One task in a conversation: its messages, any pending approval, live activity, and status. */
 import React from 'react';
-import type { AgentId, Approval, Conversation, Persona, Run } from '../shared/types';
+import type { AgentId, Approval, Capability, Conversation, Persona, Run } from '../shared/types';
+import type { ServerCapabilities } from '../shared/capabilities';
 import { ApprovalCard } from './approval-card';
+import { CreatedBotCapabilities } from './bot-dialogs';
 import { MessageSources, MessageText } from './citations';
 import { agentLabel, character, resolveAgent, starterProfiles } from './profiles';
 import { RunActivity } from './run-activity';
@@ -15,7 +17,9 @@ export function ChatRun({
   workspaceRoot,
   busy,
   creating,
+  server,
   onDecide,
+  onGrant,
   onOpenBot,
   onChooseChat,
   onShowDetails,
@@ -27,7 +31,9 @@ export function ChatRun({
   workspaceRoot: string;
   busy: boolean;
   creating: boolean;
+  server: ServerCapabilities;
   onDecide: (run: Run, approval: Approval, approved: boolean) => Promise<void>;
+  onGrant: (bot: Persona, capabilities: Capability[]) => Promise<void>;
   onOpenBot: (bot: Persona, conversationId?: string) => void;
   onChooseChat: (id: string) => void;
   onShowDetails: (runId: string, tab: 'Activity' | 'Changes') => void;
@@ -84,6 +90,14 @@ export function ChatRun({
                   </span>
                   <Icon name="chevron" size={16} />
                 </button>
+              )}
+              {m.createdAgentId && profiles.some((p) => p.id === m.createdAgentId) && (
+                <CreatedBotCapabilities
+                  bot={profiles.find((p) => p.id === m.createdAgentId)!}
+                  requested={m.requestedCapabilities ?? []}
+                  server={server}
+                  onGrant={onGrant}
+                />
               )}
               {m.conversationId && !m.createdAgentId && (
                 <button
