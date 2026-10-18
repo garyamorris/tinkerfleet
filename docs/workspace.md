@@ -48,7 +48,7 @@ The runner uses an argument vector and `shell: false`. It does not expand pipes,
 
 ### Working directory versus argument paths
 
-The model must include `cwd`: use `null` or `"."` for the selected workspace, or a permitted existing relative subdirectory. The SDK normalizes this input into the runner’s internal action, where `cwd` is optional; omitting it is not valid in the model-facing tool request. If the model provides the trusted selected folder or a subdirectory as an absolute `cwd`, the SDK normalizes it to a relative path before approval. An outside-workspace `cwd`, traversal, or symlink directory is rejected.
+The model must include `cwd`: use `null` or `"."` for the selected workspace, or a permitted existing relative subdirectory. Leaving `cwd` out of the model-facing request is not valid. Tinkerfleet's SDK adapter then converts the request into the runner’s internal action, where `cwd` is optional. If the model gives the selected folder or a subdirectory as an absolute `cwd`, the adapter's `normalizeCommandCwd` function in [sdk.ts](../src/server/sdk.ts) turns it into a relative path before approval. That function is Tinkerfleet code, not part of the Agents SDK. An outside-workspace `cwd`, traversal, or symlink directory is rejected.
 
 An argument is different. An explicitly proposed absolute path in `args` may refer outside the workspace. Its effect depends on the installed program and your OS permissions. Review the destination as well as the program name; choosing a workspace does not make all other machine paths inaccessible.
 

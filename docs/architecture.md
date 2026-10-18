@@ -13,7 +13,7 @@ responses; the server and SDK make that loop work.
 
 ## Follow one request
 
-Suppose you ask the primary, “What version of Codex is installed?” With local
+Suppose you ask the primary, “What version of Node.js is installed?” With local
 tools enabled, the flow is:
 
 ```mermaid
@@ -37,15 +37,17 @@ flowchart TD
 The model might request the `run_command` tool with these arguments:
 
 ```json
-{"executable":"codex","args":["--version"],"cwd":null}
+{"executable":"node","args":["--version"],"cwd":null}
 ```
 
-That JSON is a proposed function call. The model has not launched Codex. The
+That JSON is a proposed function call. The model has not launched Node. The
 local server validates the proposal and shows an approval card. After approval,
 the native runner launches the resolved executable with those exact arguments.
 Its result goes back to the model, which can explain the version it actually
-observed. `cwd: null` means the selected workspace; the SDK also normalizes an
-absolute working directory inside that workspace to the matching relative path.
+observed. `cwd: null` means the selected workspace. If the model sends an
+absolute working directory inside that workspace, Tinkerfleet's own
+`normalizeCommandCwd` in [sdk.ts](../src/server/sdk.ts) turns it into the
+matching relative path. This is app code, not an Agents SDK feature.
 
 Start reading at `startRun` in [app.ts](../src/server/app.ts), then
 `createSdkAdapter` in [sdk.ts](../src/server/sdk.ts). The executable work lives in

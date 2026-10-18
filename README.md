@@ -93,7 +93,8 @@ share the enabled tools. Changing a bot’s name or avatar does not change its p
 | Make your own version | [Extend Tinkerfleet](docs/extending.md) |
 | Check whether your changes work | [Testing an agent application](docs/testing.md) |
 
-For a first pass, follow the build guide and run lessons 0–6 in order. Lesson 0
+For a first pass, run lessons 0–6 in order. The build guide links to each lesson
+at the step where it fits, so it visits them in a different order. Lesson 0
 shows the agent loop itself with a scripted model; lessons 1–6 use real application
 code. Each explains one idea and includes an experiment. All seven run without a
 model call. The later native-tool lessons use temporary files and short local

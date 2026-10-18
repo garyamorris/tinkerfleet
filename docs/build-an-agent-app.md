@@ -90,7 +90,7 @@ The useful development question is: **what is the smallest function that gives
 the agent a capability it currently lacks?** Reading a text file is a clearer
 first tool than a general-purpose “do anything” function.
 
-**Read:** `readTools` in [sdk.ts](../src/server/sdk.ts), then
+**Read:** `readTools` inside `makeFleet` in [sdk.ts](../src/server/sdk.ts), then
 [workspace validation](../src/server/runner-policy.ts).
 **Run:** `npm run lesson:3`.
 **Build next:** the [extension guide](extending.md) walks through adding a small tool.
@@ -119,7 +119,7 @@ This is an application protocol with state transitions. Writing “always ask
 permission” in an agent’s personality cannot implement it.
 
 **Read:** [how approvals work](approvals.md).
-**Run:** `npm run lesson:4`, then `npm run lesson:5`.
+**Run:** `npm run lesson:4`.
 **Try:** deny a command in the demo. Find the code that prevents execution rather
 than just changing the button’s appearance.
 
@@ -140,7 +140,9 @@ product tradeoff: simple short-lived tools are easy to manage, but long builds
 need background job IDs, progress, cancellation, and result collection.
 
 **Read:** [workspace tools](workspace.md) and [native-runner.ts](../src/server/native-runner.ts).
-**Run:** `npm run lesson:6`.
+**Run:** `npm run lesson:5` to approve a real edit and command in a temporary
+folder. Then run `npm run lesson:6` to see which files the file tools can see,
+and how a changed file changes the workspace digest.
 **Design exercise:** sketch what a `start_job` result would contain. How would a
 later `get_job_status` call distinguish “still running” from “finished successfully”?
 These job tools are an extension idea, not existing Tinkerfleet tools.

@@ -22,7 +22,7 @@ In live mode, the SDK loads this bot’s saved notes and gives it `recall_memory
 
 A tool gives an agent a capability it cannot get by changing its personality. Try `text_file_stats`: it reads one permitted workspace file and returns character and nonempty-line counts.
 
-In [`src/server/sdk.ts`](../src/server/sdk.ts), find `const readTools = workspaceToolsEnabled ? [` inside the session setup. Add this entry beside `read_file`, before the array’s closing `] : []`. The surrounding module already imports `tool` and `z`, and provides `run`, `options`, `assertActive`, and `boundedText`.
+In [`src/server/sdk.ts`](../src/server/sdk.ts), find the `makeFleet` function inside `createSdkAdapter`. In `makeFleet`, find `const readTools = workspaceToolsEnabled ? [`. (`createFleetAgents` has a different `readTools` line; leave that one alone.) Add this entry beside `read_file`, before the array’s closing `] : []`. The module already imports `tool` and `z`, and `run`, `options`, `assertActive`, and `boundedText` are already in scope inside `makeFleet`.
 
 ```ts
 tool({

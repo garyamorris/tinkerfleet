@@ -44,9 +44,13 @@ npm run lesson:1
 **Learn:** an SDK `Agent` holds instructions and an explicit set of tools.
 Constructing one does not call a model.
 
-**What happens:** the lesson constructs Orbit through the real fleet factory,
-checks that its instructions retain responsibility for the task, and verifies
-that this single-agent configuration has no handoffs or tools.
+**What happens:** the lesson builds the primary agent from a profile named Orbit,
+using the real fleet factory. Orbit is the profile's display name; the SDK agent
+itself is always named `coordinator`. The lesson checks that its instructions
+retain responsibility for the task, and that this single-agent configuration has
+no tools and no handoffs. An SDK *handoff* transfers the conversation to another
+agent. Tinkerfleet uses agents as tools (`asTool`, lesson 2) instead, so the
+coordinator keeps control.
 
 **Expect:** `Primary agent: one task owner, explicit tools, zero model calls.`
 
@@ -101,9 +105,9 @@ The active app supports installed local executables with structured arguments,
 including an explicitly requested shell. This lesson does not resolve an
 executable or grant approval. The native runner performs those later steps.
 
-**Try:** add an unknown field to an otherwise valid command and assert rejection.
-Change the shell script and observe that it remains valid input: what must a
-person see before approving it?
+**Try:** the lesson prints this exercise. Add an assertion that an edit with an
+absolute path, such as `/tmp/sum.js`, is rejected. Then answer: why must an
+approval for an explicit `sh -c` command show the full script?
 
 **Source:** [03-tools.ts](03-tools.ts),
 [runner-policy.ts](../src/server/runner-policy.ts), then
