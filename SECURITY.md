@@ -65,6 +65,8 @@ Keep credentials out of prompts, profiles, memory, and search queries. Redaction
 
 The Git-ignored `.tinkerfleet/conversations.json` contains saved conversations, profiles, and other public app views such as drafts and artifacts. Bot notes are stored separately in `.tinkerfleet/conversations.json.memories.json`. “Public view” means safe for this app’s browser contract, not safe to publish. Neither file is encrypted. Do not share them as debugging fixtures. Raw SDK state and approval grants are not restored from that file.
 
+The **Trace** tab shows what each model call sent and received, including instructions, file contents and command output that became model context. It is a redacted, bounded summary held in server memory only; it is never written to disk and is gone on restart. It is served only to the same authenticated browser session as the rest of the API. See [Reading a trace](docs/traces.md).
+
 Restart preserves saved history but cancels unfinished runs and denies pending approvals. It cannot reverse previous filesystem or command effects.
 
 The server binds to loopback and checks Host, Origin, and mutation tokens. In development it forwards only the browser app’s own files to Vite (`index.html`, `src/client/`, `src/shared/`, and Vite’s client and prebundled dependencies). Workspace files and `.tinkerfleet/` are therefore not served from the app’s origin, so an HTML page an agent writes cannot run as the app and use its approval controls. Do not select Tinkerfleet’s own source folder as the workspace. These protect against unrelated web pages; they are not multi-user authentication or protection from a malicious local process. Do not expose this server as a public service.

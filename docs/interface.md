@@ -116,6 +116,9 @@ more useful evidence than a sentence promising to do the work. A started event
 alone is not proof of completion. The UI only reports activity supplied by the
 local tools or provider.
 
+To see what each model call actually sent and received, open **Task details**
+and choose **Trace**. See [Reading a trace](traces.md).
+
 ## Leave and return
 
 The sidebar keeps named chats with previews and status. You can rename a

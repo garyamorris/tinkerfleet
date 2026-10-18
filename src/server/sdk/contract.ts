@@ -1,6 +1,7 @@
 /** Types and limits shared by the agent layer, the HTTP app and tests. */
 import type { Persona, Message, MessageSource, MemoryEntry } from '../../shared/types.js';
 import type { Model } from '@openai/agents';
+import type { TraceStore } from './trace.js';
 
 export type SdkAction =
   | { kind: 'command'; executable: string; args: string[]; cwd?: string }
@@ -158,6 +159,8 @@ export interface SdkAdapterOptions {
   /** Trusted server callback: deliver a private message to a registered agent. */
   messageAgent?: (runId: string, request: SdkMessageAgentRequest) => Promise<SdkMessagedAgent>;
   onEvent?: (event: SdkEvent) => void;
+  /** Where each model call is summarized for the trace viewer. Memory only; omit to record nothing. */
+  trace?: TraceStore;
   /** A Model object replaces network I/O in tests. Strings are runtime model IDs. */
   model?: string | Model;
   /** Explicit opt-in; default comes from TINKERFLEET_MODE=live. */

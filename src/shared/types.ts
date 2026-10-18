@@ -103,6 +103,72 @@ export interface MemoryEntry {
   createdAt: number;
   updatedAt: number;
 }
+/**
+ * A trace is what one run's model calls actually looked like: the request each call sent and the
+ * response it got back. It is a bounded, redacted summary held in server memory, not the raw
+ * provider payload, and it never contains model reasoning.
+ */
+export type TraceItemKind =
+  | 'system'
+  | 'user'
+  | 'assistant'
+  | 'tool_call'
+  | 'tool_result'
+  | 'hosted_tool'
+  | 'reasoning'
+  | 'other';
+export interface TraceItem {
+  kind: TraceItemKind;
+  /** The tool name, for tool calls and results. */
+  name?: string;
+  /** The text, shortened to the trace limit. `chars` is the full length before shortening. */
+  text?: string;
+  chars: number;
+  /** On request items: true when the previous call from this agent did not already send it. */
+  fresh?: boolean;
+}
+export interface TraceTool {
+  name: string;
+  type: 'function' | 'hosted' | 'other';
+  description?: string;
+  /** Argument names the model may fill in, for function tools. */
+  parameters?: string[];
+}
+export interface TraceCall {
+  /** Position in the run, starting at 1. */
+  index: number;
+  agent: AgentId;
+  at: number;
+  durationMs: number;
+  instructions: string;
+  instructionsChars: number;
+  tools: TraceTool[];
+  settings: { reasoningEffort?: string; maxOutputTokens?: number; toolChoice?: string };
+  /** Characters sent after trimming, the limit, and what trimming did. `charsBefore` is untrimmed. */
+  context: {
+    chars: number;
+    charsBefore: number;
+    budget: number;
+    removedItems: number;
+    trimmedToolOutputs: number;
+  };
+  /** What was sent. When a long history is shortened for the trace, `omittedItems` counts the oldest. */
+  input: TraceItem[];
+  omittedItems: number;
+  /** What came back. Empty when the call failed. */
+  output: TraceItem[];
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number } | null;
+  /** A fixed, safe message when the call failed. */
+  error?: string;
+}
+export interface RunTrace {
+  runId: string;
+  /** False when this server has no trace for the run, for example after a restart. */
+  available: boolean;
+  calls: TraceCall[];
+  /** True when limits stopped the trace from recording every call. */
+  truncated: boolean;
+}
 export interface AppState {
   memories: MemoryEntry[];
   webSearchEnabled: boolean;

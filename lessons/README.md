@@ -1,7 +1,8 @@
 # Learn to build agent tools
 
-These ten short programs walk from watching the agent loop run to approving a
-real local action, then measuring whether an agent actually works. Run them from the repository root with Node.js 22.12+ after
+These eleven short programs walk from watching the agent loop run to approving a
+real local action, then measuring whether an agent works and reading what each
+model call actually saw. Run them from the repository root with Node.js 22.12+ after
 `npm ci`. They make no model requests and need no API key. Each uses assertions:
 a successful run prints its explanation and exits normally; a failed assertion
 stops the lesson.
@@ -270,6 +271,37 @@ read the failure. With a live model, compare scores for two models or two
 reasoning-effort settings.
 
 **Source:** [09-eval.ts](09-eval.ts).
+
+## 10. Read a trace
+
+```sh
+npm run lesson:10
+```
+
+**Learn:** an agent has no memory between model calls. Every step sends the whole
+request again, so reading a trace of what each call sent and got back is the
+quickest way to understand cost, context limits, and why an agent behaved as it
+did.
+
+**What happens:** a two-step task runs through the app's real adapter with a
+`TraceStore` attached. The lesson prints each call and checks three things. The
+second call re-sends the first call's request and adds only the tool call and its
+result. Instructions and tool definitions outweigh your question many times over.
+And a long tool result is shortened before it is sent again, so the trace shows
+what the model received, not what your code returned. The app's **Trace** tab
+under Task details shows the same data for any run; see
+[Reading a trace](../docs/traces.md).
+
+**Expect:** `10. Trace: the model starts from nothing on every call, so each step
+sends everything again.`
+
+**Try:** add a third scripted call and predict how many items it sends and how
+many are new. Then lower `maxInputChars` in the adapter's `limits` until the trace
+reports `removedItems`.
+
+**Source:** [10-trace.ts](10-trace.ts), then
+[sdk/trace.ts](../src/server/sdk/trace.ts) and
+[the model wrapper](../src/server/sdk/model.ts) where each call is recorded.
 
 ## Connect the pieces
 

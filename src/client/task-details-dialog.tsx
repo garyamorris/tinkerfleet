@@ -2,7 +2,10 @@
 import React from 'react';
 import type { AgentId, AppState, Persona, Run } from '../shared/types';
 import { character } from './profiles';
+import { TraceView } from './trace-view';
 import { Avatar, Diff, Icon, Modal, statusText } from './ui';
+
+const tabs = ['Activity', 'Trace', 'Output', 'Changes'];
 
 export function TaskDetailsDialog({
   state,
@@ -84,7 +87,7 @@ export function TaskDetailsDialog({
         </div>
       )}
       <div className="inspector-tabs" role="tablist" aria-label="Run inspector">
-        {['Activity', 'Output', 'Changes'].map((t) => (
+        {tabs.map((t) => (
           <button
             key={t}
             id={`tab-${t}`}
@@ -94,17 +97,16 @@ export function TaskDetailsDialog({
             tabIndex={tab === t ? 0 : -1}
             onClick={() => onTab(t)}
             onKeyDown={(e) => {
-              const tabs = ['Activity', 'Output', 'Changes'],
-                i = tabs.indexOf(t),
+              const i = tabs.indexOf(t),
                 next =
                   e.key === 'ArrowRight'
-                    ? tabs[(i + 1) % 3]
+                    ? tabs[(i + 1) % tabs.length]
                     : e.key === 'ArrowLeft'
-                      ? tabs[(i + 2) % 3]
+                      ? tabs[(i + tabs.length - 1) % tabs.length]
                       : e.key === 'Home'
                         ? tabs[0]
                         : e.key === 'End'
-                          ? tabs[2]
+                          ? tabs[tabs.length - 1]
                           : null;
               if (next) {
                 e.preventDefault();
@@ -148,6 +150,14 @@ export function TaskDetailsDialog({
           ) : (
             <p className="empty-state">
               Every step, in plain sight. Start a task to see the activity.
+            </p>
+          )
+        ) : tab === 'Trace' ? (
+          run ? (
+            <TraceView key={run.id} run={run} nameFor={(id) => person(id).name} />
+          ) : (
+            <p className="empty-state">
+              Start a task to see what each model call sent and got back.
             </p>
           )
         ) : tab === 'Output' ? (

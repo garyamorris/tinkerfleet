@@ -118,6 +118,7 @@ sequentially, sharing earlier replies from that run.
 | Conversation history | Recent messages from this chat, persisted across restarts | [conversations.ts](../src/server/conversations.ts) |
 | Saved memory | Explicit notes belonging to one profile ID, reused across its chats | [memory.ts](../src/server/memory.ts) and [memory guide](memory.md) |
 | SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk/adapter.ts](../src/server/sdk/adapter.ts) |
+| Trace | A bounded, redacted summary of each model call's request and reply; server memory only, never saved | [sdk/trace.ts](../src/server/sdk/trace.ts) and [Reading a trace](traces.md) |
 
 The server selects history from the current conversation. The SDK adapter builds
 a bounded recent-history context from it; [Limits](capabilities.md#limits) gives
