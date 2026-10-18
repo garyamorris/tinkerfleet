@@ -18,7 +18,7 @@ real model when you are ready.
 
 ## Start with something you can see
 
-You need Node.js 24 or later and npm.
+You need Node.js 22.12 or later and npm.
 
 ```sh
 git clone https://github.com/garyamorris/tinkerfleet.git
@@ -93,7 +93,8 @@ share the enabled tools. Changing a bot’s name or avatar does not change its p
 | Make your own version | [Extend Tinkerfleet](docs/extending.md) |
 | Check whether your changes work | [Testing an agent application](docs/testing.md) |
 
-For a first pass, follow the build guide and run lessons 0–6 in order. Lesson 0
+For a first pass, run lessons 0–6 in order. The build guide links to each lesson
+at the step where it fits, so it visits them in a different order. Lesson 0
 shows the agent loop itself with a scripted model; lessons 1–6 use real application
 code. Each explains one idea and includes an experiment. All seven run without a
 model call. The later native-tool lessons use temporary files and short local
@@ -103,9 +104,9 @@ commands to demonstrate actual execution.
 
 | Part | Start reading |
 | --- | --- |
-| Chat UI, profiles, and approval cards | [`src/client/main.tsx`](src/client/main.tsx) |
+| Chat UI, profiles, and approval cards | [`src/client/main.tsx`](src/client/main.tsx), then panels such as [`chat-run.tsx`](src/client/chat-run.tsx) and [`approval-card.tsx`](src/client/approval-card.tsx) |
 | HTTP routes and conversation coordination | [`src/server/app.ts`](src/server/app.ts) |
-| Agents, tool definitions, model loop, and SDK events | [`src/server/sdk.ts`](src/server/sdk.ts) |
+| Agents, tool definitions, model loop, and SDK events | [`src/server/sdk.ts`](src/server/sdk.ts), a short map of the modules in [`src/server/sdk/`](src/server/sdk/) |
 | Scripted demo behavior | [`src/server/demo.ts`](src/server/demo.ts) |
 | Conversation history and restart behavior | [`src/server/conversations.ts`](src/server/conversations.ts) |
 | Saved facts for each bot | [`src/server/memory.ts`](src/server/memory.ts) |
@@ -136,11 +137,12 @@ Live requests can send conversation context, saved memories, and tool results to
 the model provider. These are useful design decisions to understand when building
 your own agent app; [the execution and data boundaries](SECURITY.md) explain them.
 
-There is no fixed turn or model-call count limit by default. Token and runtime
-budgets remain, and each local command currently has a 15-second timeout. This
-small teaching implementation is therefore best suited to short experiments;
-long coding jobs need a different command lifecycle. The
-[capability guide](docs/capabilities.md) separates what works today from extension ideas.
+There is no turn or model-call cap by default. Token and runtime budgets remain,
+and each local command has a short, fixed timeout. So this small teaching app
+suits short experiments; long coding jobs need a different command lifecycle.
+The [capability guide](docs/capabilities.md) separates what works today from
+extension ideas, and its [Limits](docs/capabilities.md#limits) section lists
+every number.
 
 ## Continue learning
 

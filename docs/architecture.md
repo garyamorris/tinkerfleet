@@ -13,7 +13,7 @@ responses; the server and SDK make that loop work.
 
 ## Follow one request
 
-Suppose you ask the primary, “What version of Codex is installed?” With local
+Suppose you ask the primary, “What version of Node.js is installed?” With local
 tools enabled, the flow is:
 
 ```mermaid
@@ -37,27 +37,29 @@ flowchart TD
 The model might request the `run_command` tool with these arguments:
 
 ```json
-{"executable":"codex","args":["--version"],"cwd":null}
+{"executable":"node","args":["--version"],"cwd":null}
 ```
 
-That JSON is a proposed function call. The model has not launched Codex. The
+That JSON is a proposed function call. The model has not launched Node. The
 local server validates the proposal and shows an approval card. After approval,
 the native runner launches the resolved executable with those exact arguments.
 Its result goes back to the model, which can explain the version it actually
-observed. `cwd: null` means the selected workspace; the SDK also normalizes an
-absolute working directory inside that workspace to the matching relative path.
+observed. `cwd: null` means the selected workspace. If the model sends an
+absolute working directory inside that workspace, Tinkerfleet's own
+`normalizeCommandCwd` in [sdk/actions.ts](../src/server/sdk/actions.ts) turns it into the
+matching relative path. This is app code, not an Agents SDK feature.
 
 Start reading at `startRun` in [app.ts](../src/server/app.ts), then
-`createSdkAdapter` in [sdk.ts](../src/server/sdk.ts). The executable work lives in
+`createSdkAdapter` in [sdk/adapter.ts](../src/server/sdk/adapter.ts). The executable work lives in
 [native-runner.ts](../src/server/native-runner.ts), not in the browser or the model.
 
 ## A bot, a conversation, and a run are different things
 
-| Object | What it represents | Example |
-| --- | --- | --- |
-| Bot profile | Reusable identity, name, personality, and appearance | Ada, a patient programming tutor |
-| Conversation | A particular chat with captured participants | Your Python questions for Ada |
-| Run | One submitted request and the work it triggers | Explaining a loop, possibly using several model calls |
+A bot profile is a reusable identity. A conversation is one chat with the
+participants it captured. A run is one submitted request and all the work it
+triggers, possibly several model calls. The
+[build guide's table](build-an-agent-app.md#2-build-the-chat-before-adding-autonomy)
+compares the three with examples.
 
 A bot's persistent identity is its profile `id`, not its display name. Two bots
 named Ada can have different IDs and different memories. Existing conversations
@@ -89,7 +91,7 @@ automatically call the primary model again. A later user message starts the next
 primary turn. See `messageAgent` and `relayAgentReplies` in [app.ts](../src/server/app.ts).
 
 Group delegation works within the group's run. `createFleetAgents` in
-[sdk.ts](../src/server/sdk.ts) exposes an `ask_*` tool for each selected ordinary
+[sdk/fleet.ts](../src/server/sdk/fleet.ts) exposes an `ask_*` tool for each selected ordinary
 bot, using SDK `agent.asTool(...)`. The primary supplies a self-contained request;
 the selected bot uses its own instructions and tools, then returns a result to
 the primary. These nested calls share the group's token, call-count, and runtime
@@ -101,11 +103,11 @@ memories can still apply. A new group starts fresh history. Its child run has
 separate budgets and a separate stop control from the originating direct run.
 Stopping the source does not stop an already-created child.
 
-Current coordination bounds are three new bots and three distinct individual
-messages per primary run, and one group with up to eight participants including
-the primary. The library holds up to 32 profiles. Only a direct primary gets
-creation, messaging, and group-start tools. A group primary gets its selected
-`ask_*` tools; ordinary bots cannot recursively create more collaborations.
+Each primary run can create only a few bots, send only a few messages, and
+start one group. Groups and the bot library have size caps. The numbers are in
+[Limits](capabilities.md#limits). Only a direct primary gets creation, messaging,
+and group-start tools. A group primary gets its selected `ask_*` tools; ordinary
+bots cannot recursively create more collaborations.
 The adapter also supports groups without a primary by running each selected bot
 sequentially, sharing earlier replies from that run.
 
@@ -115,12 +117,13 @@ sequentially, sharing earlier replies from that run.
 | --- | --- | --- |
 | Conversation history | Recent messages from this chat, persisted across restarts | [conversations.ts](../src/server/conversations.ts) |
 | Saved memory | Explicit notes belonging to one profile ID, reused across its chats | [memory.ts](../src/server/memory.ts) and [memory guide](memory.md) |
-| SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk.ts](../src/server/sdk.ts) |
+| SDK `RunState` | Current loop, tool results, and approval interruptions; held in server memory | [sdk/adapter.ts](../src/server/sdk/adapter.ts) |
 
-The server selects history from the current conversation. The SDK builds a
-recent-history context of at most 8,000 characters. Outgoing context management
-also shortens long tool output and removes older exchanges while preserving
-required tool-call/result pairs. It does not rewrite approval arguments. See
+The server selects history from the current conversation. The SDK adapter builds
+a bounded recent-history context from it; [Limits](capabilities.md#limits) gives
+the size. Outgoing context management also shortens long tool output and removes
+older exchanges while preserving required tool-call/result pairs. It does not
+rewrite approval arguments. See
 [context-budget.ts](../src/server/context-budget.ts).
 
 Saved memory is loaded for each selected bot at run start and included only in
@@ -145,9 +148,9 @@ cannot read or change local files through workspace tools.
 the pause; Tinkerfleet's [approval store](../src/server/approval.ts) binds the
 reviewed action to execution. See [approvals](approvals.md) for the full flow.
 
-Approved native commands run with the host user's permissions. The selected
-working directory is not a sandbox. An explicit command can use user-requested
-absolute paths, and completed effects are not undone by cancellation. The
+Approved native commands run with the host user's permissions, so the selected
+folder does not confine them. An explicit command can use user-requested
+absolute paths, and cancellation does not undo completed effects. The
 runner supplies bounded output, command timeouts, and a minimal environment.
 See [local workspace tools](workspace.md) for paths and command behavior.
 

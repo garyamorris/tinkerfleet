@@ -6,7 +6,7 @@ want the bigger picture first, read [Build an agent app](build-an-agent-app.md).
 
 ## 1. Run the no-key demo
 
-Install **Node.js 24 or later** and npm. In the repository root, run:
+Install **Node.js 22.12 or later** and npm. In the repository root, run:
 
 ```sh
 npm ci
@@ -15,7 +15,9 @@ npm run dev
 
 Open **http://localhost:4317** and leave the terminal running. No Docker or API
 key is needed. `npm ci` installs the versions in the lockfile; `npm run dev`
-starts the Node server and serves the browser app through Vite.
+starts the Node server and serves the browser app through Vite. The terminal may
+print `.env.local not found. Continuing without it.` That is expected: the demo
+needs no settings file.
 
 Talk to Orbit, the primary agent. Ask it to fix the failing tests in tiny-project,
 then open its group conversation and review the proposed actions. Try denying
@@ -51,25 +53,61 @@ OPENAI_API_KEY=your-own-key
 TINKERFLEET_WORKSPACE_TOOLS=0
 ```
 
-The placeholders are not usable credentials. Keep the file out of version
-control; `.env.local` is covered by the repository's ignore rules. You can also
-supply these values through your existing server environment.
+Replace `your-model-id` with a real model ID; [choosing a model](#choosing-a-model)
+below suggests one. The placeholders are not usable credentials. Keep the file
+out of version control; `.env.local` is covered by the repository's ignore rules.
 
-Stop the demo server with Ctrl+C, then **load the file explicitly**:
+Stop the demo server with Ctrl+C, then start it again:
 
 ```sh
-node --env-file=.env.local --import tsx src/server/index.ts
+npm run dev
 ```
 
-`npm run dev` does not load `.env.local` for you. Restart after configuration
-changes. Open the app's **Workspace & safety** panel to inspect the model and
-enabled tools without displaying the key.
+`npm run dev` and `npm start` load `.env.local` automatically when the file
+exists. The server reads settings only at startup, so restart after every change.
+Open the app's **Workspace & safety** panel to check the model and enabled tools.
+The panel never shows the key.
+
+You can also set these values as ordinary environment variables. For the API
+key, prefer `.env.local` to exporting it in your shell, and use a separate key
+with a low spending limit for experiments.
+[Credentials and approved commands](../SECURITY.md#credentials-and-approved-commands)
+explains why.
 
 Live conversations can create bots, delegate messages, use saved memory, and
 start groups. With workspace tools off, agents have no project file or command
 tools. Public web search is enabled by default; set `TINKERFLEET_WEB_SEARCH=0`
 if you want to begin with just conversation. Live requests use the provider and
 can incur charges.
+
+### Choosing a model
+
+The model must support tool calls through OpenAI's Responses API. For this app,
+a low-cost model is a sensible start. At the time of writing (October 2026),
+GPT-6 Luna (`gpt-6-luna`) is OpenAI's low-cost option:
+
+```dotenv
+TINKERFLEET_MODEL=gpt-6-luna
+TINKERFLEET_REASONING_EFFORT=low
+```
+
+Model names change. Check the current list and exact IDs on
+[OpenAI's models page](https://developers.openai.com/api/docs/models) before you
+set `TINKERFLEET_MODEL`.
+
+Tinkerfleet accepts only `none`, `minimal`, or `low` for
+`TINKERFLEET_REASONING_EFFORT`. Not every model supports every level. If the
+provider rejects the setting, choose another level or delete the line to use the
+model's default.
+
+### Other providers (untested)
+
+Live mode uses OpenAI-specific features: the Responses API and hosted web search.
+The `openai` client that Tinkerfleet uses reads `OPENAI_BASE_URL`. So a server
+that offers a compatible Responses API **might** work if you also set
+`TINKERFLEET_WEB_SEARCH=0`, because hosted web search runs only at OpenAI. The
+app still needs `OPENAI_API_KEY` to be set; use the key that server expects.
+Nobody has tested this path, so start with workspace tools off.
 
 ## 3. Add local tools
 
@@ -80,7 +118,7 @@ TINKERFLEET_WORKSPACE_TOOLS=1
 TINKERFLEET_WORKSPACE=/absolute/path/to/your/practice-project
 ```
 
-Restart using the same explicit env-file command. Choose a small folder you are
+Restart with `npm run dev`. Choose a small folder you are
 prepared to modify. If no workspace path is supplied, the server selects
 `examples/tiny-project` relative to its working directory. Run the server from
 the repository root so that default is predictable.
@@ -94,7 +132,10 @@ sandbox**. See [capabilities](capabilities.md) for how tools become available an
 
 Web research is independent of local tools. It uses a hosted public-web tool,
 not your logged-in browser or its cookies. Page-reading support depends on the
-model. Check the returned sources as you would any other research.
+model. Check the returned sources as you would any other research. If the
+project may contain untrusted text, set `TINKERFLEET_WEB_SEARCH=0` while
+workspace tools are on; [SECURITY.md](../SECURITY.md#untrusted-text-and-web-search)
+explains the risk.
 
 ## Configuration reference
 
@@ -105,26 +146,23 @@ You do not need to set every option.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `TINKERFLEET_MODE` | `demo` | Set exactly `live` to use the model path |
-| `TINKERFLEET_MODEL` | Unset | Model ID; required for live provider calls |
+| `TINKERFLEET_MODEL` | Unset | Model ID; required for live provider calls. See [choosing a model](#choosing-a-model) |
 | `OPENAI_API_KEY` | Unset | Server-side credential for live provider calls |
+| `OPENAI_BASE_URL` | OpenAI's API | Read by the `openai` client; [other servers are untested](#other-providers-untested) |
 | `TINKERFLEET_PORT` | `4317` | Local port, from 1024 to 65535 |
 | `TINKERFLEET_WORKSPACE_TOOLS` | Off | `1` enables local tools; `0` disables them |
 | `TINKERFLEET_WORKSPACE` | `examples/tiny-project` | Selected folder, resolved from server working directory |
 | `TINKERFLEET_WEB_SEARCH` | On in live mode | `0` disables; `1` enables; demo never searches |
-| `TINKERFLEET_REASONING_EFFORT` | Model default | Optional `none`, `minimal`, or `low`, if supported by the model |
+| `TINKERFLEET_REASONING_EFFORT` | Model default | Optional `none`, `minimal`, or `low`, if the model supports it |
 
 ## Keep runs small
 
-A *run* is the work started by one submitted message. Count limits are optional;
-token, output, and active runtime limits remain even when counts are unlimited.
-
-| Variable | Default | Allowed range |
-| --- | --- | --- |
-| `TINKERFLEET_MAX_TURNS` | `0` | `0` for no SDK turn cap, or 1–64 |
-| `TINKERFLEET_MAX_MODEL_CALLS` | `0` | `0` for no model-call cap, or 1–64 |
-| `TINKERFLEET_MAX_OUTPUT_TOKENS` | `2048` | 1–16,384 per response |
-| `TINKERFLEET_MAX_TOTAL_TOKENS` | `64000` | 1–1,000,000 reported tokens per run |
-| `TINKERFLEET_MAX_RUN_MS` | `120000` | 1–600,000 milliseconds of active runtime |
+A *run* is the work started by one submitted message. Five settings bound each
+run: `TINKERFLEET_MAX_TURNS`, `TINKERFLEET_MAX_MODEL_CALLS`,
+`TINKERFLEET_MAX_OUTPUT_TOKENS`, `TINKERFLEET_MAX_TOTAL_TOKENS`, and
+`TINKERFLEET_MAX_RUN_MS`. Their defaults and allowed ranges are in the
+[run budgets table](capabilities.md#run-budgets). The two count limits default to
+`0`, which means no cap. Token, output, and active runtime limits stay on even then.
 
 Invalid limit settings fail startup. A completed response can cross the usage
 threshold; the app keeps the answer and blocks further work. These are execution
@@ -134,8 +172,8 @@ budgets. Nested `ask_*` agent calls within a group share that group run’s
 model-call, token, and runtime budgets. Stopping the primary does not stop an
 already-created child conversation run.
 
-A native command has a separate **15-second timeout**. Removing turn limits or
-raising the run budget does not extend that command timeout.
+A native command has its own fixed timeout ([Limits](capabilities.md#limits)).
+Removing turn limits or raising the run budget does not extend it.
 
 ## Saved state and model context
 
@@ -162,11 +200,9 @@ npm run build
 npm start
 ```
 
-To use the same local env file with that build, replace `npm start` with:
-
-```sh
-node --env-file=.env.local --import tsx src/server/index.ts --production
-```
+`npm start` also loads `.env.local` when it exists. To use a different file, run
+the server directly, for example
+`node --env-file=.env.other --import tsx src/server/index.ts --production`.
 
 Next, follow [Build an agent app](build-an-agent-app.md), run the
 [seven lessons](../lessons/README.md), or read [Testing](testing.md) before changing

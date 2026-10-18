@@ -18,16 +18,19 @@ other agent products.
 
 Validation commands and the meaning of each kind of evidence are in
 docs/testing.md. Run checks on the revision you are changing rather than relying
-on an old build report. Current screenshots are linked from README.md with their
-demo/live provenance.
+on an old build report. Every image in docs/screenshots is linked from
+README.md, which says whether it came from the demo or a live run. Delete a
+screenshot when nothing links to it any more.
 
 Practical boundaries to retain while extending the app:
 - The primary coordinates; ordinary bots share enabled capabilities.
 - A profile, conversation, run, and memory entry have different lifetimes.
 - File edits and local commands require an exact, single-use approval.
-- Local commands use host permissions; the workspace is not a sandbox.
+- Local commands run with the user's own permissions (see SECURITY.md).
 - Turn/call count caps are disabled by default, while token/runtime budgets and
-  the 15-second command timeout remain. Long-running jobs are an extension area.
+  the fixed command timeout remain. Long-running jobs are an extension area.
+- docs/capabilities.md is the one place that lists numeric limits and the
+  mode table. Other documents link to it; update it when a limit changes.
 - Demo responses are scripted. Do not describe them as live model evidence.
 - Persisted conversation views and memories are private local data in
   .tinkerfleet/. Keep that directory, credentials, and personal content out of

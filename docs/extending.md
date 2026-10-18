@@ -22,7 +22,7 @@ In live mode, the SDK loads this bot’s saved notes and gives it `recall_memory
 
 A tool gives an agent a capability it cannot get by changing its personality. Try `text_file_stats`: it reads one permitted workspace file and returns character and nonempty-line counts.
 
-In [`src/server/sdk.ts`](../src/server/sdk.ts), find `const readTools = workspaceToolsEnabled ? [` inside the session setup. Add this entry beside `read_file`, before the array’s closing `] : []`. The surrounding module already imports `tool` and `z`, and provides `run`, `options`, `assertActive`, and `boundedText`.
+In [`src/server/sdk/run-fleet.ts`](../src/server/sdk/run-fleet.ts), find the `buildRunFleet` function. In it, find `const readTools = workspaceToolsEnabled`. (`createFleetAgents` has a different `readTools` line; leave that one alone.) Add this entry beside `read_file`, before the array’s closing `] : []`. The module already imports `tool` and `z`, and `run`, `options`, `assertActive`, and `boundedText` are already in scope inside `buildRunFleet`.
 
 ```ts
 tool({
@@ -52,7 +52,7 @@ For a polished UI exercise, add a readable activity label for `text_file_stats` 
 
 ## Exercise 4: understand an action before adding one
 
-Reading a file does not modify it. An edit or command does, so it follows a different path. Trace `edit_file` or `run_command` through [`sdk.ts`](../src/server/sdk.ts), [`approval.ts`](../src/server/approval.ts), and [`native-runner.ts`](../src/server/native-runner.ts) before adding another mutating tool.
+Reading a file does not modify it. An edit or command does, so it follows a different path. Trace `edit_file` or `run_command` through [`sdk/run-fleet.ts`](../src/server/sdk/run-fleet.ts), [`sdk/adapter.ts`](../src/server/sdk/adapter.ts), [`approval.ts`](../src/server/approval.ts), and [`native-runner.ts`](../src/server/native-runner.ts) before adding another mutating tool.
 
 The SDK pauses on `needsApproval: true`. The app presents the exact proposed action, binds the decision to that run and action, and consumes the approval once before execution. An approved command includes the executable, resolved executable identity, arguments, and working directory. Changing the proposed action requires a fresh decision.
 

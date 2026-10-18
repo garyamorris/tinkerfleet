@@ -12,7 +12,7 @@ Enable it with `TINKERFLEET_WORKSPACE_TOOLS=1` and select a small practice folde
 | `edit_file` | Selected workspace, permitted path/content, unchanged prepared snapshot | Write the reviewed content to a real file, creating safe missing parents if needed |
 | `run_command` | Validated executable/argv/cwd, resolved executable binding, timeout and output limits | Start a real host process with the reviewed arguments |
 
-**A command's working directory is not an OS access boundary.** File tools have a workspace path policy; an approved program has the server user's OS permissions. A program can read other paths, use the network, load credentials from ordinary host files, or start subprocesses where those permissions allow it. The app does not claim container or VM isolation.
+**A command's working directory is not a sandbox or an OS access boundary.** File tools have a workspace path policy; an approved program has the server user's OS permissions. A program can read other paths, use the network, load credentials from ordinary host files, or start subprocesses where those permissions allow it. The app does not claim container or VM isolation.
 
 All ordinary agents receive the same enabled local tools. The primary can use them directly too. Names and personalities do not restrict an agent to a particular coding job.
 
@@ -20,9 +20,11 @@ All ordinary agents receive the same enabled local tools. The primary can use th
 
 The runner captures permitted UTF-8 text files and a digest of their current state. This “snapshot” is a bounded view of the real folder, not a disposable copied checkout.
 
-The current policy excludes hidden paths, dependency/build directories such as `node_modules` and `dist`, credential-like filenames and content, binary files, and symlinks or multiply linked files. Supported text extensions are listed in [runner-policy.ts](../src/server/runner-policy.ts). File-tool paths are relative, use a restricted segment syntax, and reject traversal. Limits include 256 files, 256 KiB per file, and 2 MiB of included text per capture.
+The current policy excludes hidden paths, dependency/build directories such as `node_modules` and `dist`, credential-like filenames and content, binary files, and symlinks or multiply linked files. Supported text extensions are listed in [runner-policy.ts](../src/server/runner-policy.ts). File-tool paths are relative, use a restricted segment syntax, and reject traversal. Each capture has caps on file count, file size, and total text; see [Limits](capabilities.md#limits).
 
 These checks reduce accidental exposure through file tools. They are not a complete secret detector, and they do not restrict what an approved native program can access independently.
+
+Reads need no approval, so a file’s text reaches the model as soon as an agent reads it. If the project may contain untrusted text, read [Untrusted text and web search](../SECURITY.md#untrusted-text-and-web-search) before leaving web search on.
 
 **Trace it:** `snapshot`, `readFile`, file capture, and directory checks in [native-runner.ts](../src/server/native-runner.ts); path/content rules and limits in [runner-policy.ts](../src/server/runner-policy.ts).
 
@@ -48,17 +50,17 @@ The runner uses an argument vector and `shell: false`. It does not expand pipes,
 
 ### Working directory versus argument paths
 
-The model must include `cwd`: use `null` or `"."` for the selected workspace, or a permitted existing relative subdirectory. The SDK normalizes this input into the runner’s internal action, where `cwd` is optional; omitting it is not valid in the model-facing tool request. If the model provides the trusted selected folder or a subdirectory as an absolute `cwd`, the SDK normalizes it to a relative path before approval. An outside-workspace `cwd`, traversal, or symlink directory is rejected.
+The model must include `cwd`: use `null` or `"."` for the selected workspace, or a permitted existing relative subdirectory. Leaving `cwd` out of the model-facing request is not valid. Tinkerfleet's SDK adapter then converts the request into the runner’s internal action, where `cwd` is optional. If the model gives the selected folder or a subdirectory as an absolute `cwd`, the adapter's `normalizeCommandCwd` function in [sdk/actions.ts](../src/server/sdk/actions.ts) turns it into a relative path before approval. That function is Tinkerfleet code, not part of the Agents SDK. An outside-workspace `cwd`, traversal, or symlink directory is rejected.
 
 An argument is different. An explicitly proposed absolute path in `args` may refer outside the workspace. Its effect depends on the installed program and your OS permissions. Review the destination as well as the program name; choosing a workspace does not make all other machine paths inaccessible.
 
 ### Process lifetime and environment
 
-Each command has a **15-second timeout** and a **64 KiB combined output limit**. Output is bounded and redacted before returning to the model. Timeout, cancellation, and normal exit trigger process-group cleanup, including ordinary children left behind by the main process. This is not a persistent terminal or background-server launcher; programs that deliberately escape process-group control are not securely confined.
+Each command has a short, fixed timeout and a combined output limit ([Limits](capabilities.md#limits)). Output is bounded and redacted before returning to the model. Timeout, cancellation, and normal exit trigger process-group cleanup, including ordinary children left behind by the main process. This is not a persistent terminal or background-server launcher; programs that deliberately escape process-group control are not securely confined. For example, a process started with `setsid ... &` keeps running after cleanup, even when the output says `Cleanup confirmed: true`.
 
-The child receives `HOME`, a filtered `PATH`, `TMPDIR`, `LANG`, and permitted `LC_ALL`/`LC_CTYPE` values. It does not inherit arbitrary server variables, the server API key, or loader-hook environment variables. The OS or program may add its own environment values. `HOME` still points at the user's home directory: minimal environment inheritance is not filesystem isolation.
+The child receives `HOME`, a filtered `PATH`, `TMPDIR`, `LANG`, and permitted `LC_ALL`/`LC_CTYPE` values. It does not inherit arbitrary server variables, the server API key, or loader-hook environment variables. The OS or program may add its own environment values. `HOME` still points at the user's home directory: minimal environment inheritance is not filesystem isolation. A command can also read the server’s own startup environment and files such as `.env.local`; [Credentials and approved commands](../SECURITY.md#credentials-and-approved-commands) explains how to protect your API key.
 
-Changing model-turn or model-call limits does not change the 15-second local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk.ts](../src/server/sdk.ts).
+Changing model-turn or model-call limits does not change the local-command timeout. Separate model, context, output, and active-runtime limits live in [config.ts](../src/server/config.ts) and [sdk/contract.ts](../src/server/sdk/contract.ts).
 
 ## Several chats, one real folder
 

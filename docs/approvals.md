@@ -27,7 +27,7 @@ tool proposal → SDK interruption → prepared action + digest → review card
 6. **Consume and execute.** The runner checks that the workspace and executable still match the prepared proposal. The grant is consumed synchronously before the real action starts, so two racing requests cannot both use it.
 7. **Return a result.** The tool reports completion, failure, cancellation, timeout, or output limit to the agent. A tool finishing is not itself proof that the requested task succeeded.
 
-Trace the layers in [SDK tools and interruption handling](../src/server/sdk.ts), [HTTP approval handling](../src/server/app.ts), [ApprovalStore](../src/server/approval.ts), and [native prepare/execute](../src/server/native-runner.ts).
+Trace the layers in [SDK tools](../src/server/sdk/run-fleet.ts) and [interruption handling](../src/server/sdk/adapter.ts), [HTTP approval handling](../src/server/app.ts), [ApprovalStore](../src/server/approval.ts), and [native prepare/execute](../src/server/native-runner.ts).
 
 ## A command is an executable plus arguments
 
@@ -51,7 +51,7 @@ pending → approved → consumed
 pending / approved → expired
 ```
 
-The default approval lifetime is five minutes. An expired, denied, changed, consumed, or unknown approval cannot execute. Replacing a command executable or changing an included workspace file after review also invalidates the prepared action. Request a fresh proposal rather than reusing an old card.
+An approval expires after a few minutes ([Limits](capabilities.md#limits)). An expired, denied, changed, consumed, or unknown approval cannot execute. Replacing a command executable or changing an included workspace file after review also invalidates the prepared action. Excluded files, such as `.env` and `node_modules`, are not part of the digest, so the approval does not cover them; see [SECURITY.md](../SECURITY.md#files-commands-and-approvals). Request a fresh proposal rather than reusing an old card.
 
 The grant stays spent if execution fails. A retry is another operation and needs another decision. The SDK interruption state and application approval record complement each other: the SDK pauses model execution, while the application binds the concrete local effect.
 
@@ -61,7 +61,7 @@ Denying does not perform the rejected action. Stopping invalidates outstanding g
 
 Restart preserves saved chat views but cancels unfinished runs and invalidates their approvals. SDK execution state and executable approval authority are held in memory; a historical card on disk is not a resumable permission grant.
 
-Read/list operations, hosted search, profile creation, coordination, and memory tools do not use this local-mutation approval card. Their scope is enforced by their own server tools. This is a deliberately chosen policy, not a claim that every action has the same risk.
+Read/list operations, hosted search, profile creation, coordination, and memory tools do not use this local-mutation approval card. Their scope is enforced by their own server tools. This is a deliberately chosen policy, not a claim that every action has the same risk. Because file reads and web search both run without a card, untrusted text in a file or page could steer the model into leaking workspace content through a search; see [Untrusted text and web search](../SECURITY.md#untrusted-text-and-web-search).
 
 ## Try the mechanism without a paid call
 

@@ -36,7 +36,7 @@ for the SDK’s execution model.
 
 **Run:** `npm run lesson:0` to watch this loop run, first by hand and then through
 the SDK with a scripted model. Then read
-[`createFleetAgents` in sdk.ts](../src/server/sdk.ts) and run `npm run lesson:1`.
+[`createFleetAgents` in sdk/fleet.ts](../src/server/sdk/fleet.ts) and run `npm run lesson:1`.
 **Check your understanding:** why can lesson 1 construct an agent without an
 API key? Because defining its configuration is separate from asking a model to respond.
 
@@ -50,8 +50,8 @@ Tinkerfleet uses three different objects:
 | Object | What it owns | Example |
 | --- | --- | --- |
 | Bot profile | Name, personality, appearance, stable identity | Nova, a patient astronomy tutor |
-| Conversation | Participants, messages through its runs, title, unsent draft | “Learning about planets” |
-| Run | One submitted request, activity, approvals, result, usage | “Explain why seasons happen” |
+| Conversation | Captured participants, messages through its runs, title, unsent draft | “Learning about planets” |
+| Run | One submitted request and the work it triggers, possibly several model calls: activity, approvals, result, usage | “Explain why seasons happen” |
 
 A new message starts a new run inside the same conversation. One bot can take part
 in many conversations. Changing a conversation title should not change the bot’s
@@ -90,7 +90,7 @@ The useful development question is: **what is the smallest function that gives
 the agent a capability it currently lacks?** Reading a text file is a clearer
 first tool than a general-purpose “do anything” function.
 
-**Read:** `readTools` in [sdk.ts](../src/server/sdk.ts), then
+**Read:** `readTools` inside `buildRunFleet` in [sdk/run-fleet.ts](../src/server/sdk/run-fleet.ts), then
 [workspace validation](../src/server/runner-policy.ts).
 **Run:** `npm run lesson:3`.
 **Build next:** the [extension guide](extending.md) walks through adding a small tool.
@@ -119,7 +119,7 @@ This is an application protocol with state transitions. Writing “always ask
 permission” in an agent’s personality cannot implement it.
 
 **Read:** [how approvals work](approvals.md).
-**Run:** `npm run lesson:4`, then `npm run lesson:5`.
+**Run:** `npm run lesson:4`.
 **Try:** deny a command in the demo. Find the code that prevents execution rather
 than just changing the button’s appearance.
 
@@ -135,12 +135,15 @@ needs that information to choose its next step; the user needs it to judge progr
 
 Tinkerfleet’s file tools stay within a selected project. Native commands run with
 the host user’s permissions; their arguments can address other locations. The
-current 15-second command timeout is useful to study because it exposes a real
-product tradeoff: simple short-lived tools are easy to manage, but long builds
-need background job IDs, progress, cancellation, and result collection.
+short, fixed command timeout ([Limits](capabilities.md#limits)) is useful to study
+because it exposes a real product tradeoff: simple short-lived tools are easy to
+manage, but long builds need background job IDs, progress, cancellation, and
+result collection.
 
 **Read:** [workspace tools](workspace.md) and [native-runner.ts](../src/server/native-runner.ts).
-**Run:** `npm run lesson:6`.
+**Run:** `npm run lesson:5` to approve a real edit and command in a temporary
+folder. Then run `npm run lesson:6` to see which files the file tools can see,
+and how a changed file changes the workspace digest.
 **Design exercise:** sketch what a `start_job` result would contain. How would a
 later `get_job_status` call distinguish “still running” from “finished successfully”?
 These job tools are an extension idea, not existing Tinkerfleet tools.

@@ -48,9 +48,9 @@ the command. An edit and a test command are separate actions. Check the reported
 exit code and test output, then run the same test command yourself against the
 copied file. A passing test checks these three examples, not every possible input.
 
-Approved edits change real files. Commands run with your user permissions, and
-the selected folder is not an OS sandbox. Other chats using the same folder see
-the same changes. See [workspace behavior](../../docs/workspace.md).
+Approved edits change real files, and approved commands run with your user
+permissions. Other chats using the same folder see the same changes. See
+[workspace behavior](../../docs/workspace.md) before you approve anything.
 
 ## Extend the exercise
 

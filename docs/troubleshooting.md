@@ -16,7 +16,7 @@ learn the interaction, or follow [setup](setup.md) to connect a live model.
 ## The app will not start
 
 From the repository root, check `node --version`; this project needs Node.js
-24 or later. Run `npm ci` to install the locked dependencies. Read the first
+22.12 or later. Run `npm ci` to install the locked dependencies. Read the first
 terminal error before retrying.
 
 If port 4317 is busy, stop the server you started earlier or set
@@ -26,14 +26,17 @@ your browser. Invalid configuration values also stop startup; compare them with
 
 ## I edited the env file, but the app still uses the old settings
 
-The Node server reads its environment at startup. The regular dev command does
-not automatically load `.env.local`.
-
-Stop the old server, then start from the repository root with:
+The Node server reads its environment only at startup. Stop the old server with
+Ctrl+C, then start it again from the repository root:
 
 ```sh
-node --env-file=.env.local --import tsx src/server/index.ts
+npm run dev
 ```
+
+`npm run dev` loads `.env.local` from the repository root, next to
+`package.json`. If the terminal prints `.env.local not found. Continuing without
+it.`, the file is missing or misnamed. A variable already set in your shell wins
+over the same name in the file; unset it in the shell or change it there too.
 
 Check the mode, model, and tools in **Workspace & safety**. Do not print the API
 key as a diagnostic. Live mode requires `TINKERFLEET_MODE=live`, a model ID in
@@ -57,22 +60,22 @@ One user message can produce several model/tool exchanges. SDK turn and
 model-call caps default to `0`, meaning no count cap. A finite configured cap
 can still stop a run. Token and active-runtime budgets apply independently.
 
-Read **Workspace & safety** and the error to identify the limit. The default
-total is 64,000 reported tokens per run and active runtime is 120 seconds. A
-completed answer that crosses a usage threshold is retained, while further work
-is blocked. Review the result and any completed actions before submitting a
-follow-up with a fresh budget.
+Read **Workspace & safety** and the error to identify the limit. The defaults
+are in [Limits](capabilities.md#run-budgets). A completed answer that crosses a
+usage threshold is retained, while further work is blocked. Review the result
+and any completed actions before submitting a follow-up with a fresh budget.
 
 Context trimming is separate: it shortens what is sent to the model while
 preserving saved history and complete tool-call/result groups. Raising limits
 can increase usage and does not guarantee completion. See
 [run limits](setup.md#keep-runs-small).
 
-## A local command stops after about 15 seconds
+## A local command times out
 
-Native commands have a separate 15-second timeout. Unlimited model turns and a
-larger run budget do not extend it. A long install, build, or interactive process
-may therefore stop even when the agent still has budget.
+Each native command has its own short, fixed timeout
+([Limits](capabilities.md#limits)). Unlimited model turns and a larger run
+budget do not extend it. A long install, build, or interactive process may
+therefore stop even when the agent still has budget.
 
 Inspect the command's output and termination result. Prefer a smaller,
 noninteractive check that fits the runner. Do not assume a timed-out command
@@ -125,10 +128,10 @@ comes from the current conversation. Open **Bots → Memory** for the intended
 bot and check whether the fact is saved there.
 
 Notes apply to that bot on its next turn across chats. Old history is not
-imported automatically. Each bot has room for 20 notes, 2,000 characters per note
-and 8,000 total. Remove obsolete notes if the store is full. In demo mode, you
-can verify saved notes without expecting an intelligent recall response. See
-[Memory](memory.md).
+imported automatically. Each bot has a cap on notes and characters
+([Limits](capabilities.md#limits)). Remove obsolete notes if the store is full.
+In demo mode, you can verify saved notes without expecting an intelligent recall
+response. See [Memory](memory.md).
 
 ## A new bot is not in an existing group
 
@@ -136,9 +139,9 @@ Creating a bot saves a profile and creates its direct chat. It does not rewrite
 the participants captured by an existing conversation. Use **Open this bot’s
 chat**, or ask the primary to start a new group with that bot.
 
-Only the direct primary has coordination tools. It can create up to three bots
-per run, and the library holds 32 profiles. Groups can contain the primary plus
-up to seven ordinary agents. Check the reported limit before retrying.
+Only the direct primary has coordination tools. Bot creation per run, the
+library, and group size all have caps ([Limits](capabilities.md#limits)). Check
+the reported limit before retrying.
 
 ## Search did not run, or a page could not be read
 
@@ -158,10 +161,10 @@ pending approvals. It does not resume SDK execution or undo local file effects.
 Submit a fresh message to continue.
 
 If loading or saving fails, check access to `.tinkerfleet/conversations.json`
-and its `.memories.json` companion. Conversation storage is bounded to 100 chats,
-200 runs, and 8 MiB. Corrupt stores fail startup rather than silently replacing
-your history. Preserve a private backup before repair; do not attach these files
-to a public issue.
+and its `.memories.json` companion. Conversation storage has caps on chats,
+runs, and file size ([Limits](capabilities.md#limits)). Corrupt stores fail
+startup rather than silently replacing your history. Preserve a private backup
+before repair; do not attach these files to a public issue.
 
 ## A reply's formatting or activity looks unexpected
 
