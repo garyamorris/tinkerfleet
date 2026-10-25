@@ -4,7 +4,7 @@ Tinkerfleet is an agent app you can learn from by reading and changing it. A use
 
 ## Get the app running
 
-Use Node.js 22.12 or later:
+Use Node.js 24 or later:
 
 ```sh
 npm ci

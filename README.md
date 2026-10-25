@@ -25,7 +25,7 @@ real model when you are ready.
 
 ## Start with something you can see
 
-You need Node.js 22.12 or later and npm.
+You need Node.js 24 or later and npm.
 
 ```sh
 git clone https://github.com/garyamorris/tinkerfleet.git

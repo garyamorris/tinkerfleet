@@ -6,7 +6,7 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=24.0"
   },
   "scripts": {
     "dev": "node --env-file-if-exists=.env.local --import tsx src/server/index.ts",

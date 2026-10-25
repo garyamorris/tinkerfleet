@@ -3,7 +3,7 @@
 These fourteen short programs walk from watching the agent loop run to approving a
 real local action, then measuring whether an agent works, reading what each
 model call actually saw, comparing two runs, giving each bot only the tools
-it needs, and letting a bot run on a schedule. Run them from the repository root with Node.js 22.12+ after
+it needs, and letting a bot run on a schedule. Run them from the repository root with Node.js 24+ after
 `npm ci`. They make no model requests and need no API key. Each uses assertions:
 a successful run prints its explanation and exits normally; a failed assertion
 stops the lesson.
