@@ -6,7 +6,7 @@ want the bigger picture first, read [Build an agent app](build-an-agent-app.md).
 
 ## 1. Run the no-key demo
 
-Install **Node.js 22.12 or later** and npm. In the repository root, run:
+Install **Node.js 24 or later** and npm. In the repository root, run:
 
 ```sh
 npm ci

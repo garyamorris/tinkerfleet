@@ -8,7 +8,7 @@ unseen prompt.
 
 ## Run the checks
 
-From the repository root, with Node.js 22.12+ and dependencies installed:
+From the repository root, with Node.js 24+ and dependencies installed:
 
 ```sh
 npm run check
