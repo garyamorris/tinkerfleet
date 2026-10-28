@@ -32,11 +32,38 @@ export function contextSummary(call: TraceCall): { percent: number; notes: strin
   return { percent: budget > 0 ? Math.min(100, Math.round((chars / budget) * 100)) : 0, notes };
 }
 
-/** One line saying what the model did with the request: which tools it called, or that it replied. */
-export function outcomeText(call: TraceCall): string {
+/**
+ * The bot an ask_ tool reaches, decoded from the tool's name, or null for any other tool. This
+ * reverses the naming in src/server/sdk/fleet.ts: `_` becomes `__u` and `-` becomes `__h`.
+ */
+export function askedBotId(tool: string): string | null {
+  if (!tool.startsWith('ask_')) return null;
+  return tool.slice(4).replace(/__([uh])/g, (_, c: string) => (c === 'u' ? '_' : '-'));
+}
+
+/**
+ * One line saying what the model did with the request: which tools it called, or that it replied.
+ * Given bot names, a call to another bot reads "asked Maker" instead of its tool name.
+ */
+export function outcomeText(call: TraceCall, botName?: (id: string) => string | undefined): string {
   if (call.error) return 'failed';
   const tools = call.output.filter((i) => i.kind === 'tool_call' || i.kind === 'hosted_tool');
-  if (tools.length) return `called ${tools.map((i) => i.name ?? 'a tool').join(', ')}`;
+  if (tools.length) {
+    const asked: string[] = [],
+      called: string[] = [];
+    for (const item of tools) {
+      const id = item.name ? askedBotId(item.name) : null,
+        name = id === null ? undefined : botName?.(id);
+      if (name) asked.push(name);
+      else called.push(item.name ?? 'a tool');
+    }
+    return [
+      called.length ? `called ${called.join(', ')}` : '',
+      asked.length ? `asked ${asked.join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .join(' and ');
+  }
   return call.output.some((i) => i.kind === 'assistant') ? 'replied' : 'returned nothing visible';
 }
 

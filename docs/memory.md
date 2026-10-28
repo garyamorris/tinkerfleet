@@ -16,7 +16,8 @@ includes that text in future model input. You can inspect and delete the notes.
    **Save memory**.
 3. Open a conversation with that bot and send a new message. In live mode, its
    next run receives the note along with its profile and recent chat context.
-4. Return to **Memory** to inspect the saved text or choose **Delete**.
+4. Return to **Memory** to inspect the saved text, or choose **Delete** and
+   confirm to remove it. Deleting a bot from the library deletes its notes too.
 
 You can also ask the bot in live chat: “Remember that I prefer short explanations
 with a runnable example.” A successful `remember_memory` result saves the note;

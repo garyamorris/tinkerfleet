@@ -120,6 +120,8 @@ const runSchema = z.object({
         action,
         status: z.enum(['pending', 'approved', 'denied']),
         before: text(256000).optional(),
+        requestedAt: time.optional(),
+        decidedAt: time.optional(),
       }),
     )
     .max(256),

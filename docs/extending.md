@@ -4,7 +4,7 @@ Start with [Build an agent app](build-an-agent-app.md) to follow a message from 
 
 ## Exercise 1: change how a bot helps
 
-Open **Bot library**, edit a persona, and give it a concrete purpose such as:
+Open **Bot library**, edit a bot, and give it a concrete purpose such as:
 
 > Teach Python patiently. Start with a small example, explain one idea at a time, and ask what I think the code will do before revealing the answer.
 

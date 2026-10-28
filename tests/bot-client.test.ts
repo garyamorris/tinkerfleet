@@ -69,7 +69,7 @@ test('memory panel displays escaped per-bot notes and labelled delete/add contro
     }),
   );
   assert.ok(html.includes('Ada’s own memory'));
-  assert.ok(html.includes('saved on this Mac'));
+  assert.ok(html.includes('saved on this computer'));
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('<script>'));
   assert.ok(html.includes('Delete memory:'));
@@ -98,7 +98,7 @@ test('capability summary marks switched-off groups, legacy profiles and read wit
     renderToStaticMarkup(React.createElement(CapabilitySummary, { profile, server }));
   assert.match(
     html({ ...bot, capabilities: ['web', 'read'] }),
-    /Read files · off on this server: Web/,
+    /Read files · Web off on this server/,
   );
   assert.match(html(bot), /all enabled tools: saved before capabilities/);
   assert.match(html({ ...bot, capabilities: [] }), /Chat only, no tools/);

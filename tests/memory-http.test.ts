@@ -12,7 +12,10 @@ let externalRequests = 0;
 before(() => {
   globalThis.fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
-    if (url.hostname !== '127.0.0.1' || !['45490', '45491', '45492', '45493'].includes(url.port)) {
+    if (
+      url.hostname !== '127.0.0.1' ||
+      !['45490', '45491', '45492', '45493', '45494'].includes(url.port)
+    ) {
       externalRequests++;
       throw new Error('External network is forbidden in memory HTTP tests.');
     }
@@ -264,4 +267,19 @@ test('unknown bot IDs and malformed memory actions are rejected without mutation
   assert.deepEqual(await f.list(bot.id), [memory]);
   assert.deepEqual((await f.state()).memories, [memory]);
   assert.equal(f.app.state().runs.length, 0);
+});
+
+test('deleting a bot from the library also deletes its memory notes, and only its own', async (t) => {
+  const f = await fixture(t, 45494),
+    [kept, deleted] = customTeam().slice(1, 3);
+  assert.equal(
+    (await f.send('/api/profiles/import', 'POST', { profiles: [kept, deleted] })).status,
+    200,
+  );
+  const keptNote = await f.remember(kept!.id, 'Keep this note.');
+  await f.remember(deleted!.id, 'This note leaves with its bot.');
+  assert.equal((await f.send(`/api/profiles/${deleted!.id}`, 'DELETE', {})).status, 200);
+  assert.deepEqual((await f.state()).memories, [keptNote]);
+  await f.restart();
+  assert.deepEqual((await f.state()).memories, [keptNote]);
 });

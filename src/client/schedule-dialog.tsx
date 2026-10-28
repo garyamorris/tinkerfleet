@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import type { Persona, Run, ScheduleView } from '../shared/types';
 import { SCHEDULE_LIMITS, scheduleRefusal } from '../shared/schedules';
-import { statusText } from './ui';
+import { ConfirmButton, Note, statusText } from './ui';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAYS = [1, 2, 3, 4, 5];
@@ -36,6 +36,7 @@ export function ScheduleDialogBody({
   runs,
   schedulesRun,
   timeZone,
+  hasChat,
   onSave,
   onPause,
   onDelete,
@@ -46,6 +47,8 @@ export function ScheduleDialogBody({
   runs: Run[];
   schedulesRun: boolean;
   timeZone: string;
+  /** False once the chat a past run used has been deleted. */
+  hasChat: (conversationId: string) => boolean;
   onSave: (draft: ScheduleDraft, id?: string) => Promise<void>;
   onPause: (schedule: ScheduleView, paused: boolean) => Promise<void>;
   onDelete: (schedule: ScheduleView) => Promise<void>;
@@ -80,11 +83,10 @@ export function ScheduleDialogBody({
   const showForm = editing !== null || (!refusal && !full);
   return (
     <>
-      <p className="modal-intro">
+      <Note id="schedules-intro" className="modal-intro">
         {bot.name} gets this prompt on its own at the time you choose, and replies in its chat. Each
-        run is a real model request, paid like one you send, within the usual run budgets. Times use
-        this server’s clock ({timeZone}).
-      </p>
+        run is a real model request, paid like one you send, within the usual run budgets.
+      </Note>
       {!schedulesRun && (
         <p className="panel-note" role="note">
           Demo mode saves schedules but does not run them. Start Tinkerfleet in live mode to run
@@ -124,7 +126,7 @@ export function ScheduleDialogBody({
                 <p className="schedule-last">
                   Last: {when(last.at)} ·{' '}
                   {last.skipped ?? (run ? statusText[run.status] : 'Run started')}
-                  {last.conversationId && (
+                  {last.conversationId && hasChat(last.conversationId) && (
                     <button
                       className="text-button"
                       onClick={() => onOpenChat(last.conversationId!)}
@@ -158,11 +160,12 @@ export function ScheduleDialogBody({
                 >
                   {s.paused ? 'Resume' : 'Pause'}
                 </button>
-                <button
-                  className="text-button"
+                <ConfirmButton
+                  label="Delete"
+                  prompt="Delete this schedule?"
+                  ariaLabel={`Delete schedule: ${daysLabel(s.days)} at ${s.time}`}
                   disabled={busy}
-                  aria-label={`Delete schedule: ${daysLabel(s.days)} at ${s.time}`}
-                  onClick={() =>
+                  onConfirm={() =>
                     act(async () => {
                       await onDelete(s);
                       if (editing === s.id) {
@@ -171,9 +174,7 @@ export function ScheduleDialogBody({
                       }
                     })
                   }
-                >
-                  Delete
-                </button>
+                />
               </div>
             </li>
           );
@@ -235,7 +236,9 @@ export function ScheduleDialogBody({
             </button>
           </fieldset>
           <label className="field-label schedule-time">
-            Time
+            <span>
+              Time <span className="field-hint">(server time, {timeZone})</span>
+            </span>
             <input
               type="time"
               required

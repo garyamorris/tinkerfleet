@@ -1,9 +1,9 @@
 /**
- * The browser app. App owns the state (polled from the local server every 700 ms),
- * the draft and conversation handlers, and the layout; panels and dialogs live in
- * their own files and receive what they show as props.
+ * The browser app. App owns the state (polled from the local server: quickly while a task works,
+ * slowly when idle), the draft and conversation handlers, and the layout; panels and dialogs live
+ * in their own files and receive what they show as props.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
   AppState,
@@ -16,24 +16,33 @@ import type {
 } from '../shared/types';
 import './style.css';
 import { randomAppearance } from '../shared/appearance';
-import { api, setCsrf } from './api';
+import { api, apiText, setCsrf } from './api';
 import { BotLibraryDialog, CapabilitySummary, PersonaEditorDialog } from './bot-dialogs';
 import {
   CAPABILITIES,
+  grantedCapabilities,
   withLibraryCapabilities,
   type ServerCapabilities,
 } from '../shared/capabilities';
 import { directBotChat } from './bot-chat';
 import { ChatList } from './chat-list';
-import { ChatRun } from './chat-run';
-import { NewConversationDialog, RenameDialog } from './conversation-dialogs';
+import { ChatRun, type DetailsTab } from './chat-run';
+import {
+  CapabilitiesDialog,
+  DeleteConversationDialog,
+  NewConversationDialog,
+  RenameDialog,
+} from './conversation-dialogs';
 import { loadDrafts, type ChatDraft } from './drafts';
 import { MemoryPanel } from './memory-panel';
 import { ScheduleDialogBody } from './schedule-dialog';
 import { character, loadLibrary, resolveAgent, starterProfiles, validProfile } from './profiles';
 import { SettingsDialog } from './settings-dialog';
+import { starterPrompts } from './starters';
 import { TaskDetailsDialog } from './task-details-dialog';
-import { Avatar, Icon, Modal, statusText } from './ui';
+import { Avatar, AvatarStack, Icon, Menu, Modal, statusText } from './ui';
+
+const active = (r: Run) => ['running', 'awaiting_approval'].includes(r.status);
 
 function App() {
   const [state, setState] = useState<AppState | null>(null),
@@ -49,6 +58,7 @@ function App() {
     [busyChats, setBusyChats] = useState<string[]>([]),
     [creating, setCreating] = useState(false),
     [savingProfile, setSavingProfile] = useState(false),
+    [deleting, setDeleting] = useState(false),
     [libraryImportError, setLibraryImportError] = useState(''),
     [chatErrors, setChatErrors] = useState<Record<string, string>>({}),
     [error, setError] = useState(''),
@@ -62,19 +72,27 @@ function App() {
       | 'settings'
       | 'memory'
       | 'schedule'
+      | 'capabilities'
+      | 'delete-chat'
       | null
     >(null),
-    [tab, setTab] = useState('Activity'),
+    [tab, setTab] = useState<string>('Activity'),
     [draft, setDraft] = useState<Persona>(starterProfiles[0]),
     [formError, setFormError] = useState(''),
     [chosen, setChosen] = useState<string[]>([]),
     [chatTitle, setChatTitle] = useState(''),
+    [unseen, setUnseen] = useState(false),
     [, redrawDrafts] = useState(0);
   const [memoryBot, setMemoryBot] = useState<Persona | null>(null),
     [scheduleBot, setScheduleBot] = useState<Persona | null>(null);
   const openingBot = useRef(false);
-  const end = useRef<HTMLDivElement>(null),
+  const messagesBox = useRef<HTMLDivElement>(null),
     composer = useRef<HTMLTextAreaElement>(null);
+  // Follow new messages only while you are at the bottom; reading further up is left alone.
+  const stickToEnd = useRef(true),
+    autoScrolling = useRef(false),
+    lastScrollTop = useRef(0);
+  const pollSoon = useRef<() => void>(() => {});
   const drafts = useRef<Record<string, ChatDraft>>(loadDrafts());
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({}),
     saveQueues = useRef<Record<string, Promise<void>>>({});
@@ -112,17 +130,30 @@ function App() {
     .sort((a, b) => a.startedAt - b.startedAt);
   const run = chatRuns.find((r) => r.id === runId) ?? chatRuns.at(-1);
   const runTeam = run?.team ?? chat?.participants ?? team;
+  const source = chat?.startedBy
+    ? conversations.find((c) => c.id === chat.startedBy!.conversationId)
+    : undefined;
   const person = (id: AgentId) =>
-    resolveAgent(
-      id,
-      runTeam,
-      conversations.find((c) => c.id === chat?.startedBy?.conversationId)?.participants ?? [],
-      library.profiles,
-      starterProfiles,
-    );
-  const currentActive = chatRuns.find((r) => ['running', 'awaiting_approval'].includes(r.status));
+    resolveAgent(id, runTeam, source?.participants ?? [], library.profiles, starterProfiles);
+  const currentActive = chatRuns.find(active);
   const busy = !!chat && busyChats.includes(chat.id);
   const prompt = chat ? (drafts.current[chat.id]?.text ?? chat.draft) : '';
+  // Every task, in any chat, that is stopped until you approve or decline an action.
+  const waiting = (state?.runs ?? [])
+    .filter(
+      (r) =>
+        r.status === 'awaiting_approval' && conversations.some((c) => c.id === r.conversationId),
+    )
+    .sort((a, b) => a.startedAt - b.startedAt);
+  const anyActive = (state?.runs ?? []).some(active) || busyChats.length > 0;
+  useEffect(() => {
+    if (anyActive) pollSoon.current();
+  }, [anyActive]);
+  useEffect(() => {
+    document.title = `${waiting.length ? `(${waiting.length}) ` : ''}${
+      chat ? `${chat.title} · Tinkerfleet` : 'Tinkerfleet · Your little team, in the loop.'
+    }`;
+  }, [waiting.length, chat?.title]);
   function cacheDrafts() {
     try {
       localStorage.setItem('tinkerfleet.chat-drafts.v1', JSON.stringify(drafts.current));
@@ -209,16 +240,41 @@ function App() {
     setBusyChats((ids) => (on ? [...new Set([...ids, id])] : ids.filter((x) => x !== id)));
   }
   useEffect(() => {
-    let alive = true;
-    let timer: ReturnType<typeof setInterval>;
+    let alive = true,
+      timer: ReturnType<typeof setTimeout> | undefined,
+      lastText = '',
+      fast = false;
     async function refresh() {
       try {
-        const data = await api<AppState>('/state');
-        if (alive) setState(data);
+        const text = await apiText('/state');
+        // An unchanged state is not parsed or rendered again.
+        if (!alive || text === lastText) return;
+        lastText = text;
+        const data = JSON.parse(text) as AppState;
+        fast = data.runs.some(active);
+        setState(data);
       } catch (e) {
         if (alive) setError((e as Error).message);
       }
     }
+    // Poll quickly while a task works, slowly when idle, and rarely in a background tab.
+    function schedule() {
+      clearTimeout(timer);
+      timer = setTimeout(
+        async () => {
+          await refresh();
+          if (alive) schedule();
+        },
+        document.hidden ? 5000 : fast ? 700 : 2000,
+      );
+    }
+    pollSoon.current = () => {
+      fast = true;
+      schedule();
+    };
+    const onVisible = () => {
+      if (!document.hidden) void refresh().then(() => alive && schedule());
+    };
     void (async () => {
       try {
         const session = await api<{ csrf: string }>('/session');
@@ -245,7 +301,8 @@ function App() {
         }
         await refresh();
         if (alive) {
-          timer = setInterval(refresh, 700);
+          schedule();
+          document.addEventListener('visibilitychange', onVisible);
           for (const id of Object.keys(drafts.current)) {
             if (drafts.current[id]?.dirty) void saveDraft(id).catch(() => {});
           }
@@ -256,17 +313,40 @@ function App() {
     })();
     return () => {
       alive = false;
-      clearInterval(timer);
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
       Object.values(saveTimers.current).forEach(clearTimeout);
     };
   }, []);
-  const last = chatRuns.at(-1);
-  useEffect(() => {
-    end.current?.scrollIntoView({
-      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-      block: 'end',
+  function scrollToEnd(smooth: boolean) {
+    const box = messagesBox.current;
+    if (!box) return;
+    autoScrolling.current = true;
+    box.scrollTo({
+      top: box.scrollHeight,
+      behavior:
+        smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'auto',
     });
-  }, [chat?.id, last?.id, last?.messages.length, last?.approvals.length]);
+  }
+  // A different chat opens at its latest message.
+  useLayoutEffect(() => {
+    stickToEnd.current = true;
+    setUnseen(false);
+    scrollToEnd(false);
+  }, [chat?.id, chatRuns.length > 0]);
+  const last = chatRuns.at(-1);
+  const decisions = chatRuns.reduce((n, r) => n + r.approvals.length, 0);
+  useEffect(() => {
+    if (stickToEnd.current) scrollToEnd(true);
+    else setUnseen(true);
+  }, [last?.id, last?.messages.length, last?.status, decisions]);
+  // The message box grows with what you type, up to a limit set in the stylesheet.
+  useLayoutEffect(() => {
+    const box = composer.current;
+    if (!box) return;
+    box.style.height = 'auto';
+    box.style.height = `${box.scrollHeight + 2}px`;
+  }, [prompt, chat?.id]);
   async function createChat() {
     if (creating || !chosen.length) return;
     setCreating(true);
@@ -311,12 +391,33 @@ function App() {
       setCreating(false);
     }
   }
+  async function deleteChat() {
+    if (!chat || deleting) return;
+    const id = chat.id;
+    setDeleting(true);
+    setFormError('');
+    try {
+      await api(`/conversations/${id}`, {}, 'DELETE');
+      delete drafts.current[id];
+      cacheDrafts();
+      setState(await api<AppState>('/state'));
+      // The most recent remaining chat opens next.
+      setChatId(null);
+      setModal(null);
+    } catch (e) {
+      setFormError((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
   async function start(text: string) {
     if (!chat || busy || currentActive || !state || !text.trim()) return;
     const id = chat.id,
       version = drafts.current[id]?.version ?? 0;
     markBusy(id, true);
     setChatErrors((errors) => ({ ...errors, [id]: '' }));
+    // Your own message always scrolls into view.
+    stickToEnd.current = true;
     try {
       await saveDraft(id);
       if (
@@ -387,7 +488,7 @@ function App() {
       draft.role !== 'coordinator'
     ) {
       setFormError(
-        'The primary agent stays primary. You can change its personality, name, and appearance.',
+        'The primary bot stays primary. You can change its personality, name, and appearance.',
       );
       return;
     }
@@ -424,6 +525,26 @@ function App() {
       setSavingProfile(false);
     }
   }
+  async function deleteBot(bot: Persona) {
+    setFormError('');
+    try {
+      await api(`/profiles/${bot.id}`, {}, 'DELETE');
+      setState(await api<AppState>('/state'));
+      setModal('team');
+    } catch (e) {
+      setFormError((e as Error).message);
+    }
+  }
+  function goToWaiting() {
+    const target = waiting.find((r) => r.conversationId !== chat?.id) ?? waiting[0];
+    if (!target?.conversationId) return;
+    if (target.conversationId !== chat?.id) chooseChat(target.conversationId);
+    else {
+      stickToEnd.current = true;
+      scrollToEnd(true);
+      document.querySelector<HTMLButtonElement>('.approval-card .primary')?.focus();
+    }
+  }
 
   const orderedProfiles = [...library.profiles].sort(
     (a, b) =>
@@ -433,18 +554,11 @@ function App() {
   function startedByName(c: Conversation) {
     return (
       conversations
-        .find((source) => source.id === c.startedBy?.conversationId)
+        .find((s) => s.id === c.startedBy?.conversationId)
         ?.participants.find((p) => p.id === c.startedBy?.coordinatorId)?.name ??
       c.participants.find((p) => p.id === c.startedBy?.coordinatorId)?.name ??
-      'the primary agent'
+      'the primary bot'
     );
-  }
-  function talkToPrimary() {
-    const existing = [...conversations]
-      .filter((c) => c.participants.length === 1 && c.participants[0].id === team[0].id)
-      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    if (existing) chooseChat(existing.id);
-    else openNew(team[0]);
   }
   const visibleError = error || (chat && chatErrors[chat.id]) || '';
   const chatList = (
@@ -456,7 +570,7 @@ function App() {
       botCount={library.profiles.length}
       draftFor={(c) => drafts.current[c.id]?.text ?? c.draft}
       startedByName={startedByName}
-      onTalkToPrimary={talkToPrimary}
+      onTalkToPrimary={() => void openBot(team[0])}
       onNew={() => openNew()}
       onChoose={chooseChat}
       onOpenLibrary={() => setModal('team')}
@@ -466,7 +580,6 @@ function App() {
   const modeDetail = live
     ? `${state?.workspaceToolsEnabled ? 'Local file tools on' : 'No file access or commands'} · Only this conversation’s participants see its context.`
     : 'No API calls. Tools act on a temporary copy of tiny-project.';
-  const modeHint = `${live ? 'Live model' : 'Scripted demo'} · ${modeDetail}`;
   const modeChip = (
     <button
       className="mode-chip"
@@ -478,11 +591,23 @@ function App() {
       {live ? 'Live' : 'Demo'}
     </button>
   );
+  const solo = chat?.participants.length === 1 ? chat.participants[0] : undefined;
+  const starters = solo
+    ? starterPrompts(
+        solo,
+        live ? 'live' : 'demo',
+        grantedCapabilities(withLibraryCapabilities(solo, library.profiles), server),
+        library.profiles.filter((p) => p.id !== solo.id),
+      )
+    : [];
   return (
     <div className="app">
+      <a className="skip-link" href={chat ? '#message-box' : '#main'}>
+        {chat ? 'Skip to message box' : 'Skip to main content'}
+      </a>
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark">
+          <span className="brand-mark" aria-hidden="true">
             <i />
             <i />
             <i />
@@ -493,7 +618,18 @@ function App() {
           </span>
         </div>
         <nav aria-label="Workspace">
-          <button className="mobile-chats" onClick={() => setModal('chats')}>
+          {waiting.length > 0 && (
+            <button
+              className="waiting-badge"
+              onClick={goToWaiting}
+              aria-label={`${waiting.length} ${waiting.length === 1 ? 'task is' : 'tasks are'} waiting for your approval. Go to ${waiting.length === 1 ? 'it' : 'the first'}.`}
+            >
+              <Icon name="shield" size={16} />
+              <span>{waiting.length}</span>
+              <span className="waiting-text">waiting for you</span>
+            </button>
+          )}
+          <button className="mobile-only" onClick={() => setModal('chats')}>
             <Icon name="layers" size={18} />
             <span>Chats</span>
           </button>
@@ -501,83 +637,76 @@ function App() {
             <Icon name="team" size={18} />
             <span>Bots</span>
           </button>
-          <button
-            disabled={!chat}
-            onClick={() => {
-              setRunId(null);
-              setModal('details');
-            }}
-          >
-            <Icon name="activity" size={18} />
-            <span>Details</span>
-          </button>
         </nav>
       </header>
       <div className="workspace-layout">
         <aside className="chat-sidebar">{chatList}</aside>
-        <main className="conversation">
+        <main className="conversation" id="main" tabIndex={-1}>
           {chat && (
             <header className="chat-heading">
-              <div className="chat-participants">
-                {chat.participants.map((p) => (
-                  <Avatar key={p.id} person={character(p)} size={30} />
-                ))}
-              </div>
-              <div>
+              <AvatarStack people={chat.participants.map(character)} size={30} max={4} />
+              <div className="chat-heading-text">
                 <h1>{chat.title}</h1>
-                <p>
-                  {chat.participants.map((p) => p.name).join(' · ')}
-                  {chat.startedBy && (
-                    <>
-                      {' · Started by '}
-                      {startedByName(chat)}
-                      {' · '}
-                      <button
-                        className="inline-link"
-                        onClick={() => chooseChat(chat.startedBy!.conversationId)}
-                      >
-                        Original conversation
-                      </button>
-                    </>
+                <p className="chat-subtitle">
+                  <span className="chat-subtitle-main">
+                    {solo ? (
+                      <>
+                        {chat.title !== solo.name && `${solo.name} · `}
+                        Can use:{' '}
+                        <CapabilitySummary
+                          profile={withLibraryCapabilities(solo, library.profiles)}
+                          server={server}
+                        />
+                      </>
+                    ) : (
+                      chat.participants.map((p) => p.name).join(', ')
+                    )}
+                  </span>
+                  {source && (
+                    <button
+                      className="inline-link"
+                      title={`Started by ${startedByName(chat)}`}
+                      onClick={() => chooseChat(source.id)}
+                    >
+                      <Icon name="back" size={13} />
+                      Original conversation
+                    </button>
                   )}
                 </p>
-                {chat.participants.length === 1 ? (
-                  <p className="chat-capabilities">
-                    <CapabilitySummary
-                      profile={withLibraryCapabilities(chat.participants[0], library.profiles)}
-                      server={server}
-                    />
-                  </p>
-                ) : (
-                  <details className="chat-capabilities">
-                    <summary>What each bot can do</summary>
-                    <ul>
-                      {chat.participants.map((p) => (
-                        <li key={p.id}>
-                          <strong>{p.name}: </strong>
-                          <CapabilitySummary
-                            profile={withLibraryCapabilities(p, library.profiles)}
-                            server={server}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
               </div>
               {modeChip}
-              <button
-                className="icon-button"
-                aria-label="Rename conversation"
-                title="Rename conversation"
-                onClick={() => {
-                  setChatTitle(chat.title);
-                  setFormError('');
-                  setModal('rename');
-                }}
-              >
-                <Icon name="settings" size={17} />
-              </button>
+              <Menu
+                label="Conversation options"
+                items={[
+                  {
+                    label: 'Rename',
+                    icon: 'edit',
+                    onSelect: () => {
+                      setChatTitle(chat.title);
+                      setFormError('');
+                      setModal('rename');
+                    },
+                  },
+                  ...(solo
+                    ? []
+                    : [
+                        {
+                          label: 'What each bot can do',
+                          icon: 'team',
+                          onSelect: () => setModal('capabilities'),
+                        },
+                      ]),
+                  {
+                    label: 'Delete conversation',
+                    icon: 'trash',
+                    danger: true,
+                    onSelect: () => {
+                      setFormError('');
+                      setModal('delete-chat');
+                    },
+                  },
+                ]}
+              />
             </header>
           )}
           {state?.persistenceError && (
@@ -599,21 +728,45 @@ function App() {
               </button>
             </div>
           )}
-          <div className="messages">
+          <div
+            className="messages"
+            ref={messagesBox}
+            onScroll={(e) => {
+              const box = e.currentTarget,
+                atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 120,
+                movedUp = box.scrollTop < lastScrollTop.current - 2;
+              lastScrollTop.current = box.scrollTop;
+              // An automatic scroll only moves down; moving up is you, however you scrolled.
+              if (autoScrolling.current && !movedUp) {
+                if (atEnd) autoScrolling.current = false;
+                return;
+              }
+              autoScrolling.current = false;
+              stickToEnd.current = atEnd;
+              if (atEnd) setUnseen(false);
+            }}
+            // Any scrolling of your own takes over from an automatic scroll.
+            onWheel={() => (autoScrolling.current = false)}
+            onTouchStart={() => (autoScrolling.current = false)}
+            onKeyDown={() => (autoScrolling.current = false)}
+          >
             {!chat ? (
               <section className="welcome">
                 <div className="welcome-avatars">
-                  <Avatar person={character(team[0])} size={76} />
+                  <Avatar person={character(team[0])} size={72} />
                 </div>
                 <h1>Start with {team[0].name}.</h1>
                 <p>
-                  Tell your primary agent what you want to do.
-                  <br />
-                  They can create individual agents and send them messages.
+                  Tell your primary bot what you want to do. {team[0].name} can answer, create new
+                  bots, and hand them work.
                 </p>
-                <button className="primary" onClick={() => openNew()} disabled={!state}>
+                <button
+                  className="primary"
+                  onClick={() => void openBot(team[0])}
+                  disabled={!state || creating}
+                >
                   Talk to {team[0].name}
-                  <Icon name="arrow" size={17} />
+                  <Icon name="forward" size={17} />
                 </button>
                 <div>
                   <button className="text-button" onClick={() => setModal('team')}>
@@ -629,44 +782,48 @@ function App() {
               <section className="welcome chat-welcome">
                 <div className="welcome-avatars">
                   {chat.participants.map((p) => (
-                    <Avatar key={p.id} person={character(p)} size={64} />
+                    <Avatar key={p.id} person={character(p)} size={60} />
                   ))}
                 </div>
-                <h1>
-                  {chat.participants.length === 1
-                    ? `Meet ${chat.participants[0].name}.`
-                    : 'A conversation for your team.'}
-                </h1>
+                <h1>{solo ? `Meet ${solo.name}.` : 'A conversation for your team.'}</h1>
                 <p>
-                  {chat.participants.length === 1
-                    ? chat.participants[0].role === 'coordinator'
-                      ? 'Tell me what you want to work on. I can create an agent with the right personality and send it a message when it can help.'
-                      : chat.participants[0].purpose
+                  {solo
+                    ? solo.role === 'coordinator'
+                      ? 'Tell me what you want to work on. I can answer, create a bot with the right personality, or hand work to one when that helps.'
+                      : solo.purpose
                     : `${chat.participants.map((p) => p.name).join(', ')} are here. Only these bots take part in this chat.`}
                 </p>
-                {state?.mode === 'demo' && (
-                  <button
-                    className="start-card"
-                    disabled={!state || busy || !!currentActive}
-                    onClick={() => start('Help me fix the failing tests in tiny-project.')}
-                  >
-                    <Icon name="terminal" size={21} />
-                    <span>
-                      <strong>Try a demo conversation</strong>
-                      <small>A scripted model with real tools and approvals</small>
-                    </span>
-                    <Icon name="arrow" size={18} />
-                  </button>
+                {starters.length > 0 && (
+                  <div className="starters" role="group" aria-label="Try one of these">
+                    {starters.map((text) => (
+                      <button
+                        key={text}
+                        className="starter"
+                        disabled={!state || busy || !!currentActive}
+                        onClick={() => start(text)}
+                      >
+                        <span>{text}</span>
+                        <Icon name="forward" size={15} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!live && starters.length > 0 && (
+                  <p className="starter-note">
+                    The demo’s scripted model knows these examples. It makes real tool calls and
+                    asks for real approvals on a temporary copy of tiny-project.
+                  </p>
                 )}
               </section>
             ) : (
-              <div className="thread">
+              <div className="thread" role="log" aria-label="Messages">
                 {chatRuns.map((r) => (
                   <ChatRun
                     key={r.id}
                     run={r}
                     chat={chat}
                     conversations={conversations}
+                    allRuns={state?.runs ?? []}
                     profiles={library.profiles}
                     workspaceRoot={state?.workspaceRoot ?? ''}
                     busy={busyChats.includes(chat.id)}
@@ -676,7 +833,7 @@ function App() {
                     onGrant={grantCapabilities}
                     onOpenBot={(bot, conversationId) => void openBot(bot, conversationId)}
                     onChooseChat={chooseChat}
-                    onShowDetails={(id, nextTab) => {
+                    onShowDetails={(id, nextTab: DetailsTab) => {
                       setRunId(id);
                       setTab(nextTab);
                       setModal('details');
@@ -685,10 +842,22 @@ function App() {
                 ))}
               </div>
             )}
-            <div ref={end} />
           </div>
           {chat && (
             <div className="composer-area">
+              {unseen && (
+                <button
+                  className="new-messages"
+                  onClick={() => {
+                    stickToEnd.current = true;
+                    setUnseen(false);
+                    scrollToEnd(true);
+                  }}
+                >
+                  <Icon name="down" size={15} />
+                  New messages
+                </button>
+              )}
               {currentActive && (
                 <div className="run-control">
                   <span>{statusText[currentActive.status]}</span>
@@ -707,13 +876,15 @@ function App() {
               >
                 <textarea
                   ref={composer}
-                  rows={2}
+                  id="message-box"
+                  rows={1}
                   maxLength={8000}
                   aria-label={`Message ${chat.title}`}
+                  aria-describedby="composer-keys"
                   placeholder={
                     currentActive
                       ? 'Draft your next message…'
-                      : `Message ${chat.participants.length === 1 ? chat.participants[0].name : 'this group'}…`
+                      : `Message ${solo ? solo.name : 'this group'}…`
                   }
                   value={prompt}
                   disabled={busy}
@@ -734,7 +905,14 @@ function App() {
                   <Icon name="arrow" size={20} />
                 </button>
               </form>
-              <p className="composer-note">{modeHint}</p>
+              <p className="composer-note">
+                <span>
+                  {live ? 'Live model' : 'Scripted demo'} · {modeDetail}
+                </span>
+                <span id="composer-keys" className="composer-keys">
+                  Enter to send · Shift+Enter for a new line
+                </span>
+              </p>
             </div>
           )}
         </main>
@@ -765,6 +943,24 @@ function App() {
           creating={creating}
           onTitle={setChatTitle}
           onSubmit={renameChat}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'capabilities' && chat && (
+        <CapabilitiesDialog
+          participants={chat.participants}
+          profiles={library.profiles}
+          server={server}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'delete-chat' && chat && (
+        <DeleteConversationDialog
+          title={chat.title}
+          busy={!!currentActive}
+          error={formError}
+          deleting={deleting}
+          onDelete={() => void deleteChat()}
           onClose={() => setModal(null)}
         />
       )}
@@ -812,6 +1008,11 @@ function App() {
           saving={savingProfile}
           onChange={setDraft}
           onSubmit={saveProfile}
+          onDelete={
+            library.profiles.some((p) => p.id === draft.id && p.role !== 'coordinator')
+              ? () => deleteBot(draft)
+              : undefined
+          }
           onCancel={() => setModal('team')}
         />
       )}
@@ -841,6 +1042,7 @@ function App() {
             runs={state?.runs ?? []}
             schedulesRun={!!state?.schedulesRun}
             timeZone={state?.timeZone ?? 'local time'}
+            hasChat={(id) => conversations.some((c) => c.id === id)}
             onSave={async (draft, id) => {
               await api(id ? `/schedules/${id}` : '/schedules', {
                 ...(id ? {} : { botId: scheduleBot.id }),

@@ -182,6 +182,12 @@ export class MemoryStore {
     this.commit(next);
     return true;
   }
+  /** Remove every note one bot saved, when that bot is deleted. */
+  forgetAgent(agentId: string): void {
+    validId(agentId);
+    const next = this.entries.filter((entry) => entry.agentId !== agentId);
+    if (next.length !== this.entries.length) this.commit(next);
+  }
   private commit(next: MemoryEntry[]): void {
     if (next.length > MEMORY_LIMITS.entries)
       throw new MemoryError(

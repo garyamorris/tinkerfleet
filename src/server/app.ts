@@ -256,16 +256,23 @@ export function createApp(
         digest: p.digest,
         agent,
         title: p.action.kind === 'edit' ? `Update ${p.action.path}` : `Run ${p.action.executable}`,
+        // What happens on approval depends on the mode; the card says that part.
         description:
-          'Review this exact action. It changes actual local files or runs a local command in the selected folder. Commands run with your user permissions.',
+          p.action.kind === 'edit'
+            ? `Review the exact change to ${p.action.path}. Nothing is written until you approve.`
+            : 'Review the exact program, arguments, and folder. Nothing runs until you approve.',
         action,
         status: 'pending',
         before: beforeCache.get(p.approvalId),
+        requestedAt: Date.parse(e.at),
       });
     }
     if (e.type === 'approval_resolved') {
       const p = run.approvals.find((a) => a.id === e.approvalId);
-      if (p) p.status = e.approved ? 'approved' : 'denied';
+      if (p) {
+        p.status = e.approved ? 'approved' : 'denied';
+        p.decidedAt ??= Date.parse(e.at);
+      }
       run.status = 'running';
     }
     if (e.type === 'run_completed') {
@@ -277,7 +284,11 @@ export function createApp(
       run.status = e.type === 'run_failed' ? 'failed' : 'cancelled';
       run.activeAgent = null;
       run.endedAt = Date.now();
-      for (const a of run.approvals) if (a.status === 'pending') a.status = 'denied';
+      for (const a of run.approvals)
+        if (a.status === 'pending') {
+          a.status = 'denied';
+          a.decidedAt = Date.parse(e.at);
+        }
       if (e.message)
         run.messages.push({ id: randomUUID(), at: Date.now(), author: agent, text: e.message });
     }
@@ -1085,11 +1096,16 @@ export function createApp(
         libraryImported = previousImported;
         throw e;
       }
-      // A deleted bot's schedules go with it. If that cannot be saved, they are skipped when due.
-      if (method === 'DELETE')
+      // A deleted bot's schedules and memory notes go with it. If that cannot be saved, its
+      // schedules are skipped when due and its notes reach no one.
+      if (method === 'DELETE') {
         try {
           schedules.removeForBot(id!);
         } catch {}
+        try {
+          memory.forgetAgent(id!);
+        } catch {}
+      }
       json(res, method === 'DELETE' ? 200 : id ? 200 : 201, profile ?? { ok: true });
       return;
     }
@@ -1193,6 +1209,33 @@ export function createApp(
     const conversationRoute = /^\/api\/conversations\/([a-zA-Z0-9_-]+)(?:\/(runs))?$/.exec(
       url.pathname,
     );
+    // Deleting a chat removes its runs too. A group it started keeps working on its own.
+    if (conversationRoute && !conversationRoute[2] && method === 'DELETE') {
+      const chat = conversations.get(conversationRoute[1]);
+      if (!chat) throw new HttpError(404, 'Conversation not found.');
+      const runs = allRuns().filter((run) => run.conversationId === chat.id);
+      if (
+        starting.has(chat.id) ||
+        runs.some((run) => ['running', 'awaiting_approval'].includes(run.status))
+      )
+        throw new HttpError(409, 'Stop this conversation’s task before deleting it.');
+      conversations.delete(chat.id);
+      for (const run of runs) runsById.delete(run.id);
+      try {
+        persist(true);
+      } catch (e) {
+        conversations.set(chat.id, chat);
+        for (const run of runs) runsById.set(run.id, run);
+        throw e;
+      }
+      for (const run of runs) {
+        traces.forget(run.id);
+        legacyRunIds.delete(run.id);
+        if (currentRunId === run.id) currentRunId = null;
+      }
+      json(res, 200, { ok: true });
+      return;
+    }
     if (conversationRoute && method === 'POST') {
       const chat = conversations.get(conversationRoute[1]);
       if (!chat) throw new HttpError(404, 'Conversation not found.');
@@ -1378,6 +1421,7 @@ export function createApp(
       if (!pending || pending.digest !== digest || run.status !== 'awaiting_approval')
         throw new HttpError(409, 'This approval is stale, changed, or already used.');
       pending.status = approved ? 'approved' : 'denied';
+      pending.decidedAt = Date.now();
       run.status = 'running';
       touch(run);
       persist(true);
@@ -1446,7 +1490,10 @@ export function createApp(
           run.activeAgent = null;
           run.endedAt = Date.now();
           for (const approval of run.approvals)
-            if (approval.status === 'pending') approval.status = 'denied';
+            if (approval.status === 'pending') {
+              approval.status = 'denied';
+              approval.decidedAt = run.endedAt;
+            }
           touch(run);
         }
       try {

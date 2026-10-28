@@ -59,7 +59,8 @@ identity, and cancelling a run should not delete the conversation.
 
 The browser sends a request to the local server. The server creates the run and
 starts its execution asynchronously. The client polls state to update messages,
-activity, and approval cards. This lets the user see work in progress without
+activity, and approval cards: often while a task works, less often when nothing
+is running, and only when the state actually changed does it render again. This lets the user see work in progress without
 waiting for a single long HTTP response to finish.
 
 **Read:** [shared types](../src/shared/types.ts), [client](../src/client/main.tsx),

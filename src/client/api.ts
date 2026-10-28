@@ -17,3 +17,17 @@ export async function api<T>(path: string, body?: unknown, method?: 'DELETE'): P
   if (!r.ok) throw new Error(data.error ?? 'Request failed.');
   return data;
 }
+
+/** A GET's raw JSON text, so polling can skip a response that has not changed. */
+export async function apiText(path: string): Promise<string> {
+  const r = await fetch(`/api${path}`);
+  const text = await r.text();
+  if (!r.ok) {
+    let message = 'Request failed.';
+    try {
+      message = (JSON.parse(text) as { error?: string }).error ?? message;
+    } catch {}
+    throw new Error(message);
+  }
+  return text;
+}

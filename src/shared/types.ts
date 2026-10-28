@@ -35,6 +35,9 @@ export interface Approval {
   action: Action;
   status: 'pending' | 'approved' | 'denied';
   before?: string;
+  /** When the bot asked, and when it was approved or declined. Missing on older saved runs. */
+  requestedAt?: number;
+  decidedAt?: number;
 }
 export interface FleetEvent {
   id: string;
