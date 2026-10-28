@@ -17,11 +17,14 @@ can also create agents, message one, or start a group when collaboration helps.
 Each bot has capabilities, chosen in **Bot library → Edit**: web, read files,
 edit files, run commands, and memory. The starter Scout searches the web, Maker
 reads and edits, and Checker reads and runs commands. The chat header lists what
-each participant can do; in a group, open **What each bot can do**. The direct
+a bot in a direct chat can do; in a group, choose **What each bot can do** from
+the **⋯** menu beside the title. The direct
 primary has extra coordination tools. Changing a personality does not enable a
 tool or remove an approval requirement.
 
-In the no-key demo, ask to fix the failing tests in tiny-project. The primary's
+An empty chat suggests a few first messages that suit that bot. In the no-key
+demo they are the examples its scripted model understands. Ask the primary to fix
+the failing tests in tiny-project. The primary's
 scripted model calls `start_group_conversation`, just as a real model would. A greeting stays in the primary chat.
 This is a useful way to inspect the interaction before trying real models.
 
@@ -35,8 +38,8 @@ primary asked for edit files, run commands, or web together with read files, the
 bot starts without them and the card offers a **Grant** button; nothing is granted
 until you click it.
 
-You can also open the **Bot library** (**Bots** on a phone), choose **Create persona**, and write the profile
-yourself. Saving a new persona opens its direct chat. New profiles receive a
+You can also open the **Bot library** (**Bots** on a phone), choose **Create bot**, and write the profile
+yourself. Saving a new bot opens its direct chat. New profiles receive a
 random avatar; **Randomize avatar** changes the appearance. It does not change
 the bot's tools or intelligence.
 
@@ -58,7 +61,8 @@ not automatically wake the primary for another model call.
 
 For a group, the primary chooses participants and shares a brief. Its link card
 opens the new conversation; you remain in the source chat until you choose that
-link. The group shows **Started by** and an **Original conversation** backlink.
+link. The group's header links back to the **Original conversation**. While a group
+works, the card that opens it shows its status, such as **Waiting for you**.
 There is no manual group-start chooser.
 
 A group can include the primary and a limited number of ordinary agents
@@ -73,7 +77,8 @@ budgets; each internal agent call does not create a new conversation run.
 
 Open **Memory** beside a bot in the library. Add a harmless preference such as
 “I prefer short explanations followed by one exercise,” then choose **Save
-memory**. You can inspect saved notes and use **Delete** to remove one.
+memory**. You can inspect saved notes and use **Delete**, then confirm, to remove
+one.
 
 The same bot receives these notes on its next turn across chats. Another bot
 does not receive them merely because it is in your library. Each bot has a cap
@@ -105,7 +110,11 @@ edit or command. Read the full proposal: the destination and contents for an
 edit, or the executable, arguments, and working directory for a command.
 
 Approve only the action you want. That decision belongs to one exact action in
-one run. Denial does not execute it, and switching chats never transfers the
+one run. A command is shown as one line you could type; **Exact action** lists
+the executable, its arguments as sent, and the approval ID. Whatever you decide,
+the thread keeps a line saying what you approved or declined. While any task is
+waiting for you, a **waiting for you** badge at the top of the window takes you
+to it, even from another chat. Denial does not execute it, and switching chats never transfers the
 approval. An approved native action changes real files or starts a real local
 process. In the demo, that real file and process are in a temporary copy of
 tiny-project.
@@ -129,7 +138,8 @@ be positioned reliably inside formatted text, it remains in the source list.
 Open the source and check the claim yourself.
 
 Each task ends with one line: how it finished, its activity steps, and **Task
-details**. Expand the steps to see recent recorded steps, agent names, and
+details**. A task in which you declined an action says so rather than showing a
+plain success. Expand the steps to see recent recorded steps, agent names, and
 elapsed time. A file-read event or completed command is
 more useful evidence than a sentence promising to do the work. A started event
 alone is not proof of completion. The UI only reports activity supplied by the
@@ -140,21 +150,32 @@ and choose **Trace**. See [Reading a trace](traces.md).
 
 ## Leave and return
 
-The sidebar keeps named chats with previews and status. You can rename a
-conversation, switch chats with different drafts, and return after reloading.
+The sidebar keeps named chats with previews and status, and a search box once
+the list grows. Use the **⋯** menu beside a conversation's title to rename or
+delete it. Deleting removes that chat's tasks and outputs; your bots, their
+memory, and any group it started stay. **Delete bot** in **Bot library → Edit**
+also removes that bot's schedules and memory notes. You can switch chats with
+different drafts and return after reloading. If you scroll up to read while a
+task works, the view stays put and a **New messages** button takes you back down.
 A server restart preserves saved history but cancels unfinished runs and denies
 pending approvals. Submit a new message to continue; an old approval cannot
 resume execution.
 
-On a narrow screen, open the conversation drawer to switch chats. Use Tab to
-move through controls, Enter or Space to activate buttons, and Escape to close
-dialogs. Read labels as well as avatar colors.
+On a narrow screen, open the conversation drawer to switch chats. The first Tab
+stop skips to the message box. Use Tab to move through controls, Enter or Space
+to activate buttons, and Escape to close dialogs and menus. Read labels as well
+as avatar colors. The interface follows your system's light or dark setting.
+Explanations like this one appear in dialogs too; **Hide** folds one away and
+**How this works** brings it back.
 
 ## Find these ideas in the code
 
 | Interaction | Start reading here |
 | --- | --- |
 | Sidebar, creation cards, dialogs, and run display | [`src/client/main.tsx`](../src/client/main.tsx), [`chat-list.tsx`](../src/client/chat-list.tsx), [`chat-run.tsx`](../src/client/chat-run.tsx), and the `*-dialog(s).tsx` files |
+| Menus, delete confirmations, and foldable explanations | [`src/client/ui.tsx`](../src/client/ui.tsx) |
+| Starter prompts for an empty chat | [`src/client/starters.ts`](../src/client/starters.ts) |
+| Colors, light and dark themes | the tokens at the top of [`src/client/style.css`](../src/client/style.css) |
 | Memory editor | [`src/client/memory-panel.tsx`](../src/client/memory-panel.tsx) |
 | Schedules | [`src/client/schedule-dialog.tsx`](../src/client/schedule-dialog.tsx) and [`src/server/schedules.ts`](../src/server/schedules.ts) |
 | Saved chats and drafts | [`src/server/conversations.ts`](../src/server/conversations.ts) |

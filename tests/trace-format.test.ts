@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   argsOf,
+  askedBotId,
   contextSummary,
   outcomeText,
   readableText,
@@ -178,4 +179,23 @@ test('the comparison verdict names the first call where two tasks parted ways', 
     verdict(compareTraces(trace(reads(1, 'a'), replies(2, 'x')), trace(reads(1, 'a')))),
     'They first differ at call 2: this task replied, the other made no call.',
   );
+});
+
+test('a call to another bot is named after that bot, reversing the ask_ tool encoding', () => {
+  assert.equal(askedBotId('ask_starter__hmaker'), 'starter-maker');
+  assert.equal(askedBotId('ask_a__uu__h__u'), 'a_u-_');
+  assert.equal(askedBotId('read_file'), null);
+  const asks = call({
+    output: [
+      item('tool_call', { name: 'read_file' }),
+      item('tool_call', { name: 'ask_starter__hmaker' }),
+      item('tool_call', { name: 'ask_unknown' }),
+    ],
+  });
+  const names: Record<string, string> = { 'starter-maker': 'Maker' };
+  assert.equal(
+    outcomeText(asks, (id) => names[id]),
+    'called read_file, ask_unknown and asked Maker',
+  );
+  assert.equal(outcomeText(asks), 'called read_file, ask_starter__hmaker, ask_unknown');
 });

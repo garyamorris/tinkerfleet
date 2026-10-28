@@ -58,7 +58,7 @@ export function SettingsDialog({
               : !state?.workspaceToolsEnabled
                 ? 'Off · chat only'
                 : state?.execution.available
-                  ? 'Local · your user permissions'
+                  ? 'Local · your user permissions, not a sandbox'
                   : (state?.execution.reason ?? 'Unavailable')}
           </dd>
         </div>
@@ -106,10 +106,9 @@ export function SettingsDialog({
         </div>
       </dl>
       <p className="panel-note">
-        Live chat sends persona purposes, saved memories, and conversation context to the model
+        Live chat sends bot purposes, saved memories, and conversation context to the model
         provider. File content and tool results are sent only when workspace tools are enabled.
-        Commands run with your user permissions; this folder is not a sandbox. Credentials belong in
-        secure server configuration.
+        Credentials belong in secure server configuration, never in a chat, bot, or memory.
       </p>
       <div className="actions">
         <button className="primary" onClick={() => onClose()}>

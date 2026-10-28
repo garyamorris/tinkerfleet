@@ -4,6 +4,7 @@ import type { AgentId, Run, RunTrace, TraceCall, TraceItem } from '../shared/typ
 import { compareTraces } from '../shared/trace-diff';
 import { api } from './api';
 import { TraceCompare } from './trace-compare';
+import { Note } from './ui';
 import {
   contextSummary,
   kindLabel,
@@ -38,7 +39,17 @@ function Item({ item }: { item: TraceItem }) {
   );
 }
 
-function Call({ call, name, open }: { call: TraceCall; name: string; open: boolean }) {
+function Call({
+  call,
+  name,
+  open,
+  botName,
+}: {
+  call: TraceCall;
+  name: string;
+  open: boolean;
+  botName: (id: string) => string | undefined;
+}) {
   const { percent, notes } = contextSummary(call);
   const usage = call.usage;
   return (
@@ -47,7 +58,7 @@ function Call({ call, name, open }: { call: TraceCall; name: string; open: boole
         <summary>
           <span className="trace-index">{call.index}</span>
           <span className="trace-headline">
-            <strong>{name}</strong> {outcomeText(call)}
+            <strong>{name}</strong> {outcomeText(call, botName)}
           </span>
           <small>
             {(call.durationMs / 1000).toFixed(1)}s
@@ -94,7 +105,7 @@ function Call({ call, name, open }: { call: TraceCall; name: string; open: boole
               ))}
             </ul>
           </details>
-          <h4>Sent to the model</h4>
+          <h3>Sent to the model</h3>
           {call.omittedItems > 0 && (
             <p className="trace-note">{call.omittedItems} older items are not shown.</p>
           )}
@@ -103,7 +114,7 @@ function Call({ call, name, open }: { call: TraceCall; name: string; open: boole
               <Item item={item} key={i} />
             ))}
           </ol>
-          <h4>The model replied</h4>
+          <h3>The model replied</h3>
           {call.output.length ? (
             <ol className="trace-items">
               {call.output.map((item, i) => (
@@ -122,10 +133,13 @@ function Call({ call, name, open }: { call: TraceCall; name: string; open: boole
 export function TraceView({
   run,
   nameFor,
+  botName,
   others,
 }: {
   run: Run;
   nameFor: (id: AgentId) => string;
+  /** A bot in this task by ID, to name the bot an ask_ tool reached. */
+  botName: (id: AgentId) => string | undefined;
   /** Other tasks this server has run, to compare with. Their traces are fetched when chosen. */
   others: { run: Run; label: string }[];
 }) {
@@ -184,11 +198,11 @@ export function TraceView({
     tokens = totalTokens(trace.calls);
   return (
     <div className="trace">
-      <p className="trace-intro">
+      <Note id="trace-intro" className="trace-intro">
         An agent has no memory between model calls. Every step sends everything again —
         instructions, tools, and the conversation so far — and the model answers with text or a tool
         call. Each row is one call.
-      </p>
+      </Note>
       <p className="trace-summary">
         {trace.calls.length} {trace.calls.length === 1 ? 'call' : 'calls'}
         {tokens.input + tokens.output > 0
@@ -221,7 +235,13 @@ export function TraceView({
       )}
       <ol className="trace-calls">
         {trace.calls.map((call, i) => (
-          <Call key={call.index} call={call} name={nameFor(call.agent)} open={i === 0} />
+          <Call
+            key={call.index}
+            call={call}
+            name={nameFor(call.agent)}
+            open={i === 0}
+            botName={botName}
+          />
         ))}
       </ol>
     </div>

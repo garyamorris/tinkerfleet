@@ -4,7 +4,7 @@ import type { AgentId, AppState, Persona, Run } from '../shared/types';
 import { character } from './profiles';
 import { usefulDetail } from './run-activity';
 import { TraceView } from './trace-view';
-import { Avatar, Diff, Icon, Modal, statusText } from './ui';
+import { Avatar, Diff, Icon, Modal, runOutcome, statusText } from './ui';
 
 const tabs = ['Activity', 'Trace', 'Output', 'Changes'];
 
@@ -45,69 +45,69 @@ export function TaskDetailsDialog({
   onClose: () => void;
 }) {
   return (
-    <Modal title="Task details" onClose={() => onClose()}>
+    <Modal title="Task details" onClose={() => onClose()} wide>
       <label className="field-label">
         Task in this conversation
         <select value={run?.id ?? ''} onChange={(e) => onSelectRun(e.target.value)}>
           {runs.map((r) => (
             <option value={r.id} key={r.id}>
-              {r.prompt.slice(0, 80)} · {statusText[r.status]}
+              {r.prompt.length > 70 ? `${r.prompt.slice(0, 69)}…` : r.prompt} ·{' '}
+              {statusText[r.status]}
             </option>
           ))}
         </select>
       </label>
-      <p className="modal-intro">
-        {run
-          ? `${run.mode === 'demo' ? 'Scripted demo' : 'Live run'} · ${statusText[run.status]}`
-          : 'Activity, output, and changes appear when the conversation starts.'}
-      </p>
-      {state?.mode === 'live' && (
-        <div className="local-workspace">
-          <span>Selected local folder</span>
-          <code>{state.workspaceRoot}</code>
-          <p>
-            {state.workspaceToolsEnabled
-              ? 'Approved edits change real files. Commands run with your user permissions; this folder is not a sandbox.'
-              : 'File tools are off. No file access or commands; live chat remains available.'}
-          </p>
-        </div>
-      )}
-      {run?.usage && (
-        <dl className="run-usage" aria-label="Reported usage for this run">
+      {run ? (
+        <dl className="run-stats" aria-label="This task at a glance">
           <div>
-            <dt>Model calls</dt>
-            <dd>{run.usage.modelCalls.toLocaleString()}</dd>
+            <dt>Model</dt>
+            <dd>{run.mode === 'demo' ? 'Scripted demo' : 'Live'}</dd>
           </div>
-          {/* The scripted demo model counts no tokens; three zeros would only be noise. */}
-          {run.usage.totalTokens > 0 || run.mode === 'live' ? (
-            <>
-              <div>
-                <dt>Input tokens</dt>
-                <dd>{run.usage.inputTokens.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Output tokens</dt>
-                <dd>{run.usage.outputTokens.toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt>Total tokens</dt>
-                <dd>{run.usage.totalTokens.toLocaleString()}</dd>
-              </div>
-            </>
-          ) : (
-            <div className="run-usage-note">The scripted demo model reports no tokens.</div>
+          <div>
+            <dt>Outcome</dt>
+            <dd>{runOutcome(run).label}</dd>
+          </div>
+          {run.usage && (
+            <div>
+              <dt>Model calls</dt>
+              <dd>{run.usage.modelCalls.toLocaleString()}</dd>
+            </div>
           )}
+          {run.usage && (
+            <div>
+              <dt>Tokens in / out</dt>
+              {/* The scripted demo model counts no tokens; zeros would only be noise. */}
+              <dd>
+                {run.usage.totalTokens > 0 || run.mode === 'live'
+                  ? `${run.usage.inputTokens.toLocaleString()} / ${run.usage.outputTokens.toLocaleString()}`
+                  : 'Not reported by the demo'}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt>Bots</dt>
+            <dd className="snapshot-team">
+              {team.map((p) => (
+                <span key={p.id} title={p.purpose}>
+                  <Avatar person={character(p)} size={20} />
+                  {p.name}
+                </span>
+              ))}
+            </dd>
+          </div>
         </dl>
+      ) : (
+        <p className="modal-intro">
+          Activity, output, and changes appear when the conversation starts.
+        </p>
       )}
-      {run && (
-        <div className="snapshot-team" aria-label="Team for this task">
-          {team.map((p) => (
-            <span key={p.id} title={p.purpose}>
-              <Avatar person={character(p)} size={24} />
-              {p.name}
-            </span>
-          ))}
-        </div>
+      {state?.mode === 'live' && (
+        <p className="local-workspace">
+          <span>Selected folder</span> <code>{state.workspaceRoot}</code> ·{' '}
+          {state.workspaceToolsEnabled
+            ? 'Approved edits change real files; commands run with your user permissions.'
+            : 'File tools are off.'}
+        </p>
       )}
       <div className="inspector-tabs" role="tablist" aria-label="Run inspector">
         {tabs.map((t) => (
@@ -181,6 +181,7 @@ export function TaskDetailsDialog({
               key={run.id}
               run={run}
               nameFor={(id) => person(id).name}
+              botName={(id) => team.find((p) => p.id === id)?.name}
               others={(state?.runs ?? [])
                 .filter(
                   (r) => r.id !== run.id && r.conversationId && (r.usage?.modelCalls ?? 0) > 0,

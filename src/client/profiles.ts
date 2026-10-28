@@ -20,7 +20,7 @@ export const defaults: Person[] = [
     color: '#7563de',
     shape: 'orbit',
     description:
-      'Keeps the plan, talks with individual agents, and brings the results back to you.',
+      'Keeps the plan, hands work to your other bots, and brings the results back to you.',
   },
   {
     id: 'scout',
@@ -71,8 +71,9 @@ export const starterProfiles: Persona[] = defaults.map((p) => ({
   capabilities: starterCapabilities[p.id],
 }));
 export type Library = { profiles: Persona[]; assignments: Record<string, string> };
+/** A badge for the primary bot. Every other bot is just a bot, so it gets none. */
 export function agentLabel(p: Persona) {
-  return p.role === 'coordinator' ? 'Primary agent' : 'Agent';
+  return p.role === 'coordinator' ? 'Primary' : '';
 }
 export function resolveAgent(id: string, ...pools: Persona[][]): Persona {
   const candidates = pools.flat();

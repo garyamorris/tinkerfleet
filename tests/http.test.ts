@@ -440,6 +440,98 @@ test('independent chats isolate participants, drafts, concurrent runs and approv
   }
 });
 
+test('deleting a chat removes it and its runs, but never while its task is still running', async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const directory = await mkdtemp(path.join(tmpdir(), 'tinkerfleet-http-delete-'));
+  const statePath = path.join(directory, 'state.json');
+  const port = 45340,
+    base = `http://127.0.0.1:${port}`;
+  let app = createApp({ port, mode: 'demo', demoDelayMs: 1, statePath });
+  const listen = () =>
+    new Promise<void>((resolve) => app.server.listen(port, '127.0.0.1', resolve));
+  let headers: Record<string, string> = {};
+  const session = async () => {
+    const response = await fetch(base + '/api/session');
+    const { csrf } = (await response.json()) as { csrf: string };
+    headers = {
+      Cookie: response.headers.get('set-cookie')!.split(';')[0],
+      Origin: base,
+      'X-Tinkerfleet-CSRF': csrf,
+      'Content-Type': 'application/json',
+    };
+  };
+  const post = (url: string, body: unknown) =>
+    fetch(base + url, { method: 'POST', headers, body: JSON.stringify(body) });
+  const remove = (url: string, extra: Record<string, string> = {}) =>
+    fetch(base + url, { method: 'DELETE', headers: { ...headers, ...extra }, body: '{}' });
+  const state = async () =>
+    (await (
+      await fetch(base + '/api/state', { headers })
+    ).json()) as import('../src/shared/types.js').AppState;
+  try {
+    await listen();
+    await session();
+    const chats = [];
+    for (const participant of customTeam().slice(2, 4)) {
+      const response = await post('/api/conversations', { participants: [participant] });
+      chats.push((await response.json()) as { id: string });
+    }
+    const [doomed, kept] = chats;
+    const prefix = `/api/conversations/${doomed.id}`;
+    const run = (await (await post(prefix + '/runs', { prompt: 'Fix tiny-project' })).json()) as {
+      id: string;
+    };
+    let snapshot = await state();
+    for (let i = 0; i < 100 && snapshot.runs[0]?.status !== 'awaiting_approval'; i++) {
+      await delay(2);
+      snapshot = await state();
+    }
+    assert.equal((await remove(prefix)).status, 409, 'a waiting run blocks deletion');
+    const approval = snapshot.runs[0].approvals[0];
+    assert.equal(typeof approval.requestedAt, 'number');
+    await post(`${prefix}/runs/${run.id}/approval`, {
+      approvalId: approval.id,
+      digest: approval.digest,
+      approved: false,
+    });
+    for (
+      let i = 0;
+      i < 100 && ['running', 'awaiting_approval'].includes(snapshot.runs[0].status);
+      i++
+    ) {
+      await delay(2);
+      snapshot = await state();
+    }
+    assert.equal(snapshot.runs[0].approvals[0].status, 'denied');
+    assert.equal(typeof snapshot.runs[0].approvals[0].decidedAt, 'number');
+    assert.equal((await remove(prefix, { 'X-Tinkerfleet-CSRF': 'bad' })).status, 403);
+    assert.equal((await remove(prefix)).status, 200);
+    assert.equal((await remove(prefix)).status, 404);
+    snapshot = await state();
+    assert.deepEqual(
+      snapshot.conversations.map((c) => c.id),
+      [kept.id],
+    );
+    assert.equal(snapshot.runs.filter((r) => r.conversationId === doomed.id).length, 0);
+    await app.close();
+    app = createApp({ port, mode: 'demo', demoDelayMs: 1, statePath });
+    await listen();
+    await session();
+    snapshot = await state();
+    assert.deepEqual(
+      snapshot.conversations.map((c) => c.id),
+      [kept.id],
+      'the deletion was saved',
+    );
+    assert.equal(snapshot.runs.length, 0);
+  } finally {
+    if (app.server.listening) await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('direct live chat preflight failures use its selected participant, and polling does not reorder chats', async () => {
   const port = 45323,
     base = `http://127.0.0.1:${port}`,

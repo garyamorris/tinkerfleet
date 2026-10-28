@@ -31,7 +31,7 @@ server stops. Profiles, conversations, and memory notes use real local storage.
 So you see the app's real mechanics without confusing a script with model
 intelligence.
 
-**Try it:** create a persona through **Bots**, save a sample preference in its
+**Try it:** create a bot through **Bots**, save a sample preference in its
 **Memory** panel, and reload. Notice which state survives. Follow the
 [interface tour](interface.md) for the individual steps.
 

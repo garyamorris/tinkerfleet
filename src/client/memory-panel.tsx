@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ConfirmButton, Note } from './ui';
 export type MemoryItem = {
   id: string;
   agentId: string;
@@ -49,11 +50,11 @@ export function MemoryPanel({
   }
   return (
     <>
-      <p className="modal-intro">
-        {name}’s own memory, saved on this Mac and reused across its conversations. Changing its
-        personality does not erase these notes. Saved notes are sent to the model when this bot
+      <Note id="memory-intro" className="modal-intro">
+        {name}’s own memory, saved on this computer and reused across its conversations. Changing
+        its personality does not erase these notes. Saved notes are sent to the model when this bot
         replies.
-      </p>
+      </Note>
       {error && (
         <p role="alert" className="error-banner">
           {error}
@@ -63,14 +64,13 @@ export function MemoryPanel({
         {entries.map((entry) => (
           <li key={entry.id}>
             <p>{entry.text}</p>
-            <button
-              className="text-button"
+            <ConfirmButton
+              label="Delete"
+              prompt="Delete this note?"
+              ariaLabel={`Delete memory: ${entry.text.slice(0, 70)}`}
               disabled={busy}
-              aria-label={`Delete memory: ${entry.text.slice(0, 70)}`}
-              onClick={() => remove(entry.id)}
-            >
-              Delete
-            </button>
+              onConfirm={() => remove(entry.id)}
+            />
           </li>
         ))}
       </ul>
@@ -92,7 +92,7 @@ export function MemoryPanel({
             maxLength={2000}
             value={text}
             disabled={busy || full}
-            placeholder="For example, Explain Python with small examples before introducing terminology."
+            placeholder="For example, I prefer short explanations followed by one exercise."
             onChange={(e) => setText(e.target.value)}
           />
           <span className="field-hint">
